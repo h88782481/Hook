@@ -2,12 +2,12 @@
 setlocal EnableExtensions
 title Build Hook Release
 
-set "HOOK_TAG=%~1"
-set "HOOK_NO_ZIP=%~2"
+set "HOOK_OUTPUT_DIR=%~1"
+set "HOOK_FORCE=%~2"
 
 set "ARGS="
-if not "%HOOK_TAG%"=="" set "ARGS=%ARGS% -Tag %HOOK_TAG%"
-if /I "%HOOK_NO_ZIP%"=="--no-zip" set "ARGS=%ARGS% -NoZip"
+if not "%HOOK_OUTPUT_DIR%"=="" set "ARGS=%ARGS% -OutputDir \"%HOOK_OUTPUT_DIR%\""
+if /I "%HOOK_FORCE%"=="--force" set "ARGS=%ARGS% -Force"
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0package-hook-release.ps1" %ARGS%
 exit /b %ERRORLEVEL%

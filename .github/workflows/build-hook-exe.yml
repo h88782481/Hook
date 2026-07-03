@@ -1,0 +1,37 @@
+name: Build Hook EXE
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Hook EXE
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-local-hook-exe.ps1 -OutputDir "release\Hook" -Force
+
+      - name: Upload Hook EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hook-windows-x64
+          path: release/Hook/hook.exe
+          if-no-files-found: error

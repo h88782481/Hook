@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Tag = "",
-    [switch]$NoUpx,
-    [switch]$NoZip,
+    [string]$OutputDir = "..\release\Hook",
     [switch]$Force,
     [switch]$DryRun
 )
@@ -11,15 +9,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $hookRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = Split-Path -Parent $hookRoot
-$releaseScript = Join-Path $repoRoot "scripts\build-release-exes.ps1"
-
-if (-not (Test-Path -LiteralPath $releaseScript -PathType Leaf)) {
-    throw "Missing canonical Neuro release script: $releaseScript"
-}
-
-if ($NoUpx) {
-    Write-Verbose "-NoUpx is accepted for compatibility. Canonical Neuro release packaging does not create UPX variants."
+$localBuildScript = Join-Path $hookRoot "scripts\build-local-hook-exe.ps1"
+if (-not (Test-Path -LiteralPath $localBuildScript -PathType Leaf)) {
+    throw "Missing Hook-local build script: $localBuildScript"
 }
 
 $arguments = @(
@@ -27,18 +19,10 @@ $arguments = @(
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    $releaseScript,
-    "-Apps",
-    "Hook"
+    $localBuildScript,
+    "-OutputDir",
+    $OutputDir
 )
-
-if (-not [string]::IsNullOrWhiteSpace($Tag)) {
-    $arguments += @("-VersionId", $Tag)
-}
-
-if ($NoZip) {
-    $arguments += "-NoZip"
-}
 
 if ($Force) {
     $arguments += "-Force"
