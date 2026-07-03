@@ -8,3 +8,11 @@ release
 tmp-*
 src-tauri/target
 src-tauri/target-codex-verify
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.orig
+*.rej
+*.swp
+*.swo
