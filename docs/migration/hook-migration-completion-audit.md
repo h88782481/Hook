@@ -4,9 +4,9 @@
 
 ## Sources
 
-- Clean ArtHook reference: `Z:\project\project\ArtNexus-GitHub\ArtHook`
-- Talk voice/config reference, formerly HookLess: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk`
-- Writable target: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook`
+- Clean ArtHook reference: `<legacy-arthook-root>`
+- Talk voice/config reference, formerly HookLess: `<legacy-talk-root>`
+- Writable target: `<hook-repo-root>`
 
 ## Migrated contracts
 
@@ -35,8 +35,8 @@
 Command:
 
 ```powershell
-$srcRoot = 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__'
-$dstRoot = 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\__tests__'
+$srcRoot = '<legacy-arthook-root>\__tests__'
+$dstRoot = '<hook-repo-root>\__tests__'
 $srcPrefix = ((Resolve-Path -LiteralPath $srcRoot).Path.TrimEnd('\') + '\')
 $dstPrefix = ((Resolve-Path -LiteralPath $dstRoot).Path.TrimEnd('\') + '\')
 $src = rg --files $srcRoot -g '!node_modules' | ForEach-Object { (Resolve-Path -LiteralPath $_).Path.Substring($srcPrefix.Length) } | Sort-Object
@@ -60,14 +60,14 @@ source-only:
 
 ## Verification
 
-All commands below were run from `C:\Users\Public\nas_home\AI\GameEditor\Neuro` unless noted otherwise.
+All commands below were run from `<neuro-root>` unless noted otherwise.
 
 ### Migration-specific targeted Vitest suite
 
 Command:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ProcessNoWindowContract.test.ts `
   __tests__\integration\McpBoundaryContract.test.ts `
@@ -103,7 +103,7 @@ EXIT=0
 Command:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 npm run typecheck
 ```
 
@@ -120,7 +120,7 @@ EXIT=0
 Command:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 npm test
 ```
 

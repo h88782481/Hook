@@ -44,7 +44,7 @@ describe("sticker top strip layout", () => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && node_modules\.bin\vitest.cmd run __tests__\unit\stickerTopStripLayout.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
+cmd /d /s /c "pushd <hook-repo-root> && node_modules\.bin\vitest.cmd run __tests__\unit\stickerTopStripLayout.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
 ```
 
 Expected: FAIL with a module-resolution error for `src/services/stickerTopStripLayout.ts`.
@@ -92,7 +92,7 @@ expect(unitViewSource).toContain("<StickerEditToolbar");
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && node_modules\.bin\vitest.cmd run __tests__\integration\StickerTopStripContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
+cmd /d /s /c "pushd <hook-repo-root> && node_modules\.bin\vitest.cmd run __tests__\integration\StickerTopStripContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
 ```
 
 Expected: FAIL because `StickerTopStrip.tsx` and the `UnitView` mount path do not exist yet.
@@ -127,7 +127,7 @@ Expected: PASS for the top-strip mount contract.
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && node_modules\.bin\vitest.cmd run __tests__\unit\stickerTopStripLayout.test.ts __tests__\integration\StickerTopStripContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
+cmd /d /s /c "pushd <hook-repo-root> && node_modules\.bin\vitest.cmd run __tests__\unit\stickerTopStripLayout.test.ts __tests__\integration\StickerTopStripContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism"
 ```
 
 Expected: PASS.
@@ -137,7 +137,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm run typecheck"
+cmd /d /s /c "pushd <hook-repo-root> && npm run typecheck"
 ```
 
 Expected: exit 0.
@@ -147,7 +147,7 @@ Expected: exit 0.
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test"
+cmd /d /s /c "pushd <hook-repo-root> && npm test"
 ```
 
 Expected: all test files pass with zero failures.
@@ -157,7 +157,7 @@ Expected: all test files pass with zero failures.
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm run build"
+cmd /d /s /c "pushd <hook-repo-root> && npm run build"
 ```
 
 Expected: exit 0.
@@ -167,8 +167,8 @@ Expected: exit 0.
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm run tauri -- build --no-bundle"
-powershell -ExecutionPolicy Bypass -File C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\package-hook-release.ps1 -VersionId 20260629-sticker-top-strip
+cmd /d /s /c "pushd <hook-repo-root> && npm run tauri -- build --no-bundle"
+powershell -ExecutionPolicy Bypass -File <hook-repo-root>\package-hook-release.ps1 -VersionId 20260629-sticker-top-strip
 ```
 
-Expected: a new release folder under `C:\Users\Public\nas_home\AI\GameEditor\Neuro\release\Hook\20260629-sticker-top-strip` containing `hook.exe`.
+Expected: a new release folder under `<hook-release-root>\20260629-sticker-top-strip` containing `hook.exe`.

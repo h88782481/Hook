@@ -1047,6 +1047,11 @@ fn resolve_image_path(uuid: &str) -> Option<String> {
     if let Some(config_dir) = dirs::config_dir() {
         // Known Hook cache locations
         let candidates = vec![
+            config_dir.join("com.yamiyu.hook").join("images"),
+            config_dir
+                .join("io.github.aiaimimi0920.hook")
+                .join("images"),
+            config_dir.join("com.vmjcv.hook").join("images"),
             config_dir.join("com.vmjcv.hook-next").join("images"),
             config_dir.join("Hook").join("images"),
             config_dir.join("ArtNexus").join("images"),

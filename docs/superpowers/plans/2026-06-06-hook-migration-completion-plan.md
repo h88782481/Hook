@@ -6,11 +6,11 @@
 
 > Historical naming note: this plan was written before the standalone voice
 > project was renamed from `HookLess` to `Talk`. Any old voice-reference source
-> path now maps to `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk`.
+> path now maps to `<legacy-talk-root>`.
 
 **Goal:** Complete the remaining `Neuro/Hook` migration gaps by bringing over the still-missing ArtHook/HookLess behavior contracts without modifying the source/reference repositories.
 
-**Architecture:** Treat `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook` as the only writable target. Use `Z:\project\project\ArtNexus-GitHub\ArtHook` as the clean ArtHook behavior reference and `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk` as the voice/config reference. Drive each batch with contract tests copied into `Hook`, verify RED first, apply only targeted implementation changes, then run focused tests plus type/Rust checks.
+**Architecture:** Treat `<hook-repo-root>` as the only writable target. Use `<legacy-arthook-root>` as the clean ArtHook behavior reference and `<legacy-talk-root>` as the voice/config reference. Drive each batch with contract tests copied into `Hook`, verify RED first, apply only targeted implementation changes, then run focused tests plus type/Rust checks.
 
 **Tech Stack:** SolidJS/TypeScript, Vitest, Tauri/Rust, PowerShell, ArtLoom/AHRP bridge, HookLess voice modules.
 
@@ -37,12 +37,12 @@ Current canonical evidence:
 
 ### Writable target
 
-- `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook`
+- `<hook-repo-root>`
 
 ### Read-only references
 
-- `Z:\project\project\ArtNexus-GitHub\ArtHook`
-- `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk`
+- `<legacy-arthook-root>`
+- `<legacy-talk-root>`
 
 ### Do not touch
 
@@ -69,7 +69,7 @@ Current canonical evidence:
 Run from:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
+Set-Location '<neuro-root>'
 ```
 
 Current target-only/new Hook migration changes already present or in progress:
@@ -107,7 +107,7 @@ Current RED batch already copied:
 Known current RED command:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ArtNodePropagationContract.test.ts `
   __tests__\integration\ArtNodeSpawnSizingContract.test.ts `
@@ -312,8 +312,8 @@ Source-only but not automatically in scope:
 
 **Files:**
 
-- Read-only check: `Z:\project\project\ArtNexus-GitHub\ArtHook`
-- Read-only check: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk`
+- Read-only check: `<legacy-arthook-root>`
+- Read-only check: `<legacy-talk-root>`
 - Target check: `Hook`
 
 - [ ] **Step 0.1: Capture current Hook status**
@@ -321,7 +321,7 @@ Source-only but not automatically in scope:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
+Set-Location '<neuro-root>'
 git status --short -- Hook
 ```
 
@@ -335,9 +335,9 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
-$src = rg --files 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__' |
-  ForEach-Object { $_ -replace '^Z:\\project\\project\\ArtNexus-GitHub\\ArtHook\\__tests__\\','' } |
+Set-Location '<neuro-root>'
+$src = rg --files '<legacy-arthook-root>\__tests__' |
+  ForEach-Object { $_ -replace '^<legacy-arthook-root>\\__tests__\\','' } |
   Sort-Object
 $dst = rg --files 'Hook\__tests__' |
   ForEach-Object { $_ -replace '^Hook\\__tests__\\','' } |
@@ -367,7 +367,7 @@ Expected before execution:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ArtNodePropagationContract.test.ts `
   __tests__\integration\ArtNodeSpawnSizingContract.test.ts `
@@ -569,7 +569,7 @@ const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = u
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ArtNodePropagationContract.test.ts `
   __tests__\integration\ArtNodeSpawnSizingContract.test.ts `
@@ -599,8 +599,8 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
-Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\integration\ColorTransferShaderContract.test.ts' `
+Set-Location '<neuro-root>'
+Copy-Item -LiteralPath '<legacy-arthook-root>\__tests__\integration\ColorTransferShaderContract.test.ts' `
   -Destination 'Hook\__tests__\integration\ColorTransferShaderContract.test.ts'
 ```
 
@@ -609,7 +609,7 @@ Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\int
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run __tests__\integration\ColorTransferShaderContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism
 ```
 
@@ -622,10 +622,10 @@ Expected:
 Use the clean reference files for exact implementation shape:
 
 ```text
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\app.tsx
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\components\CanvasUnits.tsx
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\components\UnitView.tsx
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\components\ShaderPreview.tsx
+<legacy-arthook-root>\src\app.tsx
+<legacy-arthook-root>\src\components\CanvasUnits.tsx
+<legacy-arthook-root>\src\components\UnitView.tsx
+<legacy-arthook-root>\src\components\ShaderPreview.tsx
 ```
 
 Required strings/behaviors after implementation:
@@ -659,7 +659,7 @@ src/components/ShaderPreview.tsx:
 Use clean reference:
 
 ```text
-Z:\project\project\ArtNexus-GitHub\ArtHook\src-tauri\src\mock_artloom.rs
+<legacy-arthook-root>\src-tauri\src\mock_artloom.rs
 ```
 
 Required strings/behaviors after implementation:
@@ -680,7 +680,7 @@ prefetch_shader_blocking
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run __tests__\integration\ColorTransferShaderContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism
 npm run typecheck
 cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
@@ -710,12 +710,12 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
-Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\integration\GlobalAddArtNodeContract.test.ts' `
+Set-Location '<neuro-root>'
+Copy-Item -LiteralPath '<legacy-arthook-root>\__tests__\integration\GlobalAddArtNodeContract.test.ts' `
   -Destination 'Hook\__tests__\integration\GlobalAddArtNodeContract.test.ts'
-Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\integration\GlobalAddNodeMenuInteractionContract.test.ts' `
+Copy-Item -LiteralPath '<legacy-arthook-root>\__tests__\integration\GlobalAddNodeMenuInteractionContract.test.ts' `
   -Destination 'Hook\__tests__\integration\GlobalAddNodeMenuInteractionContract.test.ts'
-Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\unit\shortcuts.test.ts' `
+Copy-Item -LiteralPath '<legacy-arthook-root>\__tests__\unit\shortcuts.test.ts' `
   -Destination 'Hook\__tests__\unit\shortcuts.test.ts'
 ```
 
@@ -724,7 +724,7 @@ Copy-Item -LiteralPath 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\uni
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\GlobalAddArtNodeContract.test.ts `
   __tests__\integration\GlobalAddNodeMenuInteractionContract.test.ts `
@@ -741,10 +741,10 @@ Expected:
 Use clean reference files:
 
 ```text
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\store\uiStore.ts
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\services\shortcuts.ts
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\hooks\useShortcuts.ts
-Z:\project\project\ArtNexus-GitHub\ArtHook\src\app.tsx
+<legacy-arthook-root>\src\store\uiStore.ts
+<legacy-arthook-root>\src\services\shortcuts.ts
+<legacy-arthook-root>\src\hooks\useShortcuts.ts
+<legacy-arthook-root>\src\app.tsx
 ```
 
 Required strings/behaviors after implementation:
@@ -784,7 +784,7 @@ src/app.tsx:
 Use clean reference:
 
 ```text
-Z:\project\project\ArtNexus-GitHub\ArtHook\src-tauri\src\lib.rs
+<legacy-arthook-root>\src-tauri\src\lib.rs
 ```
 
 Required strings/behaviors after implementation:
@@ -817,7 +817,7 @@ voice-session-event
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\GlobalAddArtNodeContract.test.ts `
   __tests__\integration\GlobalAddNodeMenuInteractionContract.test.ts `
@@ -864,7 +864,7 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
+Set-Location '<neuro-root>'
 $tests = @(
   'ArtParamLinkTargetContract.test.ts',
   'DesktopLiveSyncContract.test.ts',
@@ -874,7 +874,7 @@ $tests = @(
   'opportunisticArtLoomConnection.test.ts'
 )
 foreach ($test in $tests) {
-  Copy-Item -LiteralPath "Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__\integration\$test" `
+  Copy-Item -LiteralPath "<legacy-arthook-root>\__tests__\integration\$test" `
     -Destination "Hook\__tests__\integration\$test"
 }
 ```
@@ -884,7 +884,7 @@ foreach ($test in $tests) {
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ArtParamLinkTargetContract.test.ts `
   __tests__\integration\DesktopLiveSyncContract.test.ts `
@@ -1041,7 +1041,7 @@ src-tauri/src/mock_artloom.rs:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ArtParamLinkTargetContract.test.ts `
   __tests__\integration\DesktopLiveSyncContract.test.ts `
@@ -1077,7 +1077,7 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
+Set-Location '<neuro-root>'
 rg -n "VoiceConfig|default_voice_config|Ctrl\\+Alt\\+Space|AudioBackendMode|ProviderKind|OutputMode|ClipboardBackendMode|voice_mode|toml|config" `
   Hook\src-tauri\src\voice Hook\src-tauri\src\lib.rs Hook\src\services\api.ts Hook\src\app.tsx Talk
 ```
@@ -1119,7 +1119,7 @@ Then implement the smallest Rust-side load path that keeps existing defaults as 
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 rg -n "ArtHook|ArtNexus|ArtLoom|arthook|artloom|HookLess|Neuro" src src-tauri package*.json *.ps1 *.bat README.md PROJECT_OVERVIEW.md TECHNICAL_ARCHITECTURE.md
 ```
 
@@ -1137,7 +1137,7 @@ test fixture/log string: keep unless it misleads current behavior
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run __tests__\integration\VoiceHotkeyContract.test.ts --pool threads --maxWorkers 1 --no-file-parallelism
 npm run typecheck
 cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
@@ -1161,9 +1161,9 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
-$src = rg --files 'Z:\project\project\ArtNexus-GitHub\ArtHook\__tests__' |
-  ForEach-Object { $_ -replace '^Z:\\project\\project\\ArtNexus-GitHub\\ArtHook\\__tests__\\','' } |
+Set-Location '<neuro-root>'
+$src = rg --files '<legacy-arthook-root>\__tests__' |
+  ForEach-Object { $_ -replace '^<legacy-arthook-root>\\__tests__\\','' } |
   Sort-Object
 $dst = rg --files 'Hook\__tests__' |
   ForEach-Object { $_ -replace '^Hook\\__tests__\\','' } |
@@ -1185,7 +1185,7 @@ Allowed only if documented as intentionally out-of-scope for current `Neuro/Hook
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 npm run typecheck
 npm test
 ```
@@ -1200,7 +1200,7 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
 cargo test --manifest-path src-tauri\Cargo.toml
 ```
@@ -1215,7 +1215,7 @@ Expected:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook'
+Set-Location '<hook-repo-root>'
 node_modules\.bin\vitest.cmd run `
   __tests__\integration\ProcessNoWindowContract.test.ts `
   __tests__\integration\McpBoundaryContract.test.ts `
@@ -1251,9 +1251,9 @@ Create `Hook/docs/migration/hook-migration-completion-audit.md` with:
 
 ## Sources
 
-- Clean ArtHook: `Z:\project\project\ArtNexus-GitHub\ArtHook`
-- Talk (formerly HookLess): `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Talk`
-- Target: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook`
+- Clean ArtHook: `<legacy-arthook-root>`
+- Talk (formerly HookLess): `<legacy-talk-root>`
+- Target: `<hook-repo-root>`
 
 ## Migrated contracts
 
@@ -1293,7 +1293,7 @@ Paste exact command output summaries for:
 Run:
 
 ```powershell
-Set-Location 'C:\Users\Public\nas_home\AI\GameEditor\Neuro'
+Set-Location '<neuro-root>'
 git status --short
 ```
 

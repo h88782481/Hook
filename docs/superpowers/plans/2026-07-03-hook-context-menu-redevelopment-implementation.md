@@ -135,7 +135,7 @@ describe("stickerLibraryModel", () => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/unit/stickerSnapshot.test.ts __tests__/unit/stickerLibraryModel.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/unit/stickerSnapshot.test.ts __tests__/unit/stickerLibraryModel.test.ts"
 ```
 
 Expected:
@@ -343,13 +343,13 @@ pub struct SessionData {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/unit/stickerSnapshot.test.ts __tests__/unit/stickerLibraryModel.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/unit/stickerSnapshot.test.ts __tests__/unit/stickerLibraryModel.test.ts"
 ```
 
 Run:
 
 ```powershell
-cargo test --manifest-path C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\src-tauri\Cargo.toml --lib save_session -- --nocapture
+cargo test --manifest-path <hook-repo-root>\src-tauri\Cargo.toml --lib save_session -- --nocapture
 ```
 
 Expected:
@@ -429,7 +429,7 @@ describe("primary context-menu contract", () => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/unit/stickerContextMenuController.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/unit/stickerContextMenuController.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts"
 ```
 
 Expected:
@@ -523,7 +523,7 @@ onContextMenu={(event) => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/unit/stickerContextMenuController.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/unit/stickerContextMenuController.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts"
 ```
 
 Expected:
@@ -570,7 +570,7 @@ describe("secondary context-menu contract", () => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/integration/StickerContextMenuSecondaryContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/integration/StickerContextMenuSecondaryContract.test.ts"
 ```
 
 - [ ] **Step 3: Implement the reusable submenu list panel and action wiring**
@@ -606,7 +606,7 @@ export const StickerSnapshotListPanel = (props: {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/integration/StickerContextMenuSecondaryContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/integration/StickerContextMenuSecondaryContract.test.ts"
 ```
 
 Expected:
@@ -652,7 +652,7 @@ describe("context-menu hit-test contract", () => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/integration/StickerContextMenuHitTestContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/integration/StickerContextMenuHitTestContract.test.ts"
 ```
 
 - [ ] **Step 3: Register coarse menu rects and swallow pointer events**
@@ -695,7 +695,7 @@ onCleanup(() => {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/integration/StickerContextMenuHitTestContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/integration/StickerContextMenuHitTestContract.test.ts"
 ```
 
 Expected:
@@ -750,13 +750,13 @@ if (isSelecting() || longCaptureSession()?.active) {
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm test -- __tests__/integration/CaptureShortcutDedupContract.test.ts __tests__/integration/LongCaptureSessionContract.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts __tests__/integration/StickerContextMenuSecondaryContract.test.ts __tests__/integration/StickerContextMenuHitTestContract.test.ts"
+cmd /d /s /c "pushd <hook-repo-root> && npm test -- __tests__/integration/CaptureShortcutDedupContract.test.ts __tests__/integration/LongCaptureSessionContract.test.ts __tests__/integration/StickerContextMenuPrimaryContract.test.ts __tests__/integration/StickerContextMenuSecondaryContract.test.ts __tests__/integration/StickerContextMenuHitTestContract.test.ts"
 ```
 
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm run typecheck"
+cmd /d /s /c "pushd <hook-repo-root> && npm run typecheck"
 ```
 
 Expected:
@@ -769,7 +769,7 @@ Expected:
 Run:
 
 ```powershell
-cmd /d /s /c "pushd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook && npm run build"
+cmd /d /s /c "pushd <hook-repo-root> && npm run build"
 ```
 
 Expected:

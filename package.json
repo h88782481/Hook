@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Windows-first Tauri desktop capture, sticker editing, and visual workflow workspace.",
   "type": "module",
-  "author": "Hook contributors",
+  "author": "yamiyu",
   "homepage": "https://github.com/aiaimimi0920/Hook#readme",
   "repository": {
     "type": "git",

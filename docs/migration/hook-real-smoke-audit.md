@@ -8,7 +8,7 @@ This audit records the final real-app smoke evidence for the migrated `Neuro/Hoo
 after the contract migration audit in:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\docs\migration\hook-migration-completion-audit.md
+<hook-repo-root>\docs\migration\hook-migration-completion-audit.md
 ```
 
 The goal of this smoke was to verify that the migrated Hook can run with a real
@@ -19,13 +19,13 @@ ArtLoom/backend roundtrip, not only unit and contract tests.
 Artifact directory:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616
 ```
 
 Primary result file:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\core-roundtrip-wait-nodes-result.json
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\core-roundtrip-wait-nodes-result.json
 ```
 
 ## Result summary
@@ -70,13 +70,13 @@ Interpretation:
 Final Hook preview screenshot:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\screenshots\core-arthook-preview-final.png
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\screenshots\core-arthook-preview-final.png
 ```
 
 Final ArtLoom editor screenshot:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\screenshots\core-artloom-editor-final.png
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\screenshots\core-artloom-editor-final.png
 ```
 
 The final Hook screenshot shows imported graph units and the safe voice panel
@@ -100,8 +100,8 @@ Windows known-folder location rather than the child process `APPDATA` override.
 Before/after restoration metadata:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\backup-meta.json
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\restore-meta.json
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\backup-meta.json
+<hook-runtime-root>\smoke-artifacts\roundtrip-real-appdata-force-click-cjs-20260606-194616\restore-meta.json
 ```
 
 Restoration checks passed:
@@ -141,7 +141,7 @@ A later re-check also found no TCP entries for those ports and no remaining
 Additional stability validation artifacts were written under:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603
+<hook-runtime-root>\stability-20260607-020603
 ```
 
 ### Fresh automated verification
@@ -149,7 +149,7 @@ C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-02
 Result file:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\automated-results.json
+<hook-runtime-root>\stability-20260607-020603\automated-results.json
 ```
 
 Fresh commands and exit codes:
@@ -185,7 +185,7 @@ Doc-tests arthook_lib: 0 passed
 Result file:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\standalone-browser-smoke-result.json
+<hook-runtime-root>\stability-20260607-020603\standalone-browser-smoke-result.json
 ```
 
 The standalone browser smoke passed these assertions against
@@ -211,9 +211,9 @@ cycle 3: VOICE panel visible, Ctrl+Alt+Space visible
 Screenshots:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\screenshots\standalone-initial.png
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\screenshots\standalone-global-menu-open.png
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\screenshots\standalone-after-reloads.png
+<hook-runtime-root>\stability-20260607-020603\screenshots\standalone-initial.png
+<hook-runtime-root>\stability-20260607-020603\screenshots\standalone-global-menu-open.png
+<hook-runtime-root>\stability-20260607-020603\screenshots\standalone-after-reloads.png
 ```
 
 ### Repeated ArtLoom to Hook roundtrip smoke
@@ -221,7 +221,7 @@ C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-02
 Artifact directory:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817
 ```
 
 The existing core roundtrip harness was run three times against the same
@@ -236,9 +236,9 @@ iteration 3: Hook units 0 -> 4 -> 4, Hook console clean, ArtLoom console clean
 Result files:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-1.json
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-2.json
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-3.json
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-1.json
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-2.json
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817\roundtrip-iter-3.json
 ```
 
 Each result reported:
@@ -258,7 +258,7 @@ loomConsole.warnings: []
 Screenshots for each iteration are under:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817\screenshots
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817\screenshots
 ```
 
 ### Cleanup result and harness caveat
@@ -287,7 +287,7 @@ for `latest.yaml` but forgot to copy its backup bytes before running. During
 the repeat smoke, old ArtLoom/Hook live sync changed:
 
 ```text
-C:\Users\vmjcv\AppData\Roaming\ArtNexus\workflows\latest.yaml
+<legacy-artnexus-workflows-root>\latest.yaml
 ```
 
 Pre-run metadata:
@@ -308,7 +308,7 @@ The exact pre-run `latest.yaml` bytes were not available for restoration. The
 post-run file was preserved here for traceability:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\roundtrip-repeat-20260607-021817\latest-yaml-after-unrestorable.yaml
+<hook-runtime-root>\stability-20260607-020603\roundtrip-repeat-20260607-021817\latest-yaml-after-unrestorable.yaml
 ```
 
 This is a smoke-harness cleanup defect, not a Hook roundtrip failure. Future
@@ -320,13 +320,13 @@ ArtLoom/Hook.
 After the repeat-harness cleanup defect above, a guarded harness was added under:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-smoke.ps1
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-smoke.ps1
 ```
 
 The harness backs up and restores the entire real workflow directory:
 
 ```text
-C:\Users\vmjcv\AppData\Roaming\ArtNexus\workflows
+<legacy-artnexus-workflows-root>
 ```
 
 The directory-level restore helper was self-tested against a temporary
@@ -334,19 +334,19 @@ directory, including changed, deleted, and added files. The passing self-test
 log is:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-selftest-4.log
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-selftest-4.log
 ```
 
 The final guarded two-iteration ArtLoom-to-Hook run is:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-20260607-031720
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-20260607-031720
 ```
 
 State file:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-20260607-031720\guarded-roundtrip-state.json
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-20260607-031720\guarded-roundtrip-state.json
 ```
 
 Guarded run summary:
@@ -368,8 +368,8 @@ iteration 2: Hook units 0 -> 4 -> 4, Hook console clean, ArtLoom console clean
 Result files:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-20260607-031720\roundtrip-iter-1.json
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\guarded-roundtrip-20260607-031720\roundtrip-iter-2.json
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-20260607-031720\roundtrip-iter-1.json
+<hook-runtime-root>\stability-20260607-020603\guarded-roundtrip-20260607-031720\roundtrip-iter-2.json
 ```
 
 The real workflow directory matched byte-for-byte after restore. The before and
@@ -414,17 +414,17 @@ reported cleanup failure because it missed the Tauri `beforeDevCommand`
 That failing harness artifact was preserved here:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\tauri-desktop-20260607-032034
+<hook-runtime-root>\stability-20260607-020603\tauri-desktop-20260607-032034
 ```
 
 Important evidence from that first probe:
 
 ```text
 arthook.exe observed:
-  C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\src-tauri\target\debug\arthook.exe
+  <hook-tauri-target-root>\debug\arthook.exe
 
 runtime log:
-  C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\tauri-desktop-20260607-032034\runtime-log\arthook-runtime.log
+  <hook-runtime-root>\stability-20260607-020603\tauri-desktop-20260607-032034\runtime-log\arthook-runtime.log
 
 runtime log hits:
   register_voice_hotkey_success: true
@@ -435,7 +435,7 @@ runtime log hits:
 The cleanup gap was then fixed in the guarded Tauri harness:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\tauri-desktop-guarded-smoke.ps1
+<hook-runtime-root>\stability-20260607-020603\tauri-desktop-guarded-smoke.ps1
 ```
 
 The fixed harness records a baseline port snapshot, waits for explicit desktop
@@ -445,8 +445,8 @@ listener, and verifies final cleanup.
 Two independent guarded Tauri desktop startup runs passed:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\tauri-desktop-guarded-20260607-044613\tauri-desktop-guarded-state.json
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-20260607-020603\tauri-desktop-guarded-20260607-044810\tauri-desktop-guarded-state.json
+<hook-runtime-root>\stability-20260607-020603\tauri-desktop-guarded-20260607-044613\tauri-desktop-guarded-state.json
+<hook-runtime-root>\stability-20260607-020603\tauri-desktop-guarded-20260607-044810\tauri-desktop-guarded-state.json
 ```
 
 Both guarded Tauri runs met all startup conditions:
@@ -497,13 +497,13 @@ current Hook working tree.
 Artifact directory:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-final-20260607-105534
+<hook-runtime-root>\stability-final-20260607-105534
 ```
 
 Summary file:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.runtime\stability-final-20260607-105534\final-automated-results.json
+<hook-runtime-root>\stability-final-20260607-105534\final-automated-results.json
 ```
 
 Fresh command results:
@@ -546,7 +546,7 @@ The Hook-to-Tea integration was also validated through the dedicated real
 daemon harness:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\scripts\smoke-hook-tea-real.ps1
+<neuro-root>\scripts\smoke-hook-tea-real.ps1
 ```
 
 This smoke builds `tea-daemon`, starts it on an isolated loopback port with a
@@ -570,7 +570,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-hook-tea-rea
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104437-c22a9679\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104437-c22a9679\summary.json
 ```
 
 Evidence:
@@ -578,7 +578,7 @@ Evidence:
 ```text
 status: passed
 run_id: 20260607-104437-c22a9679
-artifact_root: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104437-c22a9679
+artifact_root: <neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104437-c22a9679
 base_url: http://127.0.0.1:53184
 ticket_id: c810fbd3-07f0-4003-a0d5-114eefe3e4fc
 labels: source:hook, policy:plan-only, context:untrusted
@@ -602,9 +602,9 @@ The retained SQLite store and WAL sidecars were present after cleanup because
 `-KeepArtifacts` was set:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite-shm
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite-wal
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite-shm
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104437-c22a9679\tea-smoke.sqlite-wal
 ```
 
 The harness now uses a collision-resistant `run_id` in the artifact directory:
@@ -625,7 +625,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-hook-tea-rea
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104603-bb6330b2\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104603-bb6330b2\summary.json
 ```
 
 Evidence:
@@ -665,14 +665,14 @@ verify the harness still does not depend on the caller's current working
 directory after the `run_id` artifact naming change:
 
 ```powershell
-cd C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook
+cd <hook-repo-root>
 powershell -NoProfile -ExecutionPolicy Bypass -File ..\scripts\smoke-hook-tea-real.ps1 -TimeoutSec 60
 ```
 
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-105425-ef99c177\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-real-20260607-105425-ef99c177\summary.json
 ```
 
 Evidence:
@@ -695,7 +695,7 @@ occupied before launch. The smoke exited non-zero, wrote a failure summary, and
 did not kill the external listener:
 
 ```text
-artifact: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-real-20260607-104727-63ed23c5\summary.json
+artifact: <neuro-temp-tea-smoke-root>\hook-tea-real-20260607-104727-63ed23c5\summary.json
 status: failed
 run_id: 20260607-104727-63ed23c5
 base_url: http://127.0.0.1:54016
@@ -747,7 +747,7 @@ UI/desktop interaction validation scopes.
 The Hook panel entry was also validated through the dedicated UI smoke harness:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\scripts\smoke-hook-tea-ui-real.ps1
+<neuro-root>\scripts\smoke-hook-tea-ui-real.ps1
 ```
 
 This smoke builds `tea-daemon`, builds Hook's static frontend, starts an
@@ -771,7 +771,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-hook-tea-ui-
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-ui-real-20260607-120321-3e10c059\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-ui-real-20260607-120321-3e10c059\summary.json
 ```
 
 Evidence:
@@ -797,7 +797,7 @@ store_total_size_before_cleanup_bytes: 168736
 store_file_count_after_cleanup: 3
 store_preserved: true
 stdout_tail: tea-daemon listening on http://127.0.0.1:60090
-hook_stdout_tail: [serve-static] Serving C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.output\public on http://127.0.0.1:60095
+hook_stdout_tail: [serve-static] Serving <hook-output-root>\public on http://127.0.0.1:60095
 ```
 
 The retained SQLite store and WAL sidecars were present after cleanup because
@@ -815,7 +815,7 @@ port deliberately occupied before launch. The smoke exited non-zero, wrote a
 failure summary, stopped the Tea daemon, and did not kill the external listener:
 
 ```text
-artifact: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-ui-real-20260607-120308-a4270cb7\summary.json
+artifact: <neuro-temp-tea-smoke-root>\hook-tea-ui-real-20260607-120308-a4270cb7\summary.json
 smoke_exit_code: 1
 status: failed
 error: Hook static preview exited early with code
@@ -844,13 +844,13 @@ The native desktop Hook-to-Tea path is now covered by a dedicated real smoke
 harness:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\scripts\smoke-hook-tea-tauri-ui-real.ps1
+<neuro-root>\scripts\smoke-hook-tea-tauri-ui-real.ps1
 ```
 
 The source contract is:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\__tests__\integration\HookTeaTauriUiSmokeHarnessContract.test.ts
+<hook-repo-root>\__tests__\integration\HookTeaTauriUiSmokeHarnessContract.test.ts
 ```
 
 This smoke builds `tea-daemon`, builds Hook's static frontend, starts an
@@ -881,7 +881,7 @@ browser-preview bridge such as `page.addInitScript` or
 The harness isolates all runtime state under:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-<run_id>
+<neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-<run_id>
 ```
 
 Important isolation and cleanup controls:
@@ -913,7 +913,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-hook-tea-tau
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-210103-267968e3\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-210103-267968e3\summary.json
 ```
 
 Evidence:
@@ -953,7 +953,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-hook-tea-tau
 Artifact:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-213202-17f363fd\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-213202-17f363fd\summary.json
 ```
 
 Evidence:
@@ -989,7 +989,7 @@ An earlier native default-cleanup run also passed before the WebView2
 user-data hardening:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-204028-57b522da\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-204028-57b522da\summary.json
 
 status: passed
 ticket_id: 9e3ce77b-e96b-4d76-b851-42c44c4c6fff
@@ -1008,7 +1008,7 @@ The native CDP readiness path had one preserved failure before the
 `WEBVIEW2_USER_DATA_FOLDER` hardening:
 
 ```text
-C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-204316-aa277a86\summary.json
+<neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-204316-aa277a86\summary.json
 
 status: failed
 error: WebView2 CDP endpoint did not become ready on port 59620 within 120 seconds
@@ -1045,7 +1045,7 @@ until the test script explicitly stopped it:
 
 ```text
 HookPort occupied:
-  artifact: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-210940-dc885554\summary.json
+  artifact: <neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-210940-dc885554\summary.json
   status: blocked_preexisting_listener
   preexisting_listener_count: 1
   cleanup_phase: not_started
@@ -1053,7 +1053,7 @@ HookPort occupied:
   tauri_command_tree_stopped: false
 
 TeaPort occupied:
-  artifact: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-211047-3afe72d3\summary.json
+  artifact: <neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-211047-3afe72d3\summary.json
   status: blocked_preexisting_listener
   preexisting_listener_count: 1
   cleanup_phase: not_started
@@ -1061,7 +1061,7 @@ TeaPort occupied:
   tauri_command_tree_stopped: false
 
 DebugPort occupied:
-  artifact: C:\Users\Public\nas_home\AI\GameEditor\Neuro\.tmp\tea-smoke\hook-tea-tauri-ui-real-20260607-211051-d31f634b\summary.json
+  artifact: <neuro-temp-tea-smoke-root>\hook-tea-tauri-ui-real-20260607-211051-d31f634b\summary.json
   status: blocked_preexisting_listener
   preexisting_listener_count: 1
   cleanup_phase: not_started

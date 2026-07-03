@@ -324,14 +324,19 @@ fn default_runtime_log_dir() -> PathBuf {
         .join("logs")
 }
 
-const LEGACY_TAURI_IDENTIFIER: &str = "com.vmjcv.hook";
+const LEGACY_TAURI_IDENTIFIERS: &[&str] = &["io.github.aiaimimi0920.hook", "com.vmjcv.hook"];
 
-fn legacy_app_data_dir_from_current(current_dir: &Path) -> Option<PathBuf> {
-    let current_name = current_dir.file_name()?.to_str()?;
-    if current_name.eq_ignore_ascii_case(LEGACY_TAURI_IDENTIFIER) {
-        return None;
-    }
-    Some(current_dir.with_file_name(LEGACY_TAURI_IDENTIFIER))
+fn legacy_app_data_dirs_from_current(current_dir: &Path) -> Vec<PathBuf> {
+    let current_name = current_dir.file_name().and_then(|name| name.to_str());
+    LEGACY_TAURI_IDENTIFIERS
+        .iter()
+        .filter(|identifier| {
+            current_name
+                .map(|name| !name.eq_ignore_ascii_case(identifier))
+                .unwrap_or(true)
+        })
+        .map(|identifier| current_dir.with_file_name(identifier))
+        .collect()
 }
 
 fn app_data_dir_contains_user_state(dir: &Path) -> bool {
@@ -347,7 +352,7 @@ fn app_data_dir_contains_user_state(dir: &Path) -> bool {
 }
 
 fn resolve_effective_app_data_dir(current_dir: &Path) -> PathBuf {
-    if let Some(legacy_dir) = legacy_app_data_dir_from_current(current_dir) {
+    for legacy_dir in legacy_app_data_dirs_from_current(current_dir) {
         if legacy_dir.exists()
             && (!current_dir.exists()
                 || (!app_data_dir_contains_user_state(current_dir)
@@ -4739,8 +4744,8 @@ mod app_cli_tests {
             std::process::id(),
             file_timestamp_component()
         ));
-        let current_dir = root.join("io.github.aiaimimi0920.hook");
-        let legacy_dir = root.join(LEGACY_TAURI_IDENTIFIER);
+        let current_dir = root.join("com.yamiyu.hook");
+        let legacy_dir = root.join("io.github.aiaimimi0920.hook");
         std::fs::create_dir_all(&current_dir).expect("create current dir");
         std::fs::create_dir_all(&legacy_dir).expect("create legacy dir");
         std::fs::write(legacy_dir.join("session.json"), "{}").expect("write legacy session");
@@ -4758,8 +4763,8 @@ mod app_cli_tests {
             std::process::id(),
             file_timestamp_component()
         ));
-        let current_dir = root.join("io.github.aiaimimi0920.hook");
-        let legacy_dir = root.join(LEGACY_TAURI_IDENTIFIER);
+        let current_dir = root.join("com.yamiyu.hook");
+        let legacy_dir = root.join("io.github.aiaimimi0920.hook");
         std::fs::create_dir_all(&current_dir).expect("create current dir");
         std::fs::create_dir_all(&legacy_dir).expect("create legacy dir");
         std::fs::write(current_dir.join("history.json"), "{}").expect("write current history");
@@ -4769,6 +4774,28 @@ mod app_cli_tests {
 
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(resolved, current_dir);
+    }
+
+    #[test]
+    fn effective_app_data_dir_uses_older_legacy_dir_if_newer_legacy_dir_has_no_user_state() {
+        let root = std::env::temp_dir().join(format!(
+            "hook-app-data-older-legacy-test-{}-{}",
+            std::process::id(),
+            file_timestamp_component()
+        ));
+        let current_dir = root.join("com.yamiyu.hook");
+        let newer_legacy_dir = root.join("io.github.aiaimimi0920.hook");
+        let older_legacy_dir = root.join("com.vmjcv.hook");
+        std::fs::create_dir_all(&current_dir).expect("create current dir");
+        std::fs::create_dir_all(&newer_legacy_dir).expect("create newer legacy dir");
+        std::fs::create_dir_all(&older_legacy_dir).expect("create older legacy dir");
+        std::fs::write(older_legacy_dir.join("tool-settings.json"), "{}")
+            .expect("write older legacy state");
+
+        let resolved = resolve_effective_app_data_dir(&current_dir);
+
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(resolved, older_legacy_dir);
     }
 
     #[test]

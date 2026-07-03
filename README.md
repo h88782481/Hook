@@ -2,6 +2,8 @@
 
 > Open-source Windows desktop capture, sticker editing, and node-based visual workflow workspace built with **Tauri v2 + SolidJS**.
 
+Maintained by **yamiyu**.
+
 Hook 是一个面向 Windows 的开源桌面工具，聚焦三类能力：
 
 - **截图与长截图**
@@ -21,10 +23,11 @@ Hook 是一个面向 Windows 的开源桌面工具，聚焦三类能力：
 
 ## Open-source identity and local compatibility
 
-- The public Tauri bundle identifier now uses the GitHub-backed namespace `io.github.aiaimimi0920.hook`.
+- The public Tauri bundle identifier now uses the yamiyu company namespace `com.yamiyu.hook`.
 - Hook keeps the visible product/runtime naming as `Hook` / `hook.exe`.
 - Local clipboard cache remains under `LOCALAPPDATA/Hook/...`.
-- Session/history/tool-settings persistence includes a legacy fallback so existing installs that previously wrote under `com.vmjcv.hook` do not lose their local data after the public-identity cleanup.
+- Session/history/tool-settings persistence includes legacy fallbacks so existing installs that previously wrote under `io.github.aiaimimi0920.hook` or `com.vmjcv.hook` do not lose their local data after the public-identity cleanup.
+- The public repository URL remains the live GitHub location even though the product/developer brand is now unified as `yamiyu`.
 
 ## Core Features
 

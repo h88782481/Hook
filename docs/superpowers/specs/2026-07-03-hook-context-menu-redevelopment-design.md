@@ -15,7 +15,7 @@ The user explicitly required the following constraints:
 - Treat all prior post-v6 context-menu implementation code as **broken and unusable**.
 - Do **not** reference or migrate that old implementation into the new work.
 - Keep development focused inside the Hook subproject:
-  - `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook`
+  - `<hook-repo-root>`
 - Split implementation into multiple stages with intermediate testing after each stage.
 - Protect the current working screenshot entry paths, especially:
   - `Ctrl+1`

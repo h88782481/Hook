@@ -18,7 +18,7 @@
 - Do **not** remove the Rust `image` dependency from `Hook/src-tauri/Cargo.toml`.
 - Do **not** narrow current drag-in image support for `png`, `jpg`, `jpeg`, `webp`, and `bmp`.
 - Do **not** remove legacy fallback behavior for long capture if the backend session flow fails to start.
-- Do **not** fork release output away from `C:\Users\Public\nas_home\AI\GameEditor\Neuro\release\Hook\<VersionId>`.
+- Do **not** fork release output away from `<hook-release-root>\<VersionId>`.
 - Optimize without trimming screenshot, clipboard, sticker, or session-sync features.
 
 ## Current code-reality notes
@@ -361,8 +361,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Hook\package-hook-releas
 ```
 
 Expected:
-- `build-release-exes.ps1` emits a dry-run JSON plan for `C:\Users\Public\nas_home\AI\GameEditor\Neuro\release\Hook\hook-optimization-dryrun`.
-- `C:\Users\Public\nas_home\AI\GameEditor\Neuro\release\Hook\hook-optimization-final` is generated in force mode.
+- `build-release-exes.ps1` emits a dry-run JSON plan for `<hook-release-root>\hook-optimization-dryrun`.
+- `<hook-release-root>\hook-optimization-final` is generated in force mode.
 - Final package contains `hook.exe`, `manifest.json`, `checksums.sha256`, and package zip output.
 
 - [ ] **Step 6: Commit only if this task changed code or packaging tests**
@@ -432,6 +432,6 @@ There is no code to write in this step; it is an evidence gate.
 - [ ] The plan reflects the current Hook codebase, not an earlier imagined file-touch list.
 - [ ] The plan preserves the `image` module and current drag-in behavior.
 - [ ] The plan explicitly keeps long-capture fallback behavior.
-- [ ] The plan keeps release output rooted under `C:\Users\Public\nas_home\AI\GameEditor\Neuro\release\Hook`.
+- [ ] The plan keeps release output rooted under `<hook-release-root>`.
 - [ ] Each task contains exact files and executable commands.
 - [ ] No task optimizes by silently removing a user-visible capability.
