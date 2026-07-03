@@ -2937,11 +2937,6 @@ fn enter_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_capture_mode");
     show_overlay_host_impl(window, true);
 
-    if let Err(e) = window.set_focus() {
-        println!("Failed to set focus: {}", e);
-        append_runtime_log_line(&format!("enter_capture_mode focus_failed :: {}", e));
-    }
-
     println!("Overlay setup done. Emitting trigger-capture...");
     if let Err(e) = window.emit("trigger-capture", ()) {
         println!("Failed to emit trigger-capture: {}", e);
@@ -2954,11 +2949,6 @@ fn enter_capture_mode(window: &tauri::WebviewWindow) {
 fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_long_capture_mode");
     show_overlay_host_impl(window, true);
-
-    if let Err(e) = window.set_focus() {
-        println!("Failed to set focus: {}", e);
-        append_runtime_log_line(&format!("enter_long_capture_mode focus_failed :: {}", e));
-    }
 
     if let Err(e) = window.emit("trigger-long-capture", ()) {
         println!("Failed to emit trigger-long-capture: {}", e);
