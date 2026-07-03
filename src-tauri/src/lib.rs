@@ -325,6 +325,7 @@ fn default_runtime_log_dir() -> PathBuf {
 }
 
 const LEGACY_TAURI_IDENTIFIERS: &[&str] = &["io.github.aiaimimi0920.hook", "com.vmjcv.hook"];
+const APP_DATA_OVERRIDE_ENV: &str = "HOOK_APPDATA_DIR";
 
 fn legacy_app_data_dirs_from_current(current_dir: &Path) -> Vec<PathBuf> {
     let current_name = current_dir.file_name().and_then(|name| name.to_str());
@@ -364,9 +365,27 @@ fn resolve_effective_app_data_dir(current_dir: &Path) -> PathBuf {
     current_dir.to_path_buf()
 }
 
+fn configured_app_data_dir_override() -> Option<PathBuf> {
+    std::env::var_os(APP_DATA_OVERRIDE_ENV)
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+fn resolve_effective_app_data_dir_from(current_dir: &Path, override_dir: Option<&Path>) -> PathBuf {
+    if let Some(override_dir) = override_dir {
+        return resolve_effective_app_data_dir(override_dir);
+    }
+
+    resolve_effective_app_data_dir(current_dir)
+}
+
 fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let current_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    Ok(resolve_effective_app_data_dir(&current_dir))
+    let override_dir = configured_app_data_dir_override();
+    Ok(resolve_effective_app_data_dir_from(
+        &current_dir,
+        override_dir.as_deref(),
+    ))
 }
 
 const RUNTIME_LOG_QUEUE_CAPACITY: usize = 512;
@@ -4774,6 +4793,26 @@ mod app_cli_tests {
 
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(resolved, current_dir);
+    }
+
+    #[test]
+    fn effective_app_data_dir_honors_explicit_override_before_current_state() {
+        let root = std::env::temp_dir().join(format!(
+            "hook-app-data-override-test-{}-{}",
+            std::process::id(),
+            file_timestamp_component()
+        ));
+        let current_dir = root.join("com.yamiyu.hook");
+        let override_dir = root.join("manual-override");
+        std::fs::create_dir_all(&current_dir).expect("create current dir");
+        std::fs::create_dir_all(&override_dir).expect("create override dir");
+        std::fs::write(current_dir.join("history.json"), "{}").expect("write current history");
+        std::fs::write(override_dir.join("session.json"), "{}").expect("write override session");
+
+        let resolved = resolve_effective_app_data_dir_from(&current_dir, Some(&override_dir));
+
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(resolved, override_dir);
     }
 
     #[test]

@@ -59,6 +59,7 @@ import {
 } from "./services/workflowPayload";
 import { buildUnitPortsFromCapability } from "./services/artNodeFactory";
 import { deriveUnitExecutionConfig } from "./services/nodeExecutionConfig";
+import { refreshArtLoomCapabilitiesOnStartup } from "./services/artLoomStartup";
 
 // Hooks
 import { useDraggable } from "./hooks/useDraggable";
@@ -1061,7 +1062,10 @@ export default function App() {
       }
 
       try {
-          await refreshCapabilities();
+          await refreshArtLoomCapabilitiesOnStartup(
+              bootProfile?.artLoomEnabled ?? false,
+              refreshCapabilities,
+          );
       } catch (e) {
           console.warn("ArtLoom bridge unavailable during startup; continuing in standalone mode.", e);
       }
