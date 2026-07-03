@@ -1,8 +1,24 @@
 {
   "name": "hook",
   "version": "0.1.0",
-  "description": "",
+  "description": "Windows-first Tauri desktop capture, sticker editing, and visual workflow workspace.",
   "type": "module",
+  "author": "Hook contributors",
+  "homepage": "https://github.com/aiaimimi0920/Hook#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aiaimimi0920/Hook.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aiaimimi0920/Hook/issues"
+  },
+  "keywords": [
+    "tauri",
+    "solidjs",
+    "windows",
+    "screenshot",
+    "workflow"
+  ],
   "scripts": {
     "dev": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call scripts\\run-vinxi.cmd dev --port 1420\"",
     "build": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call scripts\\build-static.cmd\"",

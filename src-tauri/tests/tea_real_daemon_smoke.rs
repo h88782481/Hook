@@ -10,6 +10,9 @@ async fn hook_client_creates_ticket_in_real_tea_daemon() -> Result<(), Box<dyn s
     let base_url = required_env("TEA_REAL_SMOKE_BASE_URL")?;
     let auth_token = required_env("TEA_REAL_SMOKE_AUTH_TOKEN")?;
     let result_path = std::env::var("TEA_REAL_SMOKE_RESULT_PATH").ok();
+    let cwd = std::env::current_dir()
+        .ok()
+        .map(|path| path.display().to_string());
 
     let client = TeaIntakeClient::new(TeaIntakeConfig {
         base_url: base_url.clone(),
@@ -26,7 +29,7 @@ async fn hook_client_creates_ticket_in_real_tea_daemon() -> Result<(), Box<dyn s
                 selection_text: Some("real daemon smoke".to_string()),
                 ocr_text: None,
                 screenshot_ref: Some("file://hook-real-smoke.png".to_string()),
-                cwd: Some("C:\\Users\\Public\\nas_home\\AI\\GameEditor\\Neuro".to_string()),
+                cwd,
                 app: Some("hook".to_string()),
             },
             attachments: vec![HookAttachment {
