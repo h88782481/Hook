@@ -107,6 +107,8 @@ Hook persists several categories of local state:
 
 Most user-writable data is stored under the local app-data area, with temporary clipboard artifacts allowed under app-local or temp cache paths declared in `tauri.conf.json`.
 
+The public Tauri bundle identifier is `io.github.aiaimimi0920.hook`, but Hook keeps compatibility with older local installs by falling back to the legacy `com.vmjcv.hook` app-data directory when the new identifier directory is empty and the legacy directory still contains user state.
+
 ## 6. Build and Release Flow
 
 ### 6.1 Frontend build

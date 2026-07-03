@@ -19,6 +19,13 @@ Hook 是一个面向 Windows 的开源桌面工具，聚焦三类能力：
 - **Build**: Vinxi / Vite
 - **Repository state**: active development, current root docs describe the live codebase
 
+## Open-source identity and local compatibility
+
+- The public Tauri bundle identifier now uses the GitHub-backed namespace `io.github.aiaimimi0920.hook`.
+- Hook keeps the visible product/runtime naming as `Hook` / `hook.exe`.
+- Local clipboard cache remains under `LOCALAPPDATA/Hook/...`.
+- Session/history/tool-settings persistence includes a legacy fallback so existing installs that previously wrote under `com.vmjcv.hook` do not lose their local data after the public-identity cleanup.
+
 ## Core Features
 
 - Region capture and long capture

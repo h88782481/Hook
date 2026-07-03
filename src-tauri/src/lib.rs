@@ -324,6 +324,46 @@ fn default_runtime_log_dir() -> PathBuf {
         .join("logs")
 }
 
+const LEGACY_TAURI_IDENTIFIER: &str = "com.vmjcv.hook";
+
+fn legacy_app_data_dir_from_current(current_dir: &Path) -> Option<PathBuf> {
+    let current_name = current_dir.file_name()?.to_str()?;
+    if current_name.eq_ignore_ascii_case(LEGACY_TAURI_IDENTIFIER) {
+        return None;
+    }
+    Some(current_dir.with_file_name(LEGACY_TAURI_IDENTIFIER))
+}
+
+fn app_data_dir_contains_user_state(dir: &Path) -> bool {
+    [
+        "session.json",
+        "history.json",
+        "tool-settings.json",
+        "images",
+        "saved",
+    ]
+    .iter()
+    .any(|entry| dir.join(entry).exists())
+}
+
+fn resolve_effective_app_data_dir(current_dir: &Path) -> PathBuf {
+    if let Some(legacy_dir) = legacy_app_data_dir_from_current(current_dir) {
+        if legacy_dir.exists()
+            && (!current_dir.exists()
+                || (!app_data_dir_contains_user_state(current_dir)
+                    && app_data_dir_contains_user_state(&legacy_dir)))
+        {
+            return legacy_dir;
+        }
+    }
+    current_dir.to_path_buf()
+}
+
+fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let current_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(resolve_effective_app_data_dir(&current_dir))
+}
+
 const RUNTIME_LOG_QUEUE_CAPACITY: usize = 512;
 static RUNTIME_LOG_SENDER: OnceLock<mpsc::SyncSender<String>> = OnceLock::new();
 static INSTALLED_FONT_FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
@@ -730,11 +770,8 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
                 .ok_or_else(|| "Failed to construct image from clipboard RGBA data".to_string())?;
 
             let mut buf = Vec::new();
-            img.write_to(
-                &mut std::io::Cursor::new(&mut buf),
-                image::ImageFormat::Png,
-            )
-            .map_err(|e| format!("PNG encode failed: {}", e))?;
+            img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                .map_err(|e| format!("PNG encode failed: {}", e))?;
 
             let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
             return Ok(Some(format!("data:image/png;base64,{}", encoded)));
@@ -745,7 +782,11 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
     if let Ok(file_paths) = get_clipboard::<Vec<String>, _>(formats::FileList) {
         if let Some(first_path) = file_paths.into_iter().next() {
             let lower = first_path.to_lowercase();
-            if lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".bmp") {
+            if lower.ends_with(".png")
+                || lower.ends_with(".jpg")
+                || lower.ends_with(".jpeg")
+                || lower.ends_with(".bmp")
+            {
                 return read_image_from_path(first_path).map(Some);
             }
         }
@@ -933,7 +974,7 @@ fn save_sticker_image(app: tauri::AppHandle, base64_image: String) -> Result<Str
     // 1. Resolve a user-writable destination. Writing next to the executable
     //    fails when Hook is installed under Program Files (read-only) and is
     //    poor practice; persist user data under the app data dir instead.
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     let saved_dir = app_dir.join("saved");
     fs::create_dir_all(&saved_dir).map_err(|e| format!("Failed to create save dir: {}", e))?;
 
@@ -1778,7 +1819,7 @@ fn save_session(
     recycle_bin: Option<Vec<FrozenStickerEntry>>,
     reference_library: Option<Vec<FrozenStickerEntry>>,
 ) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     if !app_dir.exists() {
         fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
     }
@@ -1851,7 +1892,7 @@ fn save_session(
 
 #[tauri::command]
 fn load_session(app: tauri::AppHandle) -> Result<SessionData, String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     let session_file = app_dir.join("session.json");
 
     if !session_file.exists() {
@@ -1935,7 +1976,7 @@ fn save_history(
     colors: Vec<serde_json::Value>,
     screenshots: Vec<serde_json::Value>,
 ) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     if !app_dir.exists() {
         fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
     }
@@ -1959,7 +2000,7 @@ fn save_history(
 
 #[tauri::command]
 fn load_history(app: tauri::AppHandle) -> Result<HistoryData, String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     let history_file = app_dir.join("history.json");
     if !history_file.exists() {
         return Ok(HistoryData::default());
@@ -1977,7 +2018,7 @@ fn save_tool_settings(
     app: tauri::AppHandle,
     sticker_tool_settings: serde_json::Value,
 ) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     if !app_dir.exists() {
         fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
     }
@@ -1995,7 +2036,7 @@ fn save_tool_settings(
 
 #[tauri::command]
 fn load_tool_settings(app: tauri::AppHandle) -> Result<ToolSettingsData, String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_dir = effective_app_data_dir(&app)?;
     let tool_settings_file = app_dir.join("tool-settings.json");
     if !tool_settings_file.exists() {
         return Ok(ToolSettingsData::default());
@@ -2012,7 +2053,9 @@ fn wide_face_name_to_string(face_name: &[u16]) -> String {
         .iter()
         .position(|value| *value == 0)
         .unwrap_or(face_name.len());
-    String::from_utf16_lossy(&face_name[..end]).trim().to_string()
+    String::from_utf16_lossy(&face_name[..end])
+        .trim()
+        .to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -4687,6 +4730,45 @@ mod app_cli_tests {
             remaining_size <= 100,
             "cache should be trimmed to target size"
         );
+    }
+
+    #[test]
+    fn effective_app_data_dir_prefers_legacy_state_when_current_identifier_dir_is_empty() {
+        let root = std::env::temp_dir().join(format!(
+            "hook-app-data-legacy-test-{}-{}",
+            std::process::id(),
+            file_timestamp_component()
+        ));
+        let current_dir = root.join("io.github.aiaimimi0920.hook");
+        let legacy_dir = root.join(LEGACY_TAURI_IDENTIFIER);
+        std::fs::create_dir_all(&current_dir).expect("create current dir");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy dir");
+        std::fs::write(legacy_dir.join("session.json"), "{}").expect("write legacy session");
+
+        let resolved = resolve_effective_app_data_dir(&current_dir);
+
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(resolved, legacy_dir);
+    }
+
+    #[test]
+    fn effective_app_data_dir_prefers_current_state_once_current_identifier_dir_is_populated() {
+        let root = std::env::temp_dir().join(format!(
+            "hook-app-data-current-test-{}-{}",
+            std::process::id(),
+            file_timestamp_component()
+        ));
+        let current_dir = root.join("io.github.aiaimimi0920.hook");
+        let legacy_dir = root.join(LEGACY_TAURI_IDENTIFIER);
+        std::fs::create_dir_all(&current_dir).expect("create current dir");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy dir");
+        std::fs::write(current_dir.join("history.json"), "{}").expect("write current history");
+        std::fs::write(legacy_dir.join("session.json"), "{}").expect("write legacy session");
+
+        let resolved = resolve_effective_app_data_dir(&current_dir);
+
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(resolved, current_dir);
     }
 
     #[test]
