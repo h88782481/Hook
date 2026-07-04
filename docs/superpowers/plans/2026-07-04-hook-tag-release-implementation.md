@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing development build workflow for ordinary pushes, and add a separate release workflow for version tags. Put zip packaging into a PowerShell helper script so the workflow stays small and the asset contract is testable.
 
-**Tech Stack:** GitHub Actions, PowerShell, Tauri build pipeline, Vitest contract tests, GitHub CLI.
+**Tech Stack:** GitHub Actions, PowerShell, Tauri build pipeline, Vitest contract tests, GitHub Release action.
 
 ---
 

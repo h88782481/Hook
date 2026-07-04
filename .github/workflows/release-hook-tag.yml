@@ -69,23 +69,14 @@ jobs:
             -Tag "$env:HOOK_TAG" `
             -Force
 
-      - name: Resolve release asset path
-        shell: powershell
-        run: |
-          $assetPath = Resolve-Path -LiteralPath ".\release\Hook\hook-windows-x64-$env:HOOK_TAG.zip"
-          "HOOK_ASSET=$assetPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Publish GitHub release asset
-        shell: powershell
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$env:HOOK_TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create "$env:HOOK_TAG" `
-              --title "$env:HOOK_TAG" `
-              --generate-notes `
-              --repo "$env:GITHUB_REPOSITORY"
-          }
-
-          gh release upload "$env:HOOK_TAG" "$env:HOOK_ASSET" --clobber --repo "$env:GITHUB_REPOSITORY"
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.HOOK_TAG }}
+          name: ${{ env.HOOK_TAG }}
+          generate_release_notes: true
+          working_directory: release/Hook
+          files: |
+            hook-windows-x64-${{ env.HOOK_TAG }}.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true

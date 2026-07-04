@@ -40,10 +40,14 @@ describe("Hook release workflow contract", () => {
 
     expect(workflowSource).toContain("package-release-zip.ps1");
     expect(workflowSource).toContain("Resolve release tag");
-    expect(workflowSource).toContain("gh release create");
-    expect(workflowSource).toContain("gh release upload");
-    expect(workflowSource).toContain("Resolve-Path");
-    expect(workflowSource).toContain("GITHUB_ENV");
+    expect(workflowSource).toContain("uses: softprops/action-gh-release@v3");
+    expect(workflowSource).toContain("working_directory: release/Hook");
+    expect(workflowSource).toContain("files:");
+    expect(workflowSource).toContain("hook-windows-x64-${{ env.HOOK_TAG }}.zip");
+    expect(workflowSource).toContain("overwrite_files: true");
+    expect(workflowSource).toContain("fail_on_unmatched_files: true");
+    expect(workflowSource).not.toContain("gh release create");
+    expect(workflowSource).not.toContain("gh release upload");
     expect(workflowSource).toContain("hook-windows-x64-");
 
     expect(packageScriptSource).toContain("hook.exe");

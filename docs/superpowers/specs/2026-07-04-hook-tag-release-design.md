@@ -74,15 +74,15 @@ Expected behavior:
 
 ### Release publishing
 
-Use the GitHub CLI already available in the runner:
+Use a dedicated GitHub Release action in the workflow:
 
 - if the release for the tag does not exist:
   - create it
-  - upload the asset
+  - attach the zip asset
 - if it already exists:
-  - replace the asset with `--clobber`
+  - update the release and replace the asset
 
-This avoids archived or legacy release-upload actions and keeps the publishing flow explicit.
+This avoids brittle shell-driven release upload logic and keeps the release asset contract declarative inside workflow YAML.
 
 ### Permissions
 
@@ -98,7 +98,7 @@ Add repository contract tests that verify:
 2. it triggers only on `V*.*.*` tags
 3. it uses supported action versions
 4. it creates the expected asset name
-5. it publishes through `gh release create` / `gh release upload`
+5. it publishes through a dedicated GitHub Release action with the expected minimal zip input
 
 Also verify the packaging script directly if it exposes a dry-run or deterministic output contract.
 
