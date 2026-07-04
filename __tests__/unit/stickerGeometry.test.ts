@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
     annotationContainsPoint,
@@ -185,6 +185,35 @@ describe("stickerGeometry", () => {
             w: 118,
             h: 50,
         });
+    });
+
+    it("measures text annotation bounds without jsdom canvas warnings", () => {
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        try {
+            const annotations: StickerAnnotation[] = [
+                {
+                    id: "text-only",
+                    type: "text",
+                    zIndex: 1,
+                    x: 80,
+                    y: 50,
+                    text: "Wide",
+                    fontSize: 20,
+                    style: { color: "#fff", width: 2, opacity: 1 },
+                },
+            ];
+
+            expect(getAnnotationGroupBounds(annotations)).toEqual({
+                x: 80,
+                y: 50,
+                w: 48,
+                h: 20,
+            });
+            expect(errorSpy).not.toHaveBeenCalled();
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 
     it("builds rounded polygon SVG paths when corner radius is enabled", () => {
