@@ -10,9 +10,10 @@ const workflowSource = readFileSync(
 describe("Hook workflow compatibility contract", () => {
     it("uses node24-compatible GitHub official action versions", () => {
         expect(workflowSource).toContain('uses: actions/checkout@v5');
-        expect(workflowSource).toContain('uses: actions/setup-node@v5');
+        expect(workflowSource).toContain('uses: actions/setup-node@v6');
         expect(workflowSource).toContain('uses: actions/upload-artifact@v6');
         expect(workflowSource).not.toContain('uses: actions/checkout@v4');
+        expect(workflowSource).not.toContain('uses: actions/setup-node@v5');
         expect(workflowSource).not.toContain('uses: actions/setup-node@v4');
         expect(workflowSource).not.toContain('uses: actions/upload-artifact@v4');
         expect(workflowSource).not.toContain('node-version: "20"');
