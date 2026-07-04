@@ -13,8 +13,8 @@
 ### Task 1: Add release workflow contracts
 
 **Files:**
-- Create: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\__tests__\integration\HookReleaseWorkflowContract.test.ts`
-- Modify: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\__tests__\integration\HookWorkflowCompatibilityContract.test.ts`
+- Create: `<hook-repo-root>\__tests__\integration\HookReleaseWorkflowContract.test.ts`
+- Modify: `<hook-repo-root>\__tests__\integration\HookWorkflowCompatibilityContract.test.ts`
 
 - [ ] **Step 1: Write failing workflow release contract test**
 - [ ] **Step 2: Run targeted Vitest command and verify the new assertions fail**
@@ -24,8 +24,8 @@
 ### Task 2: Add minimal zip packaging script
 
 **Files:**
-- Create: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\scripts\package-release-zip.ps1`
-- Test: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\__tests__\integration\HookReleaseWorkflowContract.test.ts`
+- Create: `<hook-repo-root>\scripts\package-release-zip.ps1`
+- Test: `<hook-repo-root>\__tests__\integration\HookReleaseWorkflowContract.test.ts`
 
 - [ ] **Step 1: Add a script that zips only `hook.exe` into `hook-windows-x64-<tag>.zip`**
 - [ ] **Step 2: Support deterministic dry-run style inspection where practical**
@@ -34,8 +34,8 @@
 ### Task 3: Add dedicated tag release workflow
 
 **Files:**
-- Create: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.github\workflows\release-hook-tag.yml`
-- Modify: `C:\Users\Public\nas_home\AI\GameEditor\Neuro\Hook\.github\workflows\build-hook-exe.yml`
+- Create: `<hook-repo-root>\.github\workflows\release-hook-tag.yml`
+- Modify: `<hook-repo-root>\.github\workflows\build-hook-exe.yml`
 
 - [ ] **Step 1: Create a release-only workflow for `V*.*.*` tags**
 - [ ] **Step 2: Build `hook.exe`, package the zip, and publish the GitHub Release asset**

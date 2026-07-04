@@ -20,8 +20,14 @@ describe("Hook release workflow contract", () => {
     expect(workflowSource).toContain("tags:");
     expect(workflowSource).toContain("- 'V*.*.*'");
     expect(workflowSource).toContain("workflow_dispatch:");
+    expect(workflowSource).toContain("inputs:");
+    expect(workflowSource).toContain("tag:");
+    expect(workflowSource).toContain("Release tag to publish manually");
     expect(workflowSource).toContain("contents: write");
     expect(workflowSource).toContain("uses: actions/checkout@v5");
+    expect(workflowSource).toContain(
+      "ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}",
+    );
     expect(workflowSource).toContain("uses: actions/setup-node@v6");
     expect(workflowSource).toContain("uses: dtolnay/rust-toolchain@stable");
   });
@@ -33,8 +39,11 @@ describe("Hook release workflow contract", () => {
     const packageScriptSource = readFileSync(packageScriptPath, "utf8");
 
     expect(workflowSource).toContain("package-release-zip.ps1");
+    expect(workflowSource).toContain("Resolve release tag");
     expect(workflowSource).toContain("gh release create");
     expect(workflowSource).toContain("gh release upload");
+    expect(workflowSource).toContain("Resolve-Path");
+    expect(workflowSource).toContain("GITHUB_ENV");
     expect(workflowSource).toContain("hook-windows-x64-");
 
     expect(packageScriptSource).toContain("hook.exe");
