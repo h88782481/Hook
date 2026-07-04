@@ -1,0 +1,61 @@
+name: Release Hook Tag
+
+on:
+  push:
+    tags:
+      - 'V*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Hook EXE
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-local-hook-exe.ps1 -OutputDir "release\Hook" -Force
+
+      - name: Package minimal release zip
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-release-zip.ps1 `
+            -ExePath ".\release\Hook\hook.exe" `
+            -OutputDir ".\release\Hook" `
+            -Tag "${{ github.ref_name }}" `
+            -Force
+
+      - name: Publish GitHub release asset
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOOK_TAG: ${{ github.ref_name }}
+          HOOK_ASSET: release\Hook\hook-windows-x64-${{ github.ref_name }}.zip
+        run: |
+          gh release view "$env:HOOK_TAG" --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "$env:HOOK_TAG" "$env:HOOK_ASSET" --clobber --repo "$env:GITHUB_REPOSITORY"
+          } else {
+            gh release create "$env:HOOK_TAG" "$env:HOOK_ASSET" `
+              --title "$env:HOOK_TAG" `
+              --generate-notes `
+              --repo "$env:GITHUB_REPOSITORY"
+          }

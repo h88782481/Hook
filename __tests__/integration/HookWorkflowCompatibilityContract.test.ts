@@ -19,4 +19,11 @@ describe("Hook workflow compatibility contract", () => {
         expect(workflowSource).not.toContain('node-version: "20"');
         expect(workflowSource).toContain('node-version: "22"');
     });
+
+    it("keeps the ordinary Hook build workflow scoped to main branch pushes", () => {
+        expect(workflowSource).toContain("push:");
+        expect(workflowSource).toContain("branches:");
+        expect(workflowSource).toContain("- main");
+        expect(workflowSource).not.toContain("tags:");
+    });
 });
