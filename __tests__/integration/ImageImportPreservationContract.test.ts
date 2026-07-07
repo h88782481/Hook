@@ -9,11 +9,16 @@ const cargoToml = readFileSync(resolve(process.cwd(), "src-tauri/Cargo.toml"), "
 
 describe("Hook image import preservation contract", () => {
     it("keeps the current drag-in image formats and the backend image crate", () => {
-        expect(fileDropSource).toContain('endsWith(".png")');
-        expect(fileDropSource).toContain('endsWith(".jpg")');
-        expect(fileDropSource).toContain('endsWith(".jpeg")');
-        expect(fileDropSource).toContain('endsWith(".webp")');
-        expect(fileDropSource).toContain('endsWith(".bmp")');
+        // The drop handler now matches against a SUPPORTED_IMAGE_EXTENSIONS list
+        // via endsWith rather than inline endsWith(".png") calls. Assert the
+        // supported formats are present in that list (behavior), not the exact
+        // call syntax (which broke on refactor).
+        expect(fileDropSource).toContain('".png"');
+        expect(fileDropSource).toContain('".jpg"');
+        expect(fileDropSource).toContain('".jpeg"');
+        expect(fileDropSource).toContain('".webp"');
+        expect(fileDropSource).toContain('".bmp"');
+        expect(fileDropSource).toContain("endsWith(extension)");
         expect(apiSource).toContain("readImageFromPath");
         expect(rustSource).toContain("fn read_image_from_path");
         expect(cargoToml).toContain('image = "0.25.9"');

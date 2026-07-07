@@ -3,7 +3,7 @@ use base64::Engine as _;
 use image::{Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 use shared_memory::ShmemConf;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -128,23 +128,57 @@ pub enum ArtLoomAction {
 // 2. Mock State
 // =========================================================================
 
-// Wrapper for Shmem to allow sending across threads (Safe because we only store it)
+// Wrapper for Shmem so it can be moved into the state that crosses threads.
+// Only `Send` is claimed: the segment is always accessed behind the state's
+// `Arc<Mutex<…>>`, so shared cross-thread access (which `Sync` would assert) is
+// never relied upon. Keeping `Send` alone lets the compiler still catch any
+// accidental unsynchronized sharing of the raw shmem pointer.
 #[allow(dead_code)]
 pub struct SafeShmem(pub shared_memory::Shmem);
 unsafe impl Send for SafeShmem {}
-unsafe impl Sync for SafeShmem {}
+
+// Upper bound on retained shared-memory segments. Each processed image is
+// stored so the frontend can open it by handle after `art/ready`; without a cap
+// the store grows forever (one OS shared-memory segment leaked per edit). We
+// keep the most recent N and drop the oldest, which is safe because a segment is
+// only needed briefly, between `art/ready` and the frontend reading it.
+const MAX_SHMEM_ENTRIES: usize = 12;
+
+// Read timeout for the forward-to-ArtLoom WebSocket. Bounds how long a worker
+// thread will block waiting for a processed image before giving up, so a hung
+// backend cannot leak threads/sockets indefinitely.
+const ARTLOOM_WS_READ_TIMEOUT_SECS: u64 = 30;
 
 pub struct MockArtLoomState {
     pub session_id: String,
     pub active_nodes: HashMap<String, HashMap<String, serde_json::Value>>, // node_id -> { param -> value }
     // We must keep Shmem alive or it gets dropped and handle becomes invalid
     pub shmem_store: HashMap<String, SafeShmem>,
+    // Insertion order of shmem_store keys, used to evict the oldest segment once
+    // the store exceeds MAX_SHMEM_ENTRIES.
+    pub shmem_order: VecDeque<String>,
     pub listener_started: bool,
     pub backend_connected: bool,
     pub app_handle: Option<AppHandle>,
 }
 
 impl MockArtLoomState {
+    // Insert a shared-memory segment, evicting the oldest segments so the store
+    // never exceeds MAX_SHMEM_ENTRIES. Dropping an evicted SafeShmem unmaps it.
+    fn store_shmem(&mut self, handle: String, shmem: SafeShmem) {
+        if self.shmem_store.insert(handle.clone(), shmem).is_none() {
+            self.shmem_order.push_back(handle);
+        }
+        while self.shmem_store.len() > MAX_SHMEM_ENTRIES {
+            match self.shmem_order.pop_front() {
+                Some(oldest) => {
+                    self.shmem_store.remove(&oldest);
+                }
+                None => break,
+            }
+        }
+    }
+
     fn set_app_handle(&mut self, app: AppHandle) {
         self.app_handle = Some(app);
     }
@@ -162,6 +196,7 @@ impl MockArtLoom {
                 session_id: Uuid::new_v4().to_string(),
                 active_nodes: HashMap::new(),
                 shmem_store: HashMap::new(),
+                shmem_order: VecDeque::new(),
                 listener_started: false,
                 backend_connected: false,
                 app_handle: None,
@@ -362,7 +397,7 @@ pub async fn artloom_handshake(
 
     // Cache loaded arts for prefetch_shader
     {
-        let mut loaded = state.loaded_arts.lock().unwrap();
+        let mut loaded = state.loaded_arts.lock().map_err(|e| e.to_string())?;
         *loaded = arts.clone();
     }
 
@@ -515,7 +550,7 @@ pub async fn artloom_dispatch_action(
             let _disabled_params = disabled_params.clone(); // Clone for thread
             let loaded_arts = state.loaded_arts.lock().map_err(|e| e.to_string())?.clone();
             let _params = {
-                let s = state.state.lock().unwrap();
+                let s = state.state.lock().map_err(|e| e.to_string())?;
                 s.active_nodes.get(&node_id).cloned().unwrap_or_default()
             };
 
@@ -686,8 +721,30 @@ pub async fn artloom_dispatch_action(
                                 Ok((mut socket, _response)) => {
                                     println!("[MOCK_ARTLOOM] Connected to ArtLoom WebSocket");
 
+                                    // Bound the wait for a response. Without a read
+                                    // timeout a hung/non-responding backend leaves this
+                                    // worker thread (and its socket) blocked forever; a
+                                    // fast param drag can pile up many such zombies.
+                                    if let tungstenite::stream::MaybeTlsStream::Plain(tcp) =
+                                        socket.get_ref()
+                                    {
+                                        let _ = tcp.set_read_timeout(Some(Duration::from_secs(
+                                            ARTLOOM_WS_READ_TIMEOUT_SECS,
+                                        )));
+                                    }
+
                                     // Send request
-                                    let msg = serde_json::to_string(&ahrp_request).unwrap();
+                                    let msg = match serde_json::to_string(&ahrp_request) {
+                                        Ok(m) => m,
+                                        Err(e) => {
+                                            let message =
+                                                format!("Failed to encode ArtLoom request: {}", e);
+                                            println!("[MOCK_ARTLOOM] {}", message);
+                                            emit_art_error(&app_handle, &_node_id, message);
+                                            let _ = socket.close(None);
+                                            return;
+                                        }
+                                    };
                                     if let Err(e) = socket.send(WsMessage::Text(msg.into())) {
                                         let message =
                                             format!("Failed to send ArtLoom request: {}", e);
@@ -985,7 +1042,7 @@ pub async fn artloom_dispatch_action(
                 // 5. Persist Shmem in State
                 {
                     if let Ok(mut s) = state_arc.lock() {
-                        s.shmem_store.insert(shmem_id.clone(), SafeShmem(shmem));
+                        s.store_shmem(shmem_id.clone(), SafeShmem(shmem));
                     }
                 }
 
@@ -1139,6 +1196,41 @@ fn repair_artloom_art_path(configured: &PathBuf) -> Option<PathBuf> {
     None
 }
 
+// Age-based sweep of materialized shader temp files in `dir`. Only files whose
+// names start with the shader-input prefixes and are older than `max_age_secs`
+// are removed, so an in-flight file (just written, being consumed downstream) is
+// never deleted. Without this the temp dir accumulates one PNG per data-URI
+// shader input forever.
+fn cleanup_stale_shader_temp_files(dir: &std::path::Path, max_age_secs: u64) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    let now = std::time::SystemTime::now();
+    let max_age = Duration::from_secs(max_age_secs);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let is_shader_temp = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("artloom_shader_"))
+            .unwrap_or(false);
+        if !is_shader_temp {
+            continue;
+        }
+        let modified = match entry.metadata().and_then(|m| m.modified()) {
+            Ok(modified) => modified,
+            Err(_) => continue,
+        };
+        if now.duration_since(modified).unwrap_or_default() > max_age {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 fn materialize_shader_image_input(value: Option<&String>, label: &str) -> Option<String> {
     let raw = value?.trim();
     if raw.is_empty() {
@@ -1158,6 +1250,10 @@ fn materialize_shader_image_input(value: Option<&String>, label: &str) -> Option
                     "reference" => "artloom_shader_reference",
                     _ => "artloom_shader_image",
                 };
+                // Age out previously materialized shader temp files so this
+                // directory does not grow without bound. The freshly written file
+                // is returned for downstream use, so we only drop stale ones.
+                cleanup_stale_shader_temp_files(&std::env::temp_dir(), 3600);
                 let path = std::env::temp_dir().join(format!(
                     "{}_{}.png",
                     filename_prefix,

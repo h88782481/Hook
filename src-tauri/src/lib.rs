@@ -466,6 +466,11 @@ fn sanitize_drag_filename_hint(hint: Option<&str>) -> String {
 
 const MAX_BASE64_IMAGE_ENCODED_BYTES: usize = 64 * 1024 * 1024;
 const MAX_IMAGE_PIXELS: u64 = 100_000_000;
+// Per-image limits above bound a single frame, but a stitch call takes a whole
+// Vec of frames that are each decoded to a full bitmap. Without an aggregate cap
+// a caller can submit thousands of max-size frames and exhaust memory. This caps
+// the frame count; combined with the per-frame pixel limit it bounds peak memory.
+const MAX_STITCH_FRAME_COUNT: usize = 512;
 const CLIPBOARD_CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 const CLIPBOARD_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
 const CLIPBOARD_CACHE_TARGET_BYTES: u64 = 128 * 1024 * 1024;
@@ -581,6 +586,22 @@ fn ensure_clipboard_cache_dir() -> Result<PathBuf, String> {
         CLIPBOARD_CACHE_TARGET_BYTES,
     );
     Ok(cache_dir)
+}
+
+// Confirm `candidate` resolves to a location inside `root`. Both are canonicalized
+// so `..` traversal and symlinks cannot escape the allowed root. Used to constrain
+// native file-drag to app-owned directories instead of trusting an arbitrary
+// frontend-supplied path.
+fn path_is_within(candidate: &Path, root: &Path) -> bool {
+    let candidate = match candidate.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let root = match root.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    candidate.starts_with(&root)
 }
 
 #[cfg(target_os = "windows")]
@@ -1171,6 +1192,13 @@ fn begin_sticker_native_file_drag_from_path(
         fs::metadata(&file_path).map_err(|e| format!("Failed to stat drag source file: {}", e))?;
     if !metadata.is_file() {
         return Err("Drag source path is not a regular file".to_string());
+    }
+    // Restrict drag-out to files Hook itself staged in the clipboard cache. Without
+    // this, the frontend could hand any absolute path here and drag an arbitrary
+    // readable file off disk. The legitimate flow always writes to the cache first
+    // (save_sticker_image_to_cache_for_drag), so a source outside it is rejected.
+    if !path_is_within(&file_path, &clipboard_cache_dir()) {
+        return Err("Drag source must be inside Hook's clipboard cache".to_string());
     }
     let staged_drag_file = stage_drag_out_file_copy(&file_path)?;
     start_native_file_drag(window, staged_drag_file, hit_map.inner())
@@ -1855,6 +1883,12 @@ async fn stitch_vertical_long_capture_frames(
 ) -> Result<CaptureResponse, String> {
     let started_at = std::time::Instant::now();
     let input_frame_count = frames.len();
+    if input_frame_count > MAX_STITCH_FRAME_COUNT {
+        return Err(format!(
+            "Too many frames to stitch: {} exceeds limit of {}",
+            input_frame_count, MAX_STITCH_FRAME_COUNT
+        ));
+    }
     let stitched = long_capture::stitch_vertical_frame_data_urls(
         &frames,
         overlap_scan.unwrap_or(160).clamp(32, 480),
@@ -1939,6 +1973,12 @@ async fn stitch_long_capture_frames(
 ) -> Result<CaptureResponse, String> {
     let started_at = std::time::Instant::now();
     let input_frame_count = frames.len();
+    if input_frame_count > MAX_STITCH_FRAME_COUNT {
+        return Err(format!(
+            "Too many frames to stitch: {} exceeds limit of {}",
+            input_frame_count, MAX_STITCH_FRAME_COUNT
+        ));
+    }
     let stitched = long_capture::stitch_long_capture_frame_data_urls(
         &frames,
         long_capture::LongCaptureStitchOptions {

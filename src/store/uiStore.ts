@@ -280,14 +280,24 @@ export const uiActions = {
         }));
     },
     closeAllPopups: () => {
-        // Implementation might need iteration if we want to close ALL
-        // For now, consumers can manually set state or we iterate keys
+        // Collapse every unit's action/param popups. Iterate the keys currently
+        // present in the store rather than leaving this as a no-op.
+        Object.keys(unitUiState).forEach((id) => {
+            setUnitUiState(id, (prev) => ({
+                ...prev,
+                showActions: false,
+                showParams: false,
+            }));
+        });
     },
     showEnhancementNotice: (unitId: string, notice: EnhancementNotice) => {
         setEnhancementNotices(unitId, notice);
     },
     dismissEnhancementNotice: (unitId: string) => {
         setEnhancementNotices(unitId, undefined);
+    },
+    clearUnitUiState: (unitId: string) => {
+        setUnitUiState(unitId, undefined!);
     },
     setStickerEditMode: (mode: StickerToolSettings["mode"]) => {
         setStickerColorPickerReturnMode(null);

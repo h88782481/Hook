@@ -86,7 +86,7 @@ describe("Hook sticker rasterize contract", () => {
         expect(annotationLayerSource).toContain("beginLiveRasterizedAnnotationErase");
         expect(annotationLayerSource).toContain("applyLiveRasterizedAnnotationErase");
         expect(annotationLayerSource).toContain("finishLiveRasterizedAnnotationErase");
-        expect(annotationLayerSource).toContain('currentDraft?.mode === "content-eraser" && liveRasterizedAnnotationEraseActive');
+        expect(annotationLayerSource).toContain('currentDraft?.mode === "content-eraser" && rasterizedEraseQueue.isActive');
         expect(annotationLayerSource).toContain("void applyLiveRasterizedAnnotationErase([lastPoint, point])");
         expect(annotationLayerSource).toContain("patchUnitDataLocally");
         expect(annotationLayerSource).not.toContain("await commitRasterizedAnnotationErase(line.points);");

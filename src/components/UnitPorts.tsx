@@ -3,6 +3,7 @@ import { Component, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Unit } from "../types/unit";
 import { ArtCapability } from "../services/protocol";
+import { logger } from "../services/logger";
 
 interface UnitPortsProps {
   unit: Unit;
@@ -117,7 +118,7 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                                     onMouseUp={(e) => {
                                         e.stopPropagation();
                                         // Explicitly notify parent to complete the link
-                                        console.log("UnitView: Input Port MouseUp -> onLinkDrop", port.name);
+                                        logger.debug("UnitView: Input Port MouseUp -> onLinkDrop", port.name);
                                         props.onLinkDrop(port.name);
                                     }}
                                 >
@@ -156,7 +157,7 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                                     onMouseDown={(e) => {
                                         e.stopPropagation();
                                         e.preventDefault();
-                                        console.log("Link Start from Output", port.name);
+                                        logger.debug("Link Start from Output", port.name);
                                         props.onLinkStart(port.name, e.clientX, e.clientY);
                                     }}
                                 >

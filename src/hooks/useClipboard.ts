@@ -70,13 +70,13 @@ export function useClipboard() {
                 setClipboard(nextClipState);
 
                 const dpr = window.devicePixelRatio || 1;
-                console.log("Copy Internal:", {
+                logger.debug("Copy Internal:", {
                     dpr,
                     mp,
                     unit: {x: s.x, y: s.y},
                     offset: {x: nextClipState.offsetX, y: nextClipState.offsetY}
                 });
-                console.log("Copied to internal clipboard");
+                logger.debug("Copied to internal clipboard");
 
                 try {
                     const exportBase64 = await renderStickerComposite(unit);
@@ -115,7 +115,7 @@ export function useClipboard() {
                  // lib.rs uses `PhysicalPosition<f64>`, so we need to divide by DPR.
                  const dpr = window.devicePixelRatio || 1;
                  mp = { x: rawPos.x / dpr, y: rawPos.y / dpr };
-                 console.log("Paste: Using Backend Cursor Pos", mp);
+                 logger.debug("Paste: Using Backend Cursor Pos", mp);
             }
         } catch (e) {
             console.warn("Backend cursor fetch failed, using cached JS mousePos", e);
@@ -225,7 +225,7 @@ export function useClipboard() {
         if (isCascade) {
             newX = clip.nextCascadeX;
             newY = clip.nextCascadeY;
-            console.log("PASTE DEBUG [Cascade Mode]:", {
+            logger.debug("PASTE DEBUG [Cascade Mode]:", {
                 mousePos: mp,
                 originalId: clip.originalId,
                 nextCascade: { x: newX, y: newY }
@@ -241,7 +241,7 @@ export function useClipboard() {
                  newY = mp.y;
             }
 
-            console.log("PASTE DEBUG [Relative Mode]:", {
+            logger.debug("PASTE DEBUG [Relative Mode]:", {
                 mousePos: mp,
                 calculated: { x: newX, y: newY },
                 clipboardData: clip, // Log full clip data to check for offsets/rects
@@ -302,7 +302,7 @@ export function useClipboard() {
         syncService.updateBackendRects();
 
         // Debug Logs
-        console.log("Paste:", { isCascade, newX, newY, nextCascadeX: clip.nextCascadeX });
+        logger.debug("Paste:", { isCascade, newX, newY, nextCascadeX: clip.nextCascadeX });
 
         // CHAINING / CASCADE UPDATE
         // Update the clipboard state so the *next* paste considers this new unit as the "original" (Anchor).
@@ -320,7 +320,7 @@ export function useClipboard() {
             nextCascadeY: newY + 20
         };
         setClipboard(nextClip);
-        console.log("Updated Clipboard Anchor:", { id: nextClip.originalId, nextCascade: { x: nextClip.nextCascadeX, y: nextClip.nextCascadeY } });
+        logger.debug("Updated Clipboard Anchor:", { id: nextClip.originalId, nextCascade: { x: nextClip.nextCascadeX, y: nextClip.nextCascadeY } });
     };
 
     const pasteNodes = (nodes: any[], links: any[] = [], mpOverride?: {x: number, y: number}) => {

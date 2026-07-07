@@ -8,6 +8,8 @@
  * - Uniform setting for real-time parameter adjustment
  */
 
+import { logger } from "../services/logger";
+
 /**
  * Generic shader uniforms interface
  */
@@ -194,7 +196,7 @@ export class ShaderRenderer {
         const img = new Image();
         img.onload = () => {
             this.loadTexture(name, img);
-            console.log(`[ShaderRenderer] Loaded texture '${name}' from response`);
+            logger.debug(`[ShaderRenderer] Loaded texture '${name}' from response`);
             if (this.textureLoadHandler) {
                 this.textureLoadHandler();
             } else {

@@ -164,4 +164,57 @@ export interface Link {
     toPortId: string;
 }
 
+// ============================================================================
+// Session persistence shapes
+// ============================================================================
+// The serialized session (load_session / save_session and the browser-preview
+// localStorage fallback) is a flattened form of Unit, not the Unit itself. The
+// write mappers emit `null` for absent fields; the read mapper tolerates
+// `null`/`undefined`. These interfaces replace the `any` that previously spanned
+// the whole IPC/session boundary so a backend field rename becomes a compile
+// error instead of a silent `undefined` at runtime.
+
+export interface SessionSticker {
+    id: string;
+    type?: Unit["type"];
+    artId?: string | null;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    src?: string | null;
+    previewSrc?: string | null;
+    minified?: boolean | null;
+    savedRect?: { x: number; y: number; w: number; h: number } | null;
+    cropOffset?: { x: number; y: number } | null;
+    opacityNormal?: number | null;
+    opacityMini?: number | null;
+    params?: Record<string, unknown> | null;
+    filePath?: string | null;
+    rasterizedAnnotationLayerSrc?: string | null;
+    outputs?: Record<string, unknown> | null;
+    originWorkflowId?: string | null;
+    originNodeId?: string | null;
+    executionConfig?: NodeExecutionConfig | null;
+    annotationState?: UnitData["annotationState"] | null;
+    imageEditState?: UnitData["imageEditState"] | null;
+    groupId?: string | null;
+    captureMeta?: UnitData["captureMeta"] | null;
+}
+
+export interface SessionLink {
+    id: string;
+    fromUnitId: string;
+    fromPortId: string;
+    toUnitId: string;
+    toPortId: string;
+}
+
+export interface SessionGroup {
+    id: string;
+    name: string;
+    hidden?: boolean;
+    locked?: boolean;
+}
+
 export type { StickerGroup };

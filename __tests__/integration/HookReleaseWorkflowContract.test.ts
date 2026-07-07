@@ -29,7 +29,11 @@ describe("Hook release workflow contract", () => {
       "ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}",
     );
     expect(workflowSource).toContain("uses: actions/setup-node@v6");
-    expect(workflowSource).toContain("uses: dtolnay/rust-toolchain@stable");
+    // Toolchain is pinned to an exact version (not the floating @stable) so
+    // release builds stay reproducible.
+    expect(workflowSource).toContain("uses: dtolnay/rust-toolchain@1.95.0");
+    // The build job runs only after the verify (typecheck + tests) gate passes.
+    expect(workflowSource).toContain("needs: verify");
   });
 
   it("packages only hook.exe into a versioned zip and publishes it to Releases", () => {

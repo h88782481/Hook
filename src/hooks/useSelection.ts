@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api } from "../services/api";
+import { logger } from "../services/logger";
 
 import {
     isSelecting, setIsSelecting,
@@ -793,7 +794,7 @@ export function useSelection() {
 
         // Wait for UI repaint (remove grey box)
         setTimeout(async () => {
-             console.log("[Selection] Executing Capture for rect:", rect);
+             logger.debug("[Selection] Executing Capture for rect:", rect);
             try {
                 await api.debugLogEvent("selection-capture-request", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
                 const activeCaptureMode = captureMode();
@@ -804,7 +805,7 @@ export function useSelection() {
                     return;
                 }
 
-                console.log("Requesting Capture:", rect);
+                logger.debug("Requesting Capture:", rect);
                 const response = await api.captureRegion(
                     Math.round(rect.x),
                     Math.round(rect.y),

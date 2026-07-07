@@ -50,6 +50,7 @@ import {
     eraseRasterizedAnnotationLayer,
 } from "../services/stickerBitmapLayers";
 import { renderStickerBaseLayer } from "../services/stickerExport";
+import { LiveEraseQueue } from "../services/liveEraseQueue";
 import {
     buildLineMeasurementBadge,
     buildShapeMeasurementBadge,
@@ -573,99 +574,58 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         }
     };
 
-    let liveRasterizedAnnotationEraseActive = false;
+    // Live "erase annotations only" pipeline. The generation-token / pending-
+    // buffer / runner plumbing lives in LiveEraseQueue; this owns only the
+    // layer-specific state (which src we erase onto) and the per-batch work.
+    const rasterizedEraseQueue = new LiveEraseQueue();
     let liveRasterizedAnnotationEraseLayerSrc: string | null = null;
     let liveRasterizedAnnotationEraseBaseLayerSrc: string | null = null;
     let liveRasterizedAnnotationEraseHistoryCaptured = false;
-    let liveRasterizedAnnotationEraseGeneration = 0;
-    let liveRasterizedAnnotationErasePromise: Promise<void> = Promise.resolve();
-    let liveRasterizedAnnotationErasePendingPoints: StickerPoint[] = [];
-    let liveRasterizedAnnotationEraseRunning = false;
 
-    const runLiveRasterizedAnnotationEraseQueue = async (generation: number) => {
-        liveRasterizedAnnotationEraseRunning = true;
-        try {
-            while (
-                generation === liveRasterizedAnnotationEraseGeneration &&
-                liveRasterizedAnnotationEraseActive &&
-                liveRasterizedAnnotationErasePendingPoints.length > 0
+    const applyLiveRasterizedAnnotationErase = (points: StickerPoint[]) =>
+        rasterizedEraseQueue.apply(points, async (batch, generation) => {
+            if (
+                !liveRasterizedAnnotationEraseLayerSrc ||
+                !liveRasterizedAnnotationEraseBaseLayerSrc
             ) {
-                const points = liveRasterizedAnnotationErasePendingPoints;
-                liveRasterizedAnnotationErasePendingPoints = [];
-                if (
-                    !liveRasterizedAnnotationEraseLayerSrc ||
-                    !liveRasterizedAnnotationEraseBaseLayerSrc
-                ) {
-                    return;
-                }
-
-                if (!liveRasterizedAnnotationEraseHistoryCaptured) {
-                    rememberCurrentState(true);
-                    liveRasterizedAnnotationEraseHistoryCaptured = true;
-                }
-
-                const nextLayerSrc = await eraseRasterizedAnnotationLayer({
-                    rasterizedAnnotationLayerSrc: liveRasterizedAnnotationEraseLayerSrc,
-                    size: { w: props.width, h: props.height },
-                    points,
-                    width: stickerToolSettings.contentEraserSize,
-                });
-                if (
-                    generation !== liveRasterizedAnnotationEraseGeneration ||
-                    !liveRasterizedAnnotationEraseActive ||
-                    !liveRasterizedAnnotationEraseBaseLayerSrc
-                ) {
-                    return;
-                }
-
-                const previewSrc = await composeRasterizedStickerPreview(
-                    liveRasterizedAnnotationEraseBaseLayerSrc,
-                    nextLayerSrc,
-                    { w: props.width, h: props.height },
-                );
-                if (
-                    generation !== liveRasterizedAnnotationEraseGeneration ||
-                    !liveRasterizedAnnotationEraseActive
-                ) {
-                    return;
-                }
-
-                liveRasterizedAnnotationEraseLayerSrc = nextLayerSrc;
-                patchUnitDataLocally({
-                    rasterizedAnnotationLayerSrc: nextLayerSrc,
-                    previewSrc,
-                    resultHandle: undefined,
-                    filePath: undefined,
-                });
+                return;
             }
-        } catch (error) {
-            console.error("[Hook] Failed to apply live annotation erase", error);
-        } finally {
-            if (generation === liveRasterizedAnnotationEraseGeneration) {
-                liveRasterizedAnnotationEraseRunning = false;
+
+            if (!liveRasterizedAnnotationEraseHistoryCaptured) {
+                rememberCurrentState(true);
+                liveRasterizedAnnotationEraseHistoryCaptured = true;
             }
-        }
-    };
 
-    const applyLiveRasterizedAnnotationErase = (points: StickerPoint[]) => {
-        if (
-            !liveRasterizedAnnotationEraseActive ||
-            !liveRasterizedAnnotationEraseLayerSrc ||
-            !liveRasterizedAnnotationEraseBaseLayerSrc ||
-            points.length < 1
-        ) {
-            return Promise.resolve();
-        }
+            const nextLayerSrc = await eraseRasterizedAnnotationLayer({
+                rasterizedAnnotationLayerSrc: liveRasterizedAnnotationEraseLayerSrc,
+                size: { w: props.width, h: props.height },
+                points: batch,
+                width: stickerToolSettings.contentEraserSize,
+            });
+            if (
+                !rasterizedEraseQueue.isCurrent(generation) ||
+                !liveRasterizedAnnotationEraseBaseLayerSrc
+            ) {
+                return;
+            }
 
-        liveRasterizedAnnotationErasePendingPoints.push(...points);
-        if (!liveRasterizedAnnotationEraseRunning) {
-            liveRasterizedAnnotationErasePromise = runLiveRasterizedAnnotationEraseQueue(
-                liveRasterizedAnnotationEraseGeneration,
+            const previewSrc = await composeRasterizedStickerPreview(
+                liveRasterizedAnnotationEraseBaseLayerSrc,
+                nextLayerSrc,
+                { w: props.width, h: props.height },
             );
-        }
+            if (!rasterizedEraseQueue.isCurrent(generation)) {
+                return;
+            }
 
-        return liveRasterizedAnnotationErasePromise;
-    };
+            liveRasterizedAnnotationEraseLayerSrc = nextLayerSrc;
+            patchUnitDataLocally({
+                rasterizedAnnotationLayerSrc: nextLayerSrc,
+                previewSrc,
+                resultHandle: undefined,
+                filePath: undefined,
+            });
+        });
 
     const beginLiveRasterizedAnnotationErase = (point: StickerPoint) => {
         const currentUnit = unit();
@@ -673,31 +633,22 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         const baseLayerSrc = currentUnit?.data.src || currentUnit?.data.previewSrc;
         if (!currentUnit || !layerSrc || !baseLayerSrc) return false;
 
-        liveRasterizedAnnotationEraseGeneration += 1;
-        liveRasterizedAnnotationEraseActive = true;
         liveRasterizedAnnotationEraseLayerSrc = layerSrc;
         liveRasterizedAnnotationEraseBaseLayerSrc = baseLayerSrc;
         liveRasterizedAnnotationEraseHistoryCaptured = false;
-        liveRasterizedAnnotationErasePendingPoints = [];
-        liveRasterizedAnnotationEraseRunning = false;
-        liveRasterizedAnnotationErasePromise = Promise.resolve();
+        rasterizedEraseQueue.begin();
         void applyLiveRasterizedAnnotationErase([point]);
         return true;
     };
 
     const finishLiveRasterizedAnnotationErase = async () => {
-        if (!liveRasterizedAnnotationEraseActive) return false;
-        const generation = liveRasterizedAnnotationEraseGeneration;
-        await liveRasterizedAnnotationErasePromise;
-        if (generation !== liveRasterizedAnnotationEraseGeneration) return false;
+        const committed = await rasterizedEraseQueue.finish();
+        if (!committed) return false;
 
         const shouldSync = liveRasterizedAnnotationEraseHistoryCaptured;
-        liveRasterizedAnnotationEraseActive = false;
         liveRasterizedAnnotationEraseLayerSrc = null;
         liveRasterizedAnnotationEraseBaseLayerSrc = null;
         liveRasterizedAnnotationEraseHistoryCaptured = false;
-        liveRasterizedAnnotationErasePendingPoints = [];
-        liveRasterizedAnnotationEraseRunning = false;
         if (shouldSync) {
             graphStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
             propagateStickerEditFromCurrentUnit();
@@ -766,79 +717,53 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     // full propagate + workflow sync once on pointer-up. Erasing the base image
     // makes those pixels transparent (destination-out), exactly like the
     // committed stroke did, but without waiting for the mouse release.
-    let liveContentEraseActive = false;
+    // Live "erase the image content" mode (the default content-eraser, i.e. NOT
+    // the annotations-only variant). Same LiveEraseQueue plumbing as the
+    // annotations-only path; this owns the evolving base/annotation layer state
+    // and the per-batch flatten-and-erase work. Erasing the base image makes
+    // those pixels transparent (destination-out) live as the brush moves.
+    const contentEraseQueue = new LiveEraseQueue();
     let liveContentEraseBaseLayerSrc: string | null = null;
     let liveContentEraseRasterizedAnnotationLayerSrc: string | null = null;
     let liveContentEraseHistoryCaptured = false;
-    let liveContentEraseGeneration = 0;
-    let liveContentErasePromise: Promise<void> = Promise.resolve();
-    let liveContentErasePendingPoints: StickerPoint[] = [];
-    let liveContentEraseRunning = false;
 
-    const runLiveContentEraseQueue = async (generation: number) => {
-        liveContentEraseRunning = true;
-        try {
-            while (
-                generation === liveContentEraseGeneration &&
-                liveContentEraseActive &&
-                liveContentErasePendingPoints.length > 0
-            ) {
-                const points = liveContentErasePendingPoints;
-                liveContentErasePendingPoints = [];
-                if (!liveContentEraseBaseLayerSrc) return;
+    const applyLiveContentErase = (points: StickerPoint[]) =>
+        contentEraseQueue.apply(points, async (batch, generation) => {
+            if (!liveContentEraseBaseLayerSrc) return;
 
-                if (!liveContentEraseHistoryCaptured) {
-                    rememberCurrentState(true);
-                    liveContentEraseHistoryCaptured = true;
-                }
-
-                const next = await applyLiveContentEraseToStickerLayers({
-                    baseLayerSrc: liveContentEraseBaseLayerSrc,
-                    rasterizedAnnotationLayerSrc:
-                        liveContentEraseRasterizedAnnotationLayerSrc ?? undefined,
-                    size: { w: props.width, h: props.height },
-                    stroke: {
-                        points,
-                        width: stickerToolSettings.contentEraserSize,
-                        color: "#000000",
-                        opacity: 1,
-                    },
-                });
-                if (generation !== liveContentEraseGeneration || !liveContentEraseActive) {
-                    return;
-                }
-
-                liveContentEraseBaseLayerSrc = next.baseLayerSrc;
-                liveContentEraseRasterizedAnnotationLayerSrc =
-                    next.rasterizedAnnotationLayerSrc ?? null;
-                patchUnitDataLocally({
-                    src: next.baseLayerSrc,
-                    previewSrc: next.previewSrc,
-                    resultHandle: undefined,
-                    filePath: undefined,
-                    rasterizedAnnotationLayerSrc: next.rasterizedAnnotationLayerSrc,
-                    imageEditState: createEmptyImageEditState(),
-                });
+            if (!liveContentEraseHistoryCaptured) {
+                rememberCurrentState(true);
+                liveContentEraseHistoryCaptured = true;
             }
-        } catch (error) {
-            console.error("[Hook] Failed to apply live content erase", error);
-        } finally {
-            if (generation === liveContentEraseGeneration) {
-                liveContentEraseRunning = false;
-            }
-        }
-    };
 
-    const applyLiveContentErase = (points: StickerPoint[]) => {
-        if (!liveContentEraseActive || !liveContentEraseBaseLayerSrc || points.length < 1) {
-            return Promise.resolve();
-        }
-        liveContentErasePendingPoints.push(...points);
-        if (!liveContentEraseRunning) {
-            liveContentErasePromise = runLiveContentEraseQueue(liveContentEraseGeneration);
-        }
-        return liveContentErasePromise;
-    };
+            const next = await applyLiveContentEraseToStickerLayers({
+                baseLayerSrc: liveContentEraseBaseLayerSrc,
+                rasterizedAnnotationLayerSrc:
+                    liveContentEraseRasterizedAnnotationLayerSrc ?? undefined,
+                size: { w: props.width, h: props.height },
+                stroke: {
+                    points: batch,
+                    width: stickerToolSettings.contentEraserSize,
+                    color: "#000000",
+                    opacity: 1,
+                },
+            });
+            if (!contentEraseQueue.isCurrent(generation)) {
+                return;
+            }
+
+            liveContentEraseBaseLayerSrc = next.baseLayerSrc;
+            liveContentEraseRasterizedAnnotationLayerSrc =
+                next.rasterizedAnnotationLayerSrc ?? null;
+            patchUnitDataLocally({
+                src: next.baseLayerSrc,
+                previewSrc: next.previewSrc,
+                resultHandle: undefined,
+                filePath: undefined,
+                rasterizedAnnotationLayerSrc: next.rasterizedAnnotationLayerSrc,
+                imageEditState: createEmptyImageEditState(),
+            });
+        });
 
     const beginLiveContentErase = async (point: StickerPoint) => {
         const currentUnit = unit();
@@ -854,34 +779,25 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             console.error("[Hook] Failed to start live content erase", error);
             return false;
         }
-        liveContentEraseGeneration += 1;
-        liveContentEraseActive = true;
         liveContentEraseBaseLayerSrc = baseLayerSrc;
         liveContentEraseRasterizedAnnotationLayerSrc =
             currentUnit.data.rasterizedAnnotationLayerSrc ?? null;
         liveContentEraseHistoryCaptured = false;
-        liveContentErasePendingPoints = [];
-        liveContentEraseRunning = false;
-        liveContentErasePromise = Promise.resolve();
+        contentEraseQueue.begin();
         void applyLiveContentErase([point]);
         return true;
     };
 
     const finishLiveContentErase = async () => {
-        if (!liveContentEraseActive) return false;
-        const generation = liveContentEraseGeneration;
-        await liveContentErasePromise;
-        if (generation !== liveContentEraseGeneration) return false;
+        const committed = await contentEraseQueue.finish();
+        if (!committed) return false;
 
         const shouldSync = liveContentEraseHistoryCaptured;
         const finalSrc = liveContentEraseBaseLayerSrc;
         const finalRasterizedAnnotationLayerSrc = liveContentEraseRasterizedAnnotationLayerSrc;
-        liveContentEraseActive = false;
         liveContentEraseBaseLayerSrc = null;
         liveContentEraseRasterizedAnnotationLayerSrc = null;
         liveContentEraseHistoryCaptured = false;
-        liveContentErasePendingPoints = [];
-        liveContentEraseRunning = false;
         if (shouldSync && finalSrc) {
             // Promote the locally-patched result through the propagation + sync
             // path so downstream units and persistence pick up the erased image.
@@ -1102,11 +1018,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 step > 0
                     ? { x: Math.round(value.x / step) * step, y: Math.round(value.y / step) * step }
                     : value;
-            if (currentDraft?.mode === "content-eraser" && liveRasterizedAnnotationEraseActive) {
+            if (currentDraft?.mode === "content-eraser" && rasterizedEraseQueue.isActive) {
                 const lastPoint = currentDraft.points[currentDraft.points.length - 1] || point;
                 void applyLiveRasterizedAnnotationErase([lastPoint, point]);
             }
-            if (currentDraft?.mode === "content-eraser" && liveContentEraseActive) {
+            if (currentDraft?.mode === "content-eraser" && contentEraseQueue.isActive) {
                 const lastPoint = currentDraft.points[currentDraft.points.length - 1] || point;
                 void applyLiveContentErase([lastPoint, point]);
             }
@@ -1308,11 +1224,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 line.mode === "content-eraser" || line.mode === "mosaic" || line.mode === "blur";
             if (line.points.length < (allowsSinglePoint ? 1 : 2)) return;
             if (line.mode === "content-eraser") {
-                if (liveRasterizedAnnotationEraseActive) {
+                if (rasterizedEraseQueue.isActive) {
                     await finishLiveRasterizedAnnotationErase();
                     return;
                 }
-                if (liveContentEraseActive) {
+                if (contentEraseQueue.isActive) {
                     await finishLiveContentErase();
                     return;
                 }
@@ -1335,12 +1251,22 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             if (line.mode === "mosaic" || line.mode === "blur") {
                 const brushWidth = Math.max(1, stickerToolSettings.effectBrushSize);
                 const pad = brushWidth / 2;
-                const xs = line.points.map((p) => p.x);
-                const ys = line.points.map((p) => p.y);
-                const minX = Math.min(...xs) - pad;
-                const minY = Math.min(...ys) - pad;
-                const maxX = Math.max(...xs) + pad;
-                const maxY = Math.max(...ys) + pad;
+                // Reduce over the points instead of Math.min(...xs): a long freehand
+                // stroke can exceed the argument-count limit and throw RangeError.
+                let rawMinX = Infinity;
+                let rawMinY = Infinity;
+                let rawMaxX = -Infinity;
+                let rawMaxY = -Infinity;
+                for (const p of line.points) {
+                    if (p.x < rawMinX) rawMinX = p.x;
+                    if (p.y < rawMinY) rawMinY = p.y;
+                    if (p.x > rawMaxX) rawMaxX = p.x;
+                    if (p.y > rawMaxY) rawMaxY = p.y;
+                }
+                const minX = rawMinX - pad;
+                const minY = rawMinY - pad;
+                const maxX = rawMaxX + pad;
+                const maxY = rawMaxY + pad;
                 const effectStyle =
                     line.mode === "mosaic"
                         ? {
@@ -2042,10 +1968,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
 
     createEffect(() => {
         stickerEditCancelToken();
-        if (liveRasterizedAnnotationEraseActive) {
+        if (rasterizedEraseQueue.isActive) {
             void finishLiveRasterizedAnnotationErase();
         }
-        if (liveContentEraseActive) {
+        if (contentEraseQueue.isActive) {
             void finishLiveContentErase();
         }
         setDraftShape(null);
@@ -2618,7 +2544,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                 ? stickerToolSettings.contentEraserSize
                                 : stickerToolSettings.strokeWidth;
                         const hidesLiveAnnotationErasePreview =
-                            draft().mode === "content-eraser" && liveRasterizedAnnotationEraseActive;
+                            draft().mode === "content-eraser" && rasterizedEraseQueue.isActive;
                         // Straight line/arrow drafts and the plain brush honor the
                         // selected dash pattern so the live preview matches what gets
                         // committed. The highlighter stays solid.

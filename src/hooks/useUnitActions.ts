@@ -1,6 +1,7 @@
 import { api } from "../services/api";
 import { graphStore } from "../store/graphStore";
 import { syncService } from "../services/syncService";
+import { logger } from "../services/logger";
 import { setDraggingStickerId, setMultiDragPositions, uiActions } from "../store/uiStore";
 import { computeRestoredMinifiedStickerWindow } from "../services/stickerEditing";
 import { useNodeParameters } from "./useNodeParameters";
@@ -57,7 +58,7 @@ export function useUnitActions() {
                 if (!(childExecConfig.propagation?.listenUpstream ?? true)) return;
                 if (!(childExecConfig.triggerMode?.upstreamDriven ?? true)) return;
 
-                console.log(`[Propagation] Triggering Art Node ${childId} via ${l.toPortId}`);
+                logger.debug(`[Propagation] Triggering Art Node ${childId} via ${l.toPortId}`);
                 const targetParam = l.toPortId || "input";
                 const val =
                     graphStore.unitParams[childId]?.[targetParam] ??
@@ -76,7 +77,7 @@ export function useUnitActions() {
                 });
 
                 if (inputValue) {
-                     console.log(`[Propagation] Updating Sticker ${childId} with new input`);
+                     logger.debug(`[Propagation] Updating Sticker ${childId} with new input`);
                      // Update Child Sticker
                      graphStore.actions.updateUnitData(childId, {
                          previewSrc: inputValue
@@ -84,8 +85,10 @@ export function useUnitActions() {
                          // 'previewSrc' acts as the layer above it.
                      });
 
-                     // RECURSIVE: Propagate further from this child
-                     setTimeout(() => propagateFromUnit(childId), 20);
+                     // RECURSIVE: Propagate further from this child. Defer to a
+                     // microtask so the updateUnitData write above has settled
+                     // before we read it, without a magic timer delay.
+                     queueMicrotask(() => propagateFromUnit(childId));
                 }
             }
         });
@@ -206,7 +209,7 @@ export function useUnitActions() {
              });
              syncService.updateBackendRects();
              syncService.performWorkflowSync();
-             setTimeout(() => propagateFromUnit(fromId), 20);
+             queueMicrotask(() => propagateFromUnit(fromId));
          }
     };
 

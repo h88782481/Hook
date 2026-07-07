@@ -32,7 +32,7 @@ interface CanvasUnitsProps {
 
 export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
     const STICKER_RESIZE_SYNC_DEBOUNCE_MS = 140;
-    let stickerResizeSyncTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let stickerResizeSyncTimer: number | null = null;
 
     const scheduleStickerResizeSync = () => {
         if (stickerResizeSyncTimer !== null) {

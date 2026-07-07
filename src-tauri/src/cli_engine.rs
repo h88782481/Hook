@@ -6,8 +6,35 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, SystemTime};
+
+// Age-based sweep of a temp directory. CLI arts write `{uuid}_in.png` /
+// `{uuid}_out.png` per run; the output file is consumed downstream (direct file
+// delivery) so it cannot be deleted immediately without a race. Instead we drop
+// files older than the cutoff on each run, mirroring the clipboard-cache sweep,
+// so the directory does not grow without bound.
+fn cleanup_stale_temp_files(dir: &Path, max_age: Duration) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let modified = match entry.metadata().and_then(|m| m.modified()) {
+            Ok(modified) => modified,
+            Err(_) => continue,
+        };
+        if now.duration_since(modified).unwrap_or_default() > max_age {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
 
 #[tauri::command]
 pub fn native_cli_execute(
@@ -232,6 +259,12 @@ impl CliEngine {
                 error: Some(format!("Temp dir error: {}", e)),
             };
         }
+        // Sweep stale artifacts from previous runs. Output files are consumed
+        // downstream (direct file delivery), so we cannot delete this run's files
+        // immediately; instead we age-out anything older than an hour on each run
+        // so the temp dir does not grow without bound.
+        cleanup_stale_temp_files(&temp_dir, Duration::from_secs(3600));
+
         let req_id = uuid::Uuid::new_v4();
         let input_path = temp_dir.join(format!("{}_in.png", req_id));
         let output_path = temp_dir.join(format!("{}_out.png", req_id)); // Pingo optimizes in place or to new?

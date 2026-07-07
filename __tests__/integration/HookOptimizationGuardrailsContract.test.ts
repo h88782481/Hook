@@ -15,11 +15,12 @@ const localBuildSource = readFileSync(
 
 describe("Hook optimization guardrails", () => {
     it("keeps the image import path and the Rust image dependency intact", () => {
-        expect(fileDropSource).toContain('endsWith(".png")');
-        expect(fileDropSource).toContain('endsWith(".jpg")');
-        expect(fileDropSource).toContain('endsWith(".jpeg")');
-        expect(fileDropSource).toContain('endsWith(".webp")');
-        expect(fileDropSource).toContain('endsWith(".bmp")');
+        expect(fileDropSource).toContain("SUPPORTED_IMAGE_EXTENSIONS");
+        expect(fileDropSource).toContain('".png"');
+        expect(fileDropSource).toContain('".jpg"');
+        expect(fileDropSource).toContain('".jpeg"');
+        expect(fileDropSource).toContain('".webp"');
+        expect(fileDropSource).toContain('".bmp"');
         expect(apiSource).toContain("readImageFromPath");
         expect(rustSource).toContain("fn read_image_from_path");
         expect(cargoToml).toContain('image = "0.25.9"');

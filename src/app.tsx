@@ -140,7 +140,9 @@ export default function App() {
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
       onLinkCreated: (sourceId) => {
           graphStore.actions.propagateStickerEditsFrom(sourceId);
-          setTimeout(() => propagateFromUnit(sourceId), 20);
+          // Defer propagation to a microtask so it runs after the synchronous
+          // store writes above settle, without the arbitrary 20ms delay.
+          queueMicrotask(() => propagateFromUnit(sourceId));
       },
   });
   const { handlePaste, handleCopy, handleSave, createImageUnit } = useClipboard(); // Assuming I implement Copy later if needed
@@ -563,7 +565,13 @@ export default function App() {
           }
 
           ids.forEach((id) => graphStore.actions.removeUnit(id));
-          ids.forEach((id) => uiActions.clearStickerHistory(id));
+          ids.forEach((id) => {
+              // Clear all per-unit UI state keyed by unit id so deleting a unit
+              // does not leak history/panel/notice entries for its dead id.
+              uiActions.clearStickerHistory(id);
+              uiActions.clearUnitUiState(id);
+              uiActions.dismissEnhancementNotice(id);
+          });
 
           selectionActions.clear();
           uiActions.hideStickerToolbar();

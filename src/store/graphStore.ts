@@ -52,7 +52,9 @@ const removeUnit = (id: string) => {
     setUnits((prev) => prev.filter((u) => u.id !== id));
     // Cascade delete links
     setLinks((prev) => prev.filter((l) => l.fromUnitId !== id && l.toUnitId !== id));
+    // Clear per-unit keyed state so it does not accumulate across add/remove churn.
     setUnitParams(id, undefined!);
+    setUnitExecConfig(id, undefined!);
 };
 
 const updateUnit = (id: string, updates: Partial<Unit>) => {

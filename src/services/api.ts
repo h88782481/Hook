@@ -3,6 +3,7 @@ import { HandshakeRequest, HandshakeResponse } from "./protocol";
 import { ShaderResponse } from "../components/ShaderRenderer";
 import { BootProfile, defaultBootProfile, normalizeBootProfile } from "./bootProfile";
 import type { FrozenStickerEntry } from "./stickerSnapshot";
+import type { SessionSticker, SessionLink, SessionGroup } from "../types/unit";
 import type {
     LongCaptureAxis,
     LongCaptureDirection,
@@ -50,9 +51,9 @@ export interface EnhancementCapabilities {
 }
 
 export interface SessionData {
-    stickers: any[];
-    links: any[];
-    groups?: any[];
+    stickers: SessionSticker[];
+    links: SessionLink[];
+    groups?: SessionGroup[];
     recycleBin?: FrozenStickerEntry[];
     referenceLibrary?: FrozenStickerEntry[];
 }
@@ -447,7 +448,9 @@ const loadBrowserPreviewSession = (): SessionData => {
     return { stickers: [], links: [], groups: [], recycleBin: [], referenceLibrary: [] };
 };
 
-const trimBrowserSessionValue = (value: unknown) => {
+const trimBrowserSessionValue = (
+    value: string | null | undefined,
+): string | null | undefined => {
     if (typeof value === "string" && value.startsWith("data:") && value.length > BROWSER_SESSION_DATA_URL_THRESHOLD) {
         return null;
     }
@@ -455,9 +458,9 @@ const trimBrowserSessionValue = (value: unknown) => {
 };
 
 const compactBrowserPreviewSession = (
-    stickers: any[],
-    links: any[],
-    groups: any[] = [],
+    stickers: SessionSticker[],
+    links: SessionLink[],
+    groups: SessionGroup[] = [],
     recycleBin: FrozenStickerEntry[] = [],
     referenceLibrary: FrozenStickerEntry[] = [],
 ): SessionData => ({
@@ -474,9 +477,9 @@ const compactBrowserPreviewSession = (
 });
 
 const saveBrowserPreviewSession = (
-    stickers: any[],
-    links: any[],
-    groups: any[] = [],
+    stickers: SessionSticker[],
+    links: SessionLink[],
+    groups: SessionGroup[] = [],
     recycleBin: FrozenStickerEntry[] = [],
     referenceLibrary: FrozenStickerEntry[] = [],
 ) => {

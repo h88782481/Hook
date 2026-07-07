@@ -612,15 +612,23 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         const unit = currentUnit();
         if (!unit) return;
 
-        const rasterized = await rasterizeStickerAnnotationsForUnit({
-            unitId: props.unitId,
-            currentUnit: unit,
-            scope,
-            selectedAnnotationId: selectedStickerAnnotationId(),
-            selectedAnnotationIds: selectedAnnotationIds(),
-        });
-        if (rasterized) {
-            uiActions.setSelectedStickerAnnotation(null);
+        // The rasterize pipeline loads images and reads canvases back via
+        // toDataURL, either of which can reject (decode failure, tainted canvas).
+        // This runs from a void-invoked click handler, so guard it here rather
+        // than relying solely on the global unhandledrejection net.
+        try {
+            const rasterized = await rasterizeStickerAnnotationsForUnit({
+                unitId: props.unitId,
+                currentUnit: unit,
+                scope,
+                selectedAnnotationId: selectedStickerAnnotationId(),
+                selectedAnnotationIds: selectedAnnotationIds(),
+            });
+            if (rasterized) {
+                uiActions.setSelectedStickerAnnotation(null);
+            }
+        } catch (error) {
+            console.error("[Hook] Failed to rasterize sticker annotations", error);
         }
     };
 

@@ -167,8 +167,11 @@ class SyncScheduler {
         } finally {
             this.isSyncing = false;
             if (this.hasPendingSync) {
-                // If changes happened during sync, trigger again immediately
-                this.trigger();
+                // Changes arrived during the sync. Re-run through the debounce
+                // window instead of an immediate re-entrant trigger(), so
+                // sustained writes (e.g. a live erase patching per frame) cannot
+                // spin full sync + saveSession cycles back-to-back with no gap.
+                this.schedule();
             }
         }
     }
