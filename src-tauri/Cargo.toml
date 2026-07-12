@@ -23,6 +23,12 @@ tauri-build = { version = "2", features = [] }
 [dev-dependencies]
 filetime = "0.2"
 
+[features]
+# Force-enables capture-path diagnostic logging (writes hook_runtime.log next to
+# the exe) without needing any environment variable. Build a diagnostic exe with
+# `cargo tauri build --no-bundle --features diag_capture`.
+diag_capture = []
+
 [dependencies]
 tauri = { version = "=2.11.2", features = ["protocol-asset", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }

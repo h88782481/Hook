@@ -26,4 +26,16 @@ describe("sticker edit mode switching contract", () => {
     expect(unitViewSource).toContain("const shouldBlockContainerMouseDown = () =>");
     expect(unitViewSource).toContain("allowContainerMouseDown()");
   });
+
+  it("blocks whole-sticker dragging while create tools or sticker-surface tools are active on the current edit target", () => {
+    const unitViewSource = readSource("src/components/UnitView.tsx");
+    const guardStart = unitViewSource.indexOf("const shouldBlockContainerMouseDown = () => {");
+    const guardEnd = unitViewSource.indexOf("const allowContainerMouseDown = () => !shouldBlockContainerMouseDown();", guardStart);
+    const guardSource = unitViewSource.slice(guardStart, guardEnd);
+
+    expect(guardStart).toBeGreaterThanOrEqual(0);
+    expect(guardEnd).toBeGreaterThan(guardStart);
+    expect(guardSource).toContain('stickerToolSettings.domain === "create"');
+    expect(guardSource).toContain('stickerToolSettings.activeCanvasTool !== "idle"');
+  });
 });

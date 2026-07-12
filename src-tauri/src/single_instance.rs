@@ -12,21 +12,15 @@ use windows::Win32::System::Threading::CreateMutexW;
 
 pub(crate) const HOOK_SINGLE_INSTANCE_NAME: &str = "Local\\ArtNexus.Hook.SingleInstance";
 
-/// Build the per-install single-instance mutex name.
+/// Build the app-wide single-instance mutex name.
 ///
-/// Appending a stable hash of the current executable path keeps separate
-/// installs (or a portable copy) from blocking each other, and raises the bar
-/// for a hostile process trying to pre-create a same-named mutex to deny
-/// startup: it must also know the exact install location.
+/// Hook installs a global low-level mouse hook and registers global hotkeys, so
+/// running multiple test builds side-by-side is unsafe: they race on the same
+/// pointer stream and can swallow each other's events. Keep the mutex global so
+/// only one Hook process can own those system-wide hooks at a time.
 #[cfg(target_os = "windows")]
 pub(crate) fn single_instance_name() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let exe = std::env::current_exe().unwrap_or_default();
-    let mut hasher = DefaultHasher::new();
-    exe.hash(&mut hasher);
-    format!("{}.{:016x}", HOOK_SINGLE_INSTANCE_NAME, hasher.finish())
+    HOOK_SINGLE_INSTANCE_NAME.to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -83,17 +77,17 @@ mod tests {
     use std::process;
 
     #[test]
-    fn single_instance_name_is_install_scoped_and_stable() {
+    fn single_instance_name_is_app_scoped_and_stable() {
         let first = single_instance_name();
         let second = single_instance_name();
-        assert_eq!(first, second, "name must be stable within one install");
-        assert!(
-            first.starts_with(HOOK_SINGLE_INSTANCE_NAME),
-            "name must keep the base prefix, got {first}"
-        );
         assert_ne!(
+            HOOK_SINGLE_INSTANCE_NAME, "",
+            "base prefix must not be empty"
+        );
+        assert_eq!(first, second, "name must be stable within one app");
+        assert_eq!(
             first, HOOK_SINGLE_INSTANCE_NAME,
-            "name must be scoped past the bare base prefix"
+            "Hook must use one app-wide mutex name so different release folders cannot run concurrent global hooks"
         );
     }
 

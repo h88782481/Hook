@@ -785,6 +785,8 @@ export function useSelection() {
         }
 
         // CAPTURE
+        const activeCaptureMode = captureMode();
+        const isLongCapture = isLongCaptureMode(activeCaptureMode);
         setIsSelecting(false);
         void api.setCaptureInputActive(false);
         void api.debugLogEvent("selection-end", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
@@ -797,8 +799,6 @@ export function useSelection() {
              logger.debug("[Selection] Executing Capture for rect:", rect);
             try {
                 await api.debugLogEvent("selection-capture-request", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
-                const activeCaptureMode = captureMode();
-                const isLongCapture = isLongCaptureMode(activeCaptureMode);
                 if (isLongCapture) {
                     await api.debugLogEvent("selection-long-capture-prepare");
                     await startAutoLongCaptureSession(rect, { x: startX, y: startY });
@@ -810,21 +810,26 @@ export function useSelection() {
                     Math.round(rect.x),
                     Math.round(rect.y),
                     Math.round(rect.w),
-                    Math.round(rect.h)
+                    Math.round(rect.h),
                 );
                 await addCaptureUnit(response, rect, { x: startX, y: startY }, activeCaptureMode);
-                resetSelection();
-                await api.setOverlayClickThrough(true);
-                await api.setMouseMonitorActive(true);
-                await syncService.updateBackendRects();
 
             } catch (e) {
                 console.error("Capture Failed", e);
                 await api.setCaptureInputActive(false);
                 await api.debugLogEvent("selection-capture-failure", e instanceof Error ? e.message : String(e));
-                resetSelection();
-                await api.setOverlayClickThrough(true);
-                if (graphStore.units.length > 0) {
+                if (isLongCapture) {
+                    resetSelection();
+                    await api.setOverlayClickThrough(true);
+                    if (graphStore.units.length > 0) {
+                        await api.setMouseMonitorActive(true);
+                        await syncService.updateBackendRects();
+                    }
+                }
+            } finally {
+                if (!isLongCapture) {
+                    resetSelection();
+                    await api.setOverlayClickThrough(true);
                     await api.setMouseMonitorActive(true);
                     await syncService.updateBackendRects();
                 }

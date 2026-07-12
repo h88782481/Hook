@@ -852,7 +852,12 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     };
 
     const captureHostPointer = (pointerId: number) => {
-        hostRef?.setPointerCapture(pointerId);
+        try {
+            hostRef?.setPointerCapture(pointerId);
+        } catch {
+            // Synthetic overlay-routed pointer events do not always own an OS
+            // pointer capture. We still track the logical active pointer locally.
+        }
         setActivePointerId(pointerId);
     };
 

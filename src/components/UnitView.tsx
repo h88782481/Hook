@@ -102,7 +102,10 @@ export const UnitView: Component<Props> = (props) => {
   const shouldBlockContainerMouseDown = () => {
       if (props.unit.type !== "sticker") return false;
       if (activeStickerEditTargetId() !== props.unit.id) return false;
-      if (stickerToolSettings.domain !== "existing") return false;
+      if (stickerToolSettings.domain !== "existing") {
+          if (stickerToolSettings.domain === "create") return true;
+          return stickerToolSettings.activeCanvasTool !== "idle";
+      }
       if (stickerToolSettings.transformMode !== "select") return true;
       return hasSelectedExistingAnnotations();
   };
@@ -634,7 +637,6 @@ export const UnitView: Component<Props> = (props) => {
       data-unit-id={props.unit.id} // NEW: For global hit-testing (Link Node)
       tabIndex={-1}
       onMouseDown={(event) => {
-        event.currentTarget.focus();
         if (allowContainerMouseDown()) {
             props.onMouseDown(event);
         }
@@ -714,7 +716,6 @@ export const UnitView: Component<Props> = (props) => {
                 `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${currentUnit.data.minified ?? false} currentOpacity=${currentOp.toFixed(3)} nextOpacity=${newOp.toFixed(3)} deltaY=${e.deltaY}`,
             );
             props.onOpacityChange(newOp);
-            e.currentTarget.focus();
         }
       }}
     >

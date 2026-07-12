@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
+const selectionSource = readFileSync(resolve(process.cwd(), "src/hooks/useSelection.ts"), "utf8");
+const canvasSelectionSource = readFileSync(resolve(process.cwd(), "src/components/CanvasSelection.tsx"), "utf8");
+const unitViewSource = readFileSync(resolve(process.cwd(), "src/components/UnitView.tsx"), "utf8");
 
 const sliceFunctionBlock = (startMarker: string, endMarker: string) => {
     const start = rustSource.indexOf(startMarker);
@@ -27,5 +30,20 @@ describe("capture focus preservation contract", () => {
 
         expect(block).toContain("show_overlay_host_impl(window, true);");
         expect(block).not.toContain("window.set_focus()");
+    });
+
+    it("keeps ordinary region capture from hiding the Hook overlay or flashing a visible composition overlay", () => {
+        expect(selectionSource).not.toContain("await api.hideToTray()");
+        expect(selectionSource).not.toContain("await api.showOverlayHost(true)");
+        expect(selectionSource).not.toContain("CAPTURE_OVERLAY_HIDE_SETTLE_MS");
+        expect(selectionSource).not.toContain("setHoldCaptureCompositionOverlay(true)");
+        expect(selectionSource).not.toContain("compositionOverlayAlpha: CAPTURE_COMPOSITION_OVERLAY_ALPHA");
+        expect(canvasSelectionSource).not.toContain("holdCaptureCompositionOverlay");
+        expect(canvasSelectionSource).not.toContain("rgba(0, 0, 0, 0.01)");
+    });
+
+    it("does not focus sticker DOM nodes during ordinary sticker mouse interactions", () => {
+        expect(unitViewSource).not.toContain("event.currentTarget.focus();");
+        expect(unitViewSource).not.toContain("e.currentTarget.focus();");
     });
 });

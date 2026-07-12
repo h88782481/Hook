@@ -49,4 +49,35 @@ describe("Hook legacy Escape delete contract", () => {
     expect(escapeBlock).toContain('window.emit("trigger-escape"');
     expect(escapeBlock).toContain("append_runtime_log_line(\"rdev_escape_triggered\")");
   });
+
+  it("guards global Delete and Backspace so stale selections are not deleted while the user is typing in another app", () => {
+    const rustSource = readSource("src-tauri/src/lib.rs");
+    const deleteStart = rustSource.indexOf("rdev::EventType::KeyPress(rdev::Key::Delete)");
+    const deleteEnd = rustSource.indexOf("rdev::EventType::KeyPress(rdev::Key::Return)", deleteStart);
+    const deleteBlock = rustSource.slice(deleteStart, deleteEnd);
+
+    expect(deleteStart).toBeGreaterThan(-1);
+    expect(deleteEnd).toBeGreaterThan(deleteStart);
+    expect(deleteBlock).toContain("rdev::EventType::KeyPress(rdev::Key::Backspace)");
+    expect(deleteBlock).toContain('window.emit("trigger-delete"');
+    expect(deleteBlock).toContain("append_runtime_log_line(\"rdev_delete_triggered\")");
+
+    const appSource = readSource("src/app.tsx");
+    const dragStart = appSource.indexOf("const onStartDragUnit = (e: MouseEvent, id: string) =>");
+    const dragEnd = appSource.indexOf("const resolveUnitImage", dragStart);
+    const dragBlock = appSource.slice(dragStart, dragEnd);
+    const deleteListenerStart = appSource.indexOf('listen("trigger-delete"');
+    const deleteListenerEnd = appSource.indexOf("});", deleteListenerStart);
+    const deleteListenerBlock = appSource.slice(deleteListenerStart, deleteListenerEnd);
+
+    expect(appSource).toContain('listen("trigger-delete"');
+    expect(appSource).toContain("STICKER_GLOBAL_DELETE_ARM_WINDOW_MS");
+    expect(appSource).toContain("let lastStickerKeyboardDeleteArmAt = 0");
+    expect(appSource).toContain("const armStickerKeyboardDelete = () =>");
+    expect(dragBlock).toContain("armStickerKeyboardDelete();");
+    expect(deleteListenerBlock).toContain("Date.now() - lastStickerKeyboardDeleteArmAt");
+    expect(deleteListenerBlock).toContain("STICKER_GLOBAL_DELETE_ARM_WINDOW_MS");
+    expect(deleteListenerBlock).toContain("trigger-delete-ignored-stale");
+    expect(deleteListenerBlock).toContain("deleteSelectedUnitOrAnnotation();");
+  });
 });

@@ -7,11 +7,11 @@ const annotationLayerSource = readFileSync(resolve(process.cwd(), "src/component
 const shortcutsSource = readFileSync(resolve(process.cwd(), "src/hooks/useShortcuts.ts"), "utf8");
 
 describe("Hook sticker wheel resize contract", () => {
-    it("keeps the minified ctrl+wheel guard, but re-focuses the sticker container after alt-wheel opacity edits so the next ctrl+wheel still works in normal mode", () => {
+    it("keeps the minified ctrl+wheel guard without focusing the sticker container during wheel opacity edits", () => {
         expect(unitViewSource).toContain("if (e.ctrlKey) {");
         expect(unitViewSource).toContain("if (isMinified()) return;");
-        expect(unitViewSource).toContain("tabIndex={-1}");
-        expect(unitViewSource).toContain("e.currentTarget.focus();");
+        expect(unitViewSource).not.toContain("e.currentTarget.focus();");
+        expect(unitViewSource).not.toContain("event.currentTarget.focus();");
         expect(unitViewSource).toContain("const scaleFactor = 1 - e.deltaY * 0.001;");
         expect(unitViewSource).toContain("props.onOpacityChange(newOp);");
     });

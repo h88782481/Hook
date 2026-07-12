@@ -14,6 +14,51 @@ pub struct CaptureResponse {
     pub file_url: Option<String>,
 }
 
+fn remove_black_overlay_alpha(rgb_image: &mut image::RgbImage, alpha: Option<f32>) -> bool {
+    let Some(alpha) = alpha else {
+        return false;
+    };
+    if !alpha.is_finite() {
+        return false;
+    }
+
+    let alpha = alpha.clamp(0.0, 0.85);
+    if alpha <= 0.0 {
+        return false;
+    }
+
+    let multiplier = 1.0 / (1.0 - alpha);
+    for pixel in rgb_image.pixels_mut() {
+        for channel in &mut pixel.0 {
+            *channel = ((*channel as f32) * multiplier).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn black_composition_overlay_compensation_restores_pixel_brightness() {
+        let alpha = 0.18;
+        let original = [82u8, 164u8, 205u8];
+        let dimmed = original.map(|channel| ((channel as f32) * (1.0 - alpha)).round() as u8);
+        let mut image = image::RgbImage::from_pixel(1, 1, image::Rgb(dimmed));
+
+        remove_black_overlay_alpha(&mut image, Some(alpha));
+
+        let restored = image.get_pixel(0, 0).0;
+        for (actual, expected) in restored.iter().zip(original.iter()) {
+            assert!(
+                (*actual as i16 - *expected as i16).abs() <= 1,
+                "expected restored channel {actual} to be within 1 of {expected}"
+            );
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn capture_region(
     _window: Window,
@@ -21,21 +66,27 @@ pub async fn capture_region(
     y: i32,
     w: u32,
     h: u32,
+    composition_overlay_alpha: Option<f32>,
 ) -> Result<CaptureResponse, String> {
     crate::append_runtime_log_line(&format!(
-        "capture_region request :: x={} y={} w={} h={}",
-        x, y, w, h
+        "capture_region request :: x={} y={} w={} h={} composition_overlay_alpha={:?}",
+        x, y, w, h, composition_overlay_alpha
     ));
     // 1. Capture Region with proper DPI Scaling via Scap
     // Note: We pass logical coords (x,y,w,h) as received from frontend.
     // The backend `capture_area` handles conversion to physical pixels.
-    let rgb_image = match screenshot::capture_area(x, y, w, h) {
+    let mut rgb_image = match screenshot::capture_area(x, y, w, h) {
         Ok(image) => image,
         Err(error) => {
             crate::append_runtime_log_line(&format!("capture_region failure :: {}", error));
             return Err(error.to_string());
         }
     };
+    if remove_black_overlay_alpha(&mut rgb_image, composition_overlay_alpha) {
+        crate::append_runtime_log_line(
+            "capture_region overlay_compensation :: removed_black_overlay",
+        );
+    }
 
     let width = rgb_image.width();
     let height = rgb_image.height();

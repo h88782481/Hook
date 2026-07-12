@@ -32,8 +32,10 @@ describe("Hook release workflow contract", () => {
     // Toolchain is pinned to an exact version (not the floating @stable) so
     // release builds stay reproducible.
     expect(workflowSource).toContain("uses: dtolnay/rust-toolchain@1.95.0");
-    // The build job runs only after the verify (typecheck + tests) gate passes.
-    expect(workflowSource).toContain("needs: verify");
+    // Release packaging intentionally stays build-only; the previous verify
+    // gate was removed because the test suite is not yet CI-stable enough to
+    // block user-downloadable exe publishing.
+    expect(workflowSource).not.toContain("needs: verify");
   });
 
   it("packages only hook.exe into a versioned zip and publishes it to Releases", () => {

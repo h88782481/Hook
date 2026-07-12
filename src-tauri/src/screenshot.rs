@@ -115,9 +115,44 @@ fn shared_d3d_device() -> anyhow::Result<&'static ID3D11Device> {
         .ok_or_else(|| anyhow!("D3D11 device unavailable"))
 }
 
+// Runtime circuit breaker for the WGC fast path. Repeated WGC start/capture
+// failures can leave frame-pool/session cleanup lagging behind the next retry;
+// enough churn can exhaust GPU/system resources and make every later
+// StartCapture return 0x800705AA (ERROR_NO_SYSTEM_RESOURCES). If WGC keeps
+// failing on this machine, stop retrying it for the rest of the session and
+// fall back to GDI, so long capture does not spend hundreds of calls thrashing
+// the same failing path.
+#[cfg(target_os = "windows")]
+static WGC_DISABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static WGC_CONSECUTIVE_FAILURES: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+#[cfg(target_os = "windows")]
+const WGC_MAX_CONSECUTIVE_FAILURES: u32 = 3;
+
+#[cfg(target_os = "windows")]
+fn wgc_note_success() {
+    WGC_CONSECUTIVE_FAILURES.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_note_failure() {
+    let prior = WGC_CONSECUTIVE_FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if prior + 1 >= WGC_MAX_CONSECUTIVE_FAILURES {
+        WGC_DISABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::append_runtime_log_line(
+            "capture_area wgc_disabled :: reason=too_many_consecutive_failures",
+        );
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn windows_fast_path_available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
+
+    if WGC_DISABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        return false;
+    }
 
     *AVAILABLE.get_or_init(|| match scap_direct3d::is_supported() {
         Ok(true) => shared_d3d_device().is_ok(),
@@ -144,6 +179,126 @@ fn frame_to_rgb(frame: &Frame) -> anyhow::Result<RgbImage> {
         order,
     )
     .ok_or_else(|| anyhow!("Failed to create RgbImage"))
+}
+
+// Heuristic: is this frame almost entirely black? WGC's first frame(s) after
+// StartCapture are commonly all-black until the compositor presents live
+// content, so we use this to skip them and wait for a real frame. Samples a
+// sparse grid (not every pixel) for speed. "Black" = all channels below a small
+// threshold; we treat a frame as black if >=99% of sampled pixels are black.
+#[cfg(target_os = "windows")]
+fn frame_is_mostly_black(img: &RgbImage) -> bool {
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 {
+        return true;
+    }
+    // Sample up to ~64x64 points across the image.
+    let step_x = (w / 64).max(1);
+    let step_y = (h / 64).max(1);
+    let mut sampled: u64 = 0;
+    let mut black: u64 = 0;
+    let mut y = 0;
+    while y < h {
+        let mut x = 0;
+        while x < w {
+            let p = img.get_pixel(x, y).0;
+            sampled += 1;
+            if p[0] <= 8 && p[1] <= 8 && p[2] <= 8 {
+                black += 1;
+            }
+            x += step_x;
+        }
+        y += step_y;
+    }
+    if sampled == 0 {
+        return true;
+    }
+    // >=99% black samples: treat as a black frame.
+    black * 100 >= sampled * 99
+}
+
+#[cfg(target_os = "windows")]
+fn frame_has_suspicious_black_video_hole(img: &RgbImage) -> bool {
+    let (w, h) = (img.width(), img.height());
+    if w < 80 || h < 80 {
+        return false;
+    }
+
+    // Video overlay failures usually look like: a large black playback area in
+    // the middle, while normal web UI / subtitles / controls around it still
+    // render. Sample the central area and ignore the bottom control strip.
+    let left = w / 8;
+    let right = w - left;
+    let top = h / 8;
+    let bottom = h * 3 / 4;
+    let step_x = ((right - left) / 80).max(1);
+    let step_y = ((bottom - top) / 80).max(1);
+    let mut sampled: u64 = 0;
+    let mut black: u64 = 0;
+
+    let mut y = top;
+    while y < bottom {
+        let mut x = left;
+        while x < right {
+            let p = img.get_pixel(x, y).0;
+            sampled += 1;
+            if p[0] <= 10 && p[1] <= 10 && p[2] <= 10 {
+                black += 1;
+            }
+            x += step_x;
+        }
+        y += step_y;
+    }
+
+    sampled > 0 && black * 100 >= sampled * 88
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_cached_frame_is_usable(img: &RgbImage, crop_rect: Option<&D3D11_BOX>) -> bool {
+    if frame_is_mostly_black(img) {
+        return false;
+    }
+
+    let has_video_hole = crop_rect
+        .map(|crop| frame_has_suspicious_black_video_hole(&crop_rgb(img, crop)))
+        .unwrap_or_else(|| frame_has_suspicious_black_video_hole(img));
+
+    !has_video_hole
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_frame_wait_timeout(has_usable_cached_frame: bool) -> std::time::Duration {
+    if has_usable_cached_frame {
+        // When a persistent capturer already has a usable frame, wait only
+        // briefly for a fresher frame. Static screens may not produce a new WGC
+        // frame, and waiting for the full initial timeout would make normal
+        // captures feel slow.
+        std::time::Duration::from_millis(120)
+    } else {
+        // First capture after starting WGC can need a longer warm-up to skip
+        // transient black compositor frames.
+        std::time::Duration::from_millis(1200)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_last_usable_fallback_max_age() -> std::time::Duration {
+    std::time::Duration::from_secs(12)
+}
+
+#[cfg(target_os = "windows")]
+fn select_wgc_timeout_fallback_frame(
+    latest_suspicious_frame: Option<RgbImage>,
+    recent_usable_backup: Option<(RgbImage, std::time::Instant)>,
+) -> Option<RgbImage> {
+    match recent_usable_backup {
+        Some((image, captured_at))
+            if captured_at.elapsed() <= wgc_last_usable_fallback_max_age() =>
+        {
+            Some(image)
+        }
+        _ => latest_suspicious_frame,
+    }
 }
 
 // Simplified capture settings just for Full Screen or Area
@@ -281,11 +436,17 @@ fn capture_area_gdi(src_x: i32, src_y: i32, width: i32, height: i32) -> anyhow::
 
 #[cfg(target_os = "windows")]
 fn capture_backend_mode() -> String {
+    // Default to "auto": try the Windows Graphics Capture (Direct3D) fast path
+    // first, then fall back to GDI. GDI's BitBlt cannot capture hardware-overlay
+    // / GPU-composited video (players, hardware-accelerated browsers) - it reads
+    // back the black color-key, which is why video came out black. WGC captures
+    // the composited output like other screenshot tools do. Set
+    // HOOK_CAPTURE_BACKEND=gdi to force the legacy path if a driver misbehaves.
     std::env::var("HOOK_CAPTURE_BACKEND")
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "gdi".to_string())
+        .unwrap_or_else(|| "auto".to_string())
 }
 
 fn capture_area_verbose_logging_enabled_for(value: Option<&str>) -> bool {
@@ -296,6 +457,10 @@ fn capture_area_verbose_logging_enabled_for(value: Option<&str>) -> bool {
 }
 
 fn capture_area_verbose_logging_enabled() -> bool {
+    if cfg!(feature = "diag_capture") {
+        return true;
+    }
+
     capture_area_verbose_logging_enabled_for(
         std::env::var("HOOK_CAPTURE_AREA_VERBOSE_LOG")
             .ok()
@@ -303,57 +468,295 @@ fn capture_area_verbose_logging_enabled() -> bool {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Plan A: a persistent, full-screen Windows Graphics Capture (WGC) session that
+// is created ONCE and reused for every capture_area call, instead of building a
+// fresh Capturer + capture session + frame pool per call.
+//
+// Why: WGC capture sessions and frame pools are limited system resources. The
+// old code created and destroyed a Capturer on every call; in the long-capture
+// loop that is hundreds of create/start/stop cycles in quick succession, and
+// the OS could lag behind reclaiming those sessions. StartCapture could then
+// begin returning 0x800705AA (ERROR_NO_SYSTEM_RESOURCES) for every call, so the
+// fast path fell back to GDI - which cannot read hardware-overlay video,
+// producing black video captures.
+//
+// The persistent capturer keeps ONE session alive for the whole process. It
+// captures the full primary display and continuously writes the latest frame
+// into a shared slot; each capture_area call just reads the newest non-black
+// frame and crops it on the CPU. The COM objects are not Send, so the capturer
+// lives in a thread_local and is reused per capture thread.
+// ---------------------------------------------------------------------------
+#[cfg(target_os = "windows")]
+struct PersistentCapturer {
+    // Held only to keep the WGC session alive for the lifetime of this struct;
+    // dropping the Capturer calls stop() and ends capture. Never read directly.
+    #[allow(dead_code)]
+    capturer: Capturer,
+    latest: std::sync::Arc<std::sync::Mutex<Option<RgbImage>>>,
+    frame_seq: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    last_usable: Option<(RgbImage, std::time::Instant)>,
+}
+
+#[cfg(target_os = "windows")]
+thread_local! {
+    static PERSISTENT_CAPTURER: std::cell::RefCell<Option<PersistentCapturer>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "windows")]
+fn build_persistent_capturer(display_id: &scap_targets::DisplayId) -> Option<PersistentCapturer> {
+    let diag = capture_area_verbose_logging_enabled();
+
+    let display = match scap_targets::Display::from_id(display_id) {
+        Some(d) => d,
+        None => {
+            if diag {
+                crate::append_runtime_log_line("capture_area fast_fail :: reason=display_from_id");
+            }
+            return None;
+        }
+    };
+    let item = match display.raw_handle().try_as_capture_item() {
+        Ok(i) => i,
+        Err(e) => {
+            if diag {
+                crate::append_runtime_log_line(&format!(
+                    "capture_area fast_fail :: reason=capture_item err={e:?}"
+                ));
+            }
+            return None;
+        }
+    };
+
+    // Full-screen capture: no crop on the WGC side. We crop on the CPU per call
+    // so the single persistent session can serve every rect.
+    let settings = windows_capture_settings(None);
+    let device = shared_d3d_device().ok().cloned();
+
+    let latest: std::sync::Arc<std::sync::Mutex<Option<RgbImage>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+    let frame_seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    let cb_latest = latest.clone();
+    let cb_seq = frame_seq.clone();
+    let mut capturer = match Capturer::new(
+        item,
+        settings,
+        move |frame| {
+            if let Ok(img) = frame_to_rgb(&frame) {
+                if let Ok(mut slot) = cb_latest.lock() {
+                    *slot = Some(img);
+                    cb_seq.fetch_add(1, std::sync::atomic::Ordering::Release);
+                }
+            }
+            Ok(())
+        },
+        || Ok(()),
+        device,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            if diag {
+                crate::append_runtime_log_line(&format!(
+                    "capture_area fast_fail :: reason=capturer_new err={e:?}"
+                ));
+            }
+            return None;
+        }
+    };
+
+    if let Err(e) = capturer.start() {
+        if diag {
+            crate::append_runtime_log_line(&format!(
+                "capture_area fast_fail :: reason=capturer_start err={e:?}"
+            ));
+        }
+        // Capturer's Drop calls stop() to release the session + frame pool.
+        return None;
+    }
+
+    if diag {
+        crate::append_runtime_log_line("capture_area wgc_persistent_started");
+    }
+
+    Some(PersistentCapturer {
+        capturer,
+        latest,
+        frame_seq,
+        last_usable: None,
+    })
+}
+
+/// Crop a full-screen RGB frame to the requested physical rect. Clamps to the
+/// image bounds so an off-by-one scale never panics.
+#[cfg(target_os = "windows")]
+fn crop_rgb(full: &RgbImage, crop: &D3D11_BOX) -> RgbImage {
+    let img_w = full.width();
+    let img_h = full.height();
+    let left = crop.left.min(img_w.saturating_sub(1));
+    let top = crop.top.min(img_h.saturating_sub(1));
+    let right = crop.right.min(img_w).max(left + 1);
+    let bottom = crop.bottom.min(img_h).max(top + 1);
+    let w = right - left;
+    let h = bottom - top;
+
+    let mut out = RgbImage::new(w, h);
+    for row in 0..h {
+        for col in 0..w {
+            let px = full.get_pixel(left + col, top + row);
+            out.put_pixel(col, row, *px);
+        }
+    }
+    out
+}
+
 #[cfg(target_os = "windows")]
 fn try_fast_capture(
     display_id: scap_targets::DisplayId,
     crop_rect: Option<D3D11_BOX>,
 ) -> Option<RgbImage> {
-    use std::sync::mpsc::sync_channel;
     use std::time::Duration;
 
+    let diag = capture_area_verbose_logging_enabled();
+
     if !windows_fast_path_available() {
+        if diag {
+            crate::append_runtime_log_line(
+                "capture_area fast_fail :: reason=fast_path_unavailable",
+            );
+        }
         return None;
     }
 
     let start = std::time::Instant::now();
 
-    // Get Capture Item from Display
-    let display = scap_targets::Display::from_id(&display_id)?;
-    let item = display.raw_handle().try_as_capture_item().ok()?;
-
-    let settings = windows_capture_settings(crop_rect);
-    let device = shared_d3d_device().ok().cloned();
-
-    let (tx, rx) = sync_channel(1);
-
-    let mut capturer = Capturer::new(
-        item,
-        settings,
-        {
-            move |frame| {
-                let res = frame_to_rgb(&frame);
-                let _ = tx.try_send(res); // Only need first frame
-                Ok(())
+    PERSISTENT_CAPTURER.with(|cell| {
+        // Lazily create (or recreate after a prior failure) the persistent
+        // capturer. Reused across every call on this thread; this is what
+        // stops the per-frame create/start/stop churn that exhausted WGC.
+        if cell.borrow().is_none() {
+            let built = build_persistent_capturer(&display_id);
+            if built.is_none() {
+                return None;
             }
-        },
-        || Ok(()),
-        device,
-    )
-    .ok()?;
+            *cell.borrow_mut() = built;
+        }
 
-    capturer.start().ok()?;
+        let mut guard = cell.borrow_mut();
+        let pc = guard.as_mut()?;
 
-    let res = rx.recv_timeout(Duration::from_millis(500));
-    let _ = capturer.stop();
+        // Wait for a fresh, non-black frame. WGC's very first frames after a
+        // session starts are frequently black until the DWM composites live
+        // hardware-overlay video, so we wait for either a non-black frame or a
+        // deadline and take the newest available.
+        let cached_frame = pc.latest.lock().ok().and_then(|slot| slot.clone());
+        let cached_usable_frame = cached_frame
+            .as_ref()
+            .filter(|img| wgc_cached_frame_is_usable(img, crop_rect.as_ref()))
+            .cloned();
+        let last_usable_backup = pc
+            .last_usable
+            .as_ref()
+            .filter(|(img, captured_at)| {
+                captured_at.elapsed() <= wgc_last_usable_fallback_max_age()
+                    && wgc_cached_frame_is_usable(img, crop_rect.as_ref())
+            })
+            .map(|(img, captured_at)| (img.clone(), *captured_at));
+        let usable_backup = cached_usable_frame
+            .map(|img| (img, std::time::Instant::now()))
+            .or(last_usable_backup);
+        let has_usable_cached_frame = usable_backup.is_some();
+        let mut seq_seen = pc.frame_seq.load(std::sync::atomic::Ordering::Acquire);
+        let deadline = std::time::Instant::now() + wgc_frame_wait_timeout(has_usable_cached_frame);
+        let mut frames_seen = 0u32;
+        let mut black_frames = 0u32;
+        let mut chosen: Option<RgbImage> = None;
+        let mut latest_black_frame: Option<RgbImage> = None;
 
-    let image = res.ok()?.ok()?;
-    if capture_area_verbose_logging_enabled() {
-        crate::append_runtime_log_line(&format!(
-            "capture_area fast_elapsed :: elapsed_ms={}",
-            start.elapsed().as_millis()
-        ));
-    }
-    Some(image)
+        loop {
+            let seq_now = pc.frame_seq.load(std::sync::atomic::Ordering::Acquire);
+            if seq_now != seq_seen {
+                // Only process genuinely new frames so a lingering black frame
+                // is not recounted every iteration.
+                seq_seen = seq_now;
+                if let Ok(slot) = pc.latest.lock() {
+                    if let Some(ref img) = *slot {
+                        frames_seen += 1;
+                        let candidate_has_video_hole = crop_rect
+                            .as_ref()
+                            .map(|crop| frame_has_suspicious_black_video_hole(&crop_rgb(img, crop)))
+                            .unwrap_or_else(|| frame_has_suspicious_black_video_hole(img));
+
+                        if frame_is_mostly_black(img) || candidate_has_video_hole {
+                            black_frames += 1;
+                            latest_black_frame = Some(img.clone());
+                        } else {
+                            pc.last_usable = Some((img.clone(), std::time::Instant::now()));
+                            chosen = Some(img.clone());
+                            break;
+                        }
+                    }
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(8));
+        }
+
+        // Prefer a fresh non-black frame. If WGC only produces suspicious
+        // hardware-video black frames during this call, reuse a recent known
+        // good full-screen frame before accepting the black frame. This avoids
+        // the observed intermittent pattern where the video plane is black but
+        // page UI / subtitles / controls are still visible.
+        if chosen.is_none() {
+            let backup_age_ms = usable_backup
+                .as_ref()
+                .map(|(_, captured_at)| captured_at.elapsed().as_millis());
+            chosen = select_wgc_timeout_fallback_frame(latest_black_frame, usable_backup);
+            if diag || backup_age_ms.is_some() {
+                crate::append_runtime_log_line(&format!(
+                    "capture_area wgc_timeout_fallback :: used_recent_backup={} backup_age_ms={} frames_seen={} suspicious_frames={}",
+                    backup_age_ms.is_some() && chosen.is_some(),
+                    backup_age_ms
+                        .map(|age| age.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                    frames_seen,
+                    black_frames
+                ));
+            }
+        }
+
+        let full = match chosen {
+            Some(img) => img,
+            None => {
+                if diag {
+                    crate::append_runtime_log_line(
+                        "capture_area fast_fail :: reason=no_frame_persistent",
+                    );
+                }
+                // Drop the capturer so the next call rebuilds a clean session.
+                *guard = None;
+                return None;
+            }
+        };
+
+        let image = match crop_rect {
+            Some(ref crop) => crop_rgb(&full, crop),
+            None => full,
+        };
+
+        if diag {
+            crate::append_runtime_log_line(&format!(
+                "capture_area fast_elapsed :: elapsed_ms={} frames_seen={frames_seen} black_frames={black_frames} out={}x{}",
+                start.elapsed().as_millis(),
+                image.width(),
+                image.height()
+            ));
+        }
+        Some(image)
+    })
 }
 
 // --- Public API ---
@@ -438,8 +841,15 @@ pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> 
         let crop_h = d3d_box.bottom - d3d_box.top;
 
         let backend_mode = capture_backend_mode();
+        if verbose_log {
+            crate::append_runtime_log_line(&format!(
+                "capture_area dispatch :: mode={}",
+                backend_mode
+            ));
+        }
         if backend_mode == "auto" {
             if let Some(image) = try_fast_capture(display_id.clone(), Some(d3d_box)) {
+                wgc_note_success();
                 if verbose_log {
                     crate::append_runtime_log_line(&format!(
                         "capture_area fast_success :: width={} height={}",
@@ -449,8 +859,11 @@ pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> 
                 }
                 return Ok(image);
             }
+            wgc_note_failure();
             if verbose_log {
-                crate::append_runtime_log_line("capture_area fast_path_none");
+                crate::append_runtime_log_line(
+                    "capture_area fast_path_none :: falling_back_to_gdi",
+                );
             }
         } else {
             if verbose_log {
@@ -490,5 +903,102 @@ mod tests {
         assert!(capture_area_verbose_logging_enabled_for(Some("1")));
         assert!(capture_area_verbose_logging_enabled_for(Some("true")));
         assert!(capture_area_verbose_logging_enabled_for(Some("yes")));
+    }
+
+    #[test]
+    #[cfg(not(feature = "diag_capture"))]
+    fn capture_area_verbose_logging_is_not_forced_in_normal_builds() {
+        std::env::remove_var("HOOK_CAPTURE_AREA_VERBOSE_LOG");
+
+        assert!(!capture_area_verbose_logging_enabled());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn wgc_uses_short_refresh_timeout_when_a_usable_cached_frame_exists() {
+        assert!(
+            wgc_frame_wait_timeout(true) < wgc_frame_wait_timeout(false),
+            "cached WGC frames should not make static-screen captures wait for the full initial frame timeout"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn detects_black_video_hole_with_bright_controls_as_suspicious() {
+        let mut image = RgbImage::new(320, 220);
+        for y in 0..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([0, 0, 0]));
+            }
+        }
+        for y in 190..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([238, 238, 238]));
+            }
+        }
+        for y in 10..30 {
+            for x in 220..310 {
+                image.put_pixel(x, y, image::Rgb([230, 230, 230]));
+            }
+        }
+
+        assert!(frame_has_suspicious_black_video_hole(&image));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn detects_black_video_hole_even_when_some_overlay_text_reduces_black_ratio() {
+        let mut image = RgbImage::new(320, 220);
+        for y in 0..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([0, 0, 0]));
+            }
+        }
+        // Bilibili-style page/player text can reduce the sampled black ratio to
+        // about 90%, while the video plane is still clearly a black hole.
+        for y in 30..45 {
+            for x in 40..280 {
+                image.put_pixel(x, y, image::Rgb([210, 210, 210]));
+            }
+        }
+        for y in 190..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([238, 238, 238]));
+            }
+        }
+
+        assert!(frame_has_suspicious_black_video_hole(&image));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn suspicious_black_video_hole_is_not_a_usable_cached_wgc_frame() {
+        let mut image = RgbImage::new(320, 220);
+        for y in 0..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([0, 0, 0]));
+            }
+        }
+        for y in 190..220 {
+            for x in 0..320 {
+                image.put_pixel(x, y, image::Rgb([238, 238, 238]));
+            }
+        }
+
+        assert!(!wgc_cached_frame_is_usable(&image, None));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn wgc_timeout_fallback_prefers_recent_usable_backup_over_suspicious_frame() {
+        let suspicious = RgbImage::from_pixel(2, 1, image::Rgb([0, 0, 0]));
+        let recent_usable = RgbImage::from_pixel(2, 1, image::Rgb([20, 80, 160]));
+        let selected = select_wgc_timeout_fallback_frame(
+            Some(suspicious),
+            Some((recent_usable, std::time::Instant::now())),
+        )
+        .expect("recent usable backup should be selected");
+
+        assert_eq!(selected.get_pixel(0, 0).0, [20, 80, 160]);
     }
 }

@@ -23,20 +23,33 @@ describe("capture mode readiness", () => {
     expect(longCaptureBlock).toContain("show_overlay_host_impl(window, true);");
   });
 
-  it("arms capture input only after the frontend has disabled hit-testing and made the overlay interactive", () => {
+  it("arms backend capture input before restoring overlay click-through for native-routed selection input", () => {
     const appSource = readSource("src/app.tsx");
     const beginStart = appSource.indexOf("const beginCaptureSelection =");
     const beginEnd = appSource.indexOf("// Initialization", beginStart);
     const beginBlock = appSource.slice(beginStart, beginEnd);
 
     const monitorOffIndex = beginBlock.indexOf("await api.setMouseMonitorActive(false);");
-    const overlayInteractiveIndex = beginBlock.indexOf("await api.setOverlayClickThrough(false);");
     const captureInputIndex = beginBlock.indexOf("await api.setCaptureInputActive(true);");
+    const overlayClickThroughIndex = beginBlock.indexOf("await api.setOverlayClickThrough(true);");
 
     expect(beginStart).toBeGreaterThan(-1);
     expect(beginEnd).toBeGreaterThan(beginStart);
     expect(monitorOffIndex).toBeGreaterThan(-1);
-    expect(overlayInteractiveIndex).toBeGreaterThan(monitorOffIndex);
-    expect(captureInputIndex).toBeGreaterThan(overlayInteractiveIndex);
+    expect(captureInputIndex).toBeGreaterThan(monitorOffIndex);
+    expect(overlayClickThroughIndex).toBeGreaterThan(captureInputIndex);
+  });
+
+  it("does not make the overlay interactive as a side effect of disabling sticker hit-test monitoring", () => {
+    const rustSource = readSource("src-tauri/src/lib.rs");
+    const monitorStart = rustSource.indexOf("fn set_mouse_monitor_active");
+    const monitorEnd = rustSource.indexOf("#[tauri::command]", monitorStart + 1);
+    const monitorBlock = rustSource.slice(monitorStart, monitorEnd);
+
+    expect(monitorStart).toBeGreaterThan(-1);
+    expect(monitorEnd).toBeGreaterThan(monitorStart);
+    expect(monitorBlock).not.toContain("window.set_ignore_cursor_events(false)");
+    expect(monitorBlock).toContain("if active");
+    expect(monitorBlock).toContain("refresh_overlay_interactivity_for_current_cursor(&window, &state);");
   });
 });

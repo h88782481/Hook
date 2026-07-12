@@ -28,6 +28,10 @@ export interface CaptureResponse {
     fileUrl?: string | null;
 }
 
+export interface CaptureRegionOptions {
+    compositionOverlayAlpha?: number;
+}
+
 export interface OcrResult {
     fullText: string;
     textBlocks?: Array<{
@@ -644,9 +648,21 @@ export const api = {
     triggerOcrEvent: (): Promise<void> =>
         safeInvoke("trigger_ocr_event", undefined, () => undefined, false),
 
-    captureRegion: (x: number, y: number, w: number, h: number): Promise<CaptureResponse> => {
-        console.log("[API] captureRegion called with:", { x, y, w, h });
-        return safeInvoke("capture_region", { x, y, w, h });
+    captureRegion: (
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        options?: CaptureRegionOptions,
+    ): Promise<CaptureResponse> => {
+        console.log("[API] captureRegion called with:", { x, y, w, h, options });
+        return safeInvoke("capture_region", {
+            x,
+            y,
+            w,
+            h,
+            compositionOverlayAlpha: options?.compositionOverlayAlpha,
+        });
     },
     captureVerticalLongRegion: (
         x: number,

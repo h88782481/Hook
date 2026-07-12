@@ -92,6 +92,17 @@ type VoiceSessionPayload = {
     sessionLogPath?: string | null;
 };
 
+type OverlaySyntheticMousePayload = {
+    x?: number;
+    y?: number;
+    globalX?: number;
+    globalY?: number;
+    ctrlKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+    deltaY?: number;
+};
+
 const resolveVoiceHotkeyStatus = (payload: VoiceHotkeyPayload): VoiceStatus => {
     switch (payload.statusHint) {
         case "recording":
@@ -149,6 +160,145 @@ export default function App() {
   });
   const { handlePaste, handleCopy, handleSave, createImageUnit } = useClipboard(); // Assuming I implement Copy later if needed
   useFileDrop();
+
+  const STICKER_GLOBAL_DELETE_ARM_WINDOW_MS = 2500;
+  let lastStickerKeyboardDeleteArmAt = 0;
+  let overlaySyntheticPointerTarget: EventTarget | null = null;
+  let overlaySyntheticPointerActive = false;
+  let overlaySyntheticPrimaryButtonDown = false;
+  let overlaySyntheticMoveRelayActive = false;
+  const armStickerKeyboardDelete = () => {
+      lastStickerKeyboardDeleteArmAt = Date.now();
+  };
+  const resetOverlaySyntheticPointerState = () => {
+      overlaySyntheticPointerTarget = null;
+      overlaySyntheticPointerActive = false;
+      overlaySyntheticPrimaryButtonDown = false;
+      overlaySyntheticMoveRelayActive = false;
+  };
+  const dispatchSyntheticOverlayMouseEvent = (
+      type: "mousedown" | "mousemove" | "mouseup" | "wheel",
+      payload: OverlaySyntheticMousePayload,
+  ) => {
+      if (typeof document === "undefined") return;
+
+      const clientX = payload.x ?? payload.globalX ?? 0;
+      const clientY = payload.y ?? payload.globalY ?? 0;
+      const appMain = document.getElementById("app-main");
+      const resolveTarget = () =>
+          (document.elementFromPoint(clientX, clientY) as EventTarget | null) ??
+          appMain ??
+          window;
+
+      let target: EventTarget = resolveTarget();
+      if (type === "mousedown") {
+          resetOverlaySyntheticPointerState();
+          overlaySyntheticPointerTarget = target;
+          overlaySyntheticPointerActive = true;
+          overlaySyntheticPrimaryButtonDown = true;
+      } else if (
+          (type === "mousemove" || type === "mouseup") &&
+          overlaySyntheticPointerActive &&
+          overlaySyntheticPointerTarget
+      ) {
+          target = overlaySyntheticPointerTarget;
+      }
+
+      const baseInit = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX,
+          clientY,
+          screenX: payload.globalX ?? clientX,
+          screenY: payload.globalY ?? clientY,
+          ctrlKey: !!payload.ctrlKey,
+          altKey: !!payload.altKey,
+          shiftKey: !!payload.shiftKey,
+          button: 0,
+          buttons:
+              type === "mouseup"
+                  ? 0
+                  : overlaySyntheticPrimaryButtonDown || type === "mousedown"
+                    ? 1
+                    : 0,
+      };
+
+      if (type !== "wheel" && typeof PointerEvent !== "undefined") {
+          target.dispatchEvent(
+              new PointerEvent(
+                  type === "mouseup"
+                      ? "pointerup"
+                      : type === "mousemove"
+                        ? "pointermove"
+                        : "pointerdown",
+                  {
+                      ...baseInit,
+                      pointerId: 1,
+                      pointerType: "mouse",
+                      isPrimary: true,
+                  },
+              ),
+          );
+      }
+
+      if (type === "wheel") {
+          target.dispatchEvent(
+              new WheelEvent("wheel", {
+                  ...baseInit,
+                  deltaY: payload.deltaY ?? 0,
+              }),
+          );
+      } else {
+          target.dispatchEvent(new MouseEvent(type, baseInit));
+      }
+
+      if (type === "mouseup") {
+          resetOverlaySyntheticPointerState();
+      }
+  };
+  const relayOverlaySyntheticPointerMove = (event: MouseEvent) => {
+      if (
+          !overlaySyntheticPointerActive ||
+          !overlaySyntheticPrimaryButtonDown ||
+          !overlaySyntheticPointerTarget ||
+          event.target === overlaySyntheticPointerTarget
+      ) {
+          return;
+      }
+
+      const baseInit = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          button: 0,
+          buttons: event.buttons,
+      };
+
+      overlaySyntheticMoveRelayActive = true;
+      try {
+          if (typeof PointerEvent !== "undefined") {
+              overlaySyntheticPointerTarget.dispatchEvent(
+                  new PointerEvent("pointermove", {
+                      ...baseInit,
+                      pointerId: 1,
+                      pointerType: "mouse",
+                      isPrimary: true,
+                  }),
+              );
+          }
+          overlaySyntheticPointerTarget.dispatchEvent(new MouseEvent("mousemove", baseInit));
+      } finally {
+          overlaySyntheticMoveRelayActive = false;
+      }
+  };
 
   const isContextualShaderArt = (art: ArtCapability) =>
       art.execution_type === "shader" &&
@@ -727,12 +877,19 @@ export default function App() {
           return;
       }
 
+      resetOverlaySyntheticPointerState();
       resetSelection();
       setCaptureMode(captureStart.captureMode);
       setIsSelecting(true);
+      try {
+          const cursor = await api.getCursorPosition();
+          setMousePos({ x: cursor.x, y: cursor.y });
+      } catch {
+          // Best-effort only; backend global mouse_move will refresh this immediately.
+      }
       await api.setMouseMonitorActive(false);
-      await api.setOverlayClickThrough(false);
       await api.setCaptureInputActive(true);
+      await api.setOverlayClickThrough(true);
   };
 
   // Initialization
@@ -903,6 +1060,22 @@ export default function App() {
               }
           });
 
+          const unlistenDelete = await listen("trigger-delete", () => {
+              void api.debugLogEvent("trigger-delete-listener");
+              if (longCaptureSession()?.active || isSelecting()) {
+                  return;
+              }
+              if (!selectedStickerId()) {
+                  return;
+              }
+              const elapsedMs = Date.now() - lastStickerKeyboardDeleteArmAt;
+              if (elapsedMs > STICKER_GLOBAL_DELETE_ARM_WINDOW_MS) {
+                  void api.debugLogEvent("trigger-delete-ignored-stale", `elapsedMs=${elapsedMs}`);
+                  return;
+              }
+              deleteSelectedUnitOrAnnotation();
+          });
+
           // Create a minimal MouseEvent-compatible object for capture events
           const toCaptureMouseEvent = (payload: { x?: number; y?: number }): Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey" | "target"> => ({
               clientX: payload?.x ?? 0,
@@ -916,7 +1089,9 @@ export default function App() {
               "capture/global_mouse_down",
               (event) => {
                   if (!isSelecting()) return;
-                  handleSelectionStart(toCaptureMouseEvent(event.payload));
+                  const captureEvent = toCaptureMouseEvent(event.payload);
+                  setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
+                  handleSelectionStart(captureEvent);
               },
           );
 
@@ -924,14 +1099,46 @@ export default function App() {
               "capture/global_mouse_move",
               (event) => {
                   if (!isSelecting()) return;
-                  handleSelectionMove(toCaptureMouseEvent(event.payload));
+                  const captureEvent = toCaptureMouseEvent(event.payload);
+                  setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
+                  handleSelectionMove(captureEvent);
               },
           );
 
-          const unlistenCaptureUp = await listen("capture/global_mouse_up", () => {
+          const unlistenCaptureUp = await listen<{ x?: number; y?: number }>("capture/global_mouse_up", (event) => {
               if (!isSelecting()) return;
+              const captureEvent = toCaptureMouseEvent(event.payload);
+              setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
               handleSelectionEnd();
           });
+
+          const unlistenOverlayMouseDown = await listen<OverlaySyntheticMousePayload>(
+              "overlay/global_mouse_down",
+              (event) => {
+                  dispatchSyntheticOverlayMouseEvent("mousedown", event.payload);
+              },
+          );
+
+          const unlistenOverlayMouseMove = await listen<OverlaySyntheticMousePayload>(
+              "overlay/global_mouse_move",
+              (event) => {
+                  dispatchSyntheticOverlayMouseEvent("mousemove", event.payload);
+              },
+          );
+
+          const unlistenOverlayMouseUp = await listen<OverlaySyntheticMousePayload>(
+              "overlay/global_mouse_up",
+              (event) => {
+                  dispatchSyntheticOverlayMouseEvent("mouseup", event.payload);
+              },
+          );
+
+          const unlistenOverlayMouseWheel = await listen<OverlaySyntheticMousePayload>(
+              "overlay/global_mouse_wheel",
+              (event) => {
+                  dispatchSyntheticOverlayMouseEvent("wheel", event.payload);
+              },
+          );
 
           const unlistenInstantiate = await listen("art/instantiate", async (event) => {
               logger.debug("Received workflow instantiation payload");
@@ -993,9 +1200,14 @@ export default function App() {
                unlistenVoiceHotkey,
                unlistenVoiceSession,
               unlistenEscape,
+              unlistenDelete,
               unlistenCaptureDown,
               unlistenCaptureMove,
               unlistenCaptureUp,
+              unlistenOverlayMouseDown,
+              unlistenOverlayMouseMove,
+              unlistenOverlayMouseUp,
+              unlistenOverlayMouseWheel,
               unlistenInstantiate,
               unlistenCapabilitiesUpdated,
               unlistenConnectionState,
@@ -1092,6 +1304,9 @@ export default function App() {
   // Global Event Handlers
   const handleGlobalMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
+      if (!overlaySyntheticMoveRelayActive) {
+          relayOverlaySyntheticPointerMove(e);
+      }
       handleDragMove(e);
       handleSelectionMove(e);
   };
@@ -1099,6 +1314,7 @@ export default function App() {
   const handleGlobalMouseUp = (e: MouseEvent) => {
       handleDragEnd();
       handleSelectionEnd(); // No args
+      resetOverlaySyntheticPointerState();
 
       setLinkingState(prev => ({ ...prev, isLinking: false }));
   };
@@ -1140,6 +1356,7 @@ export default function App() {
            return; // Allow native behavior (no preventDefault)
       }
 
+      armStickerKeyboardDelete();
       e.stopPropagation(); // Stop propagation to canvas
       e.preventDefault();  // Stop text selection
 

@@ -12,7 +12,7 @@ export const CanvasSelection: Component = () => {
     return (
       <>
       <Show when={isSelecting()}>
-        <div class="absolute inset-0 cursor-crosshair z-[100]">
+        <div class="absolute inset-0 z-[100] pointer-events-none">
             <Show when={selectionRect()}>
                 <div
                     class="absolute border-2 border-primary"

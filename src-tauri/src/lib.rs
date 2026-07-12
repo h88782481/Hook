@@ -41,7 +41,7 @@ use uiautomation::UIAutomation;
 #[cfg(target_os = "windows")]
 use windows::core::{PCWSTR, PWSTR};
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Memory::{
     MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS,
@@ -57,10 +57,20 @@ use windows::Win32::UI::Controls::Dialogs::{
     OPENFILENAMEW,
 };
 #[cfg(target_os = "windows")]
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, VK_CONTROL, VK_MENU, VK_SHIFT,
+};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetParent, GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_NOTIFY,
+    CallNextHookEx, CopyIcon, DispatchMessageW, GetCursorPos, GetMessageW, GetParent,
+    GetWindowLongPtrW, GetWindowRect, LoadCursorW, SetSystemCursor, SetWindowLongPtrW,
+    SetWindowPos, SetWindowsHookExW, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx,
+    GWL_EXSTYLE, HCURSOR, HC_ACTION, HICON, IDC_CROSS, MSG, MSLLHOOKSTRUCT, OCR_CROSS, OCR_HAND,
+    OCR_IBEAM, OCR_NO, OCR_NORMAL, OCR_SIZEALL, OCR_SIZENESW, OCR_SIZENS, OCR_SIZENWSE, OCR_SIZEWE,
+    OCR_UP, SPI_SETCURSORS, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SYSTEM_CURSOR_ID, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NOTIFY, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
+    WM_XBUTTONUP, WS_EX_NOACTIVATE,
 };
 
 // =====================================
@@ -612,7 +622,8 @@ fn stage_drag_out_file_copy(source_path: &Path) -> Result<PathBuf, String> {
         .and_then(|extension| extension.to_str())
         .filter(|extension| !extension.trim().is_empty())
         .unwrap_or("png");
-    let staged_stem = sanitize_drag_filename_hint(source_path.file_stem().and_then(|stem| stem.to_str()));
+    let staged_stem =
+        sanitize_drag_filename_hint(source_path.file_stem().and_then(|stem| stem.to_str()));
     let staged_path = cache_dir.join(format!(
         "dragout_{}_{}.{}",
         staged_stem,
@@ -914,6 +925,7 @@ fn emit_capture_mouse_event(
     global_x: f64,
     global_y: f64,
 ) {
+    let (ctrl_pressed, alt_pressed, shift_pressed) = current_modifier_state();
     let sample =
         sample_screen_color_physical(global_x.round() as i32, global_y.round() as i32).ok();
     if let Some(metrics) = capture_window_metrics(window) {
@@ -927,6 +939,9 @@ fn emit_capture_mouse_event(
                 "scaleFactor": metrics.scale_factor,
                 "physicalOriginX": metrics.physical_origin_x,
                 "physicalOriginY": metrics.physical_origin_y,
+                "ctrlKey": ctrl_pressed,
+                "altKey": alt_pressed,
+                "shiftKey": shift_pressed,
                 "hex": sample.hex,
                 "rgb": sample.rgb,
             }),
@@ -938,6 +953,9 @@ fn emit_capture_mouse_event(
                 "scaleFactor": metrics.scale_factor,
                 "physicalOriginX": metrics.physical_origin_x,
                 "physicalOriginY": metrics.physical_origin_y,
+                "ctrlKey": ctrl_pressed,
+                "altKey": alt_pressed,
+                "shiftKey": shift_pressed,
             }),
         };
         let _ = window.emit(event_name, payload);
@@ -948,6 +966,9 @@ fn emit_capture_mouse_event(
                 "y": global_y,
                 "globalX": global_x,
                 "globalY": global_y,
+                "ctrlKey": ctrl_pressed,
+                "altKey": alt_pressed,
+                "shiftKey": shift_pressed,
                 "hex": sample.hex,
                 "rgb": sample.rgb,
             }),
@@ -956,11 +977,355 @@ fn emit_capture_mouse_event(
                 "y": global_y,
                 "globalX": global_x,
                 "globalY": global_y,
+                "ctrlKey": ctrl_pressed,
+                "altKey": alt_pressed,
+                "shiftKey": shift_pressed,
             }),
         };
         let _ = window.emit(event_name, payload);
     }
 }
+
+#[cfg(target_os = "windows")]
+fn current_modifier_state() -> (bool, bool, bool) {
+    let ctrl_pressed = unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0;
+    let alt_pressed = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } < 0;
+    let shift_pressed = unsafe { GetAsyncKeyState(VK_SHIFT.0 as i32) } < 0;
+    (ctrl_pressed, alt_pressed, shift_pressed)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_modifier_state() -> (bool, bool, bool) {
+    (false, false, false)
+}
+
+fn emit_overlay_wheel_event(
+    window: &tauri::WebviewWindow,
+    event_name: &str,
+    global_x: f64,
+    global_y: f64,
+    delta_y: f64,
+) {
+    let (ctrl_pressed, alt_pressed, shift_pressed) = current_modifier_state();
+    if let Some(metrics) = capture_window_metrics(window) {
+        let local = normalize_global_physical_to_local_logical(global_x, global_y, metrics);
+        let payload = serde_json::json!({
+            "x": local.x,
+            "y": local.y,
+            "globalX": global_x,
+            "globalY": global_y,
+            "scaleFactor": metrics.scale_factor,
+            "physicalOriginX": metrics.physical_origin_x,
+            "physicalOriginY": metrics.physical_origin_y,
+            "ctrlKey": ctrl_pressed,
+            "altKey": alt_pressed,
+            "shiftKey": shift_pressed,
+            "deltaY": delta_y,
+        });
+        let _ = window.emit(event_name, payload);
+    } else {
+        let payload = serde_json::json!({
+            "x": global_x,
+            "y": global_y,
+            "globalX": global_x,
+            "globalY": global_y,
+            "ctrlKey": ctrl_pressed,
+            "altKey": alt_pressed,
+            "shiftKey": shift_pressed,
+            "deltaY": delta_y,
+        });
+        let _ = window.emit(event_name, payload);
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+enum CaptureMouseHookEvent {
+    Move { x: f64, y: f64 },
+    Down { x: f64, y: f64 },
+    Up { x: f64, y: f64 },
+    Wheel { x: f64, y: f64 },
+    OverlayDown { x: f64, y: f64 },
+    OverlayMove { x: f64, y: f64 },
+    OverlayUp { x: f64, y: f64 },
+    OverlayWheel { x: f64, y: f64, delta_y: f64 },
+}
+
+#[cfg(target_os = "windows")]
+const CAPTURE_MOUSE_EVENT_QUEUE_CAPACITY: usize = 2048;
+
+#[cfg(target_os = "windows")]
+static CAPTURE_MOUSE_EVENT_SENDER: OnceLock<mpsc::SyncSender<CaptureMouseHookEvent>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static CAPTURE_MOUSE_HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static CAPTURE_SYSTEM_CURSOR_OVERRIDDEN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HIT_MAP: OnceLock<Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HIT_MAP_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_CLICK_THROUGH_ACTIVE: AtomicBool = AtomicBool::new(true);
+
+#[cfg(target_os = "windows")]
+fn queue_capture_mouse_hook_event(event: CaptureMouseHookEvent) {
+    if let Some(sender) = CAPTURE_MOUSE_EVENT_SENDER.get() {
+        let _ = sender.try_send(event);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn overlay_mouse_hit_map() -> &'static Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>> {
+    OVERLAY_MOUSE_HIT_MAP.get_or_init(|| Arc::new(std::sync::Mutex::new(Vec::new())))
+}
+
+#[cfg(target_os = "windows")]
+fn should_route_overlay_mouse_events(x: f64, y: f64) -> bool {
+    if OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst) {
+        return true;
+    }
+    if !OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst) {
+        return false;
+    }
+    overlay_mouse_hit_map()
+        .lock()
+        .ok()
+        .map(|rects| {
+            rects
+                .iter()
+                .any(|rect| (rect.name == "MINI" || rect.name == "FULL") && rect.contains(x, y))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn capture_mouse_hook_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code != HC_ACTION as i32 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    if lparam.0 == 0 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let mouse = unsafe { *(lparam.0 as *const MSLLHOOKSTRUCT) };
+    let x = mouse.pt.x as f64;
+    let y = mouse.pt.y as f64;
+    let capture_active = CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst);
+    let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
+    let overlay_click_through = OVERLAY_CLICK_THROUGH_ACTIVE.load(Ordering::SeqCst);
+    if !capture_active && !should_route_overlay_mouse {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    match wparam.0 as u32 {
+        WM_MOUSEMOVE => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Move { x, y });
+            }
+            if !capture_active && OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.load(Ordering::SeqCst) {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove { x, y });
+                return LRESULT(1);
+            }
+        }
+        WM_LBUTTONDOWN => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Down { x, y });
+                return LRESULT(1);
+            }
+            if should_route_overlay_mouse {
+                OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(true, Ordering::SeqCst);
+                OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE
+                    .store(overlay_click_through, Ordering::SeqCst);
+                append_runtime_log_line(&format!(
+                    "overlay_drag_start :: synthetic={} x={} y={}",
+                    overlay_click_through, x, y
+                ));
+                if overlay_click_through {
+                    queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown { x, y });
+                    return LRESULT(1);
+                }
+            }
+        }
+        WM_LBUTTONUP => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Up { x, y });
+                return LRESULT(1);
+            }
+            let drag_active = OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
+            let synthetic_drag_active =
+                OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
+            if drag_active || synthetic_drag_active || should_route_overlay_mouse {
+                append_runtime_log_line(&format!(
+                    "overlay_drag_end :: synthetic={} x={} y={}",
+                    synthetic_drag_active, x, y
+                ));
+            }
+            if synthetic_drag_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayUp { x, y });
+                return LRESULT(1);
+            }
+        }
+        WM_MOUSEWHEEL => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Wheel { x, y });
+                return LRESULT(1);
+            }
+            if should_route_overlay_mouse {
+                let delta_y = (((mouse.mouseData >> 16) & 0xffff) as i16) as f64;
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayWheel {
+                    x,
+                    y,
+                    delta_y,
+                });
+                return LRESULT(1);
+            }
+        }
+        WM_RBUTTONDOWN | WM_RBUTTONUP | WM_MBUTTONDOWN | WM_MBUTTONUP | WM_XBUTTONDOWN
+        | WM_XBUTTONUP => {
+            if capture_active {
+                return LRESULT(1);
+            }
+        }
+        _ => {}
+    }
+
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+#[cfg(target_os = "windows")]
+fn install_capture_mouse_hook_thread(window: tauri::WebviewWindow) {
+    let (sender, receiver) =
+        mpsc::sync_channel::<CaptureMouseHookEvent>(CAPTURE_MOUSE_EVENT_QUEUE_CAPACITY);
+    if CAPTURE_MOUSE_EVENT_SENDER.set(sender).is_err() {
+        append_runtime_log_line("capture_mouse_hook_sender_already_initialized");
+        return;
+    }
+
+    let emit_window = window.clone();
+    let _ = std::thread::Builder::new()
+        .name("hook-capture-mouse-events".to_string())
+        .spawn(move || {
+            let mut deferred_event: Option<CaptureMouseHookEvent> = None;
+            loop {
+                let event = match deferred_event.take() {
+                    Some(event) => event,
+                    None => match receiver.recv() {
+                        Ok(event) => event,
+                        Err(_) => break,
+                    },
+                };
+
+                match event {
+                    CaptureMouseHookEvent::Move { mut x, mut y } => {
+                        loop {
+                            match receiver.try_recv() {
+                                Ok(CaptureMouseHookEvent::Move {
+                                    x: next_x,
+                                    y: next_y,
+                                }) => {
+                                    x = next_x;
+                                    y = next_y;
+                                }
+                                Ok(other_event) => {
+                                    deferred_event = Some(other_event);
+                                    break;
+                                }
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                Err(mpsc::TryRecvError::Disconnected) => return,
+                            }
+                        }
+                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_move", x, y);
+                    }
+                    CaptureMouseHookEvent::Down { x, y } => {
+                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_down", x, y);
+                    }
+                    CaptureMouseHookEvent::OverlayDown { x, y } => {
+                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_down", x, y);
+                    }
+                    CaptureMouseHookEvent::OverlayMove { mut x, mut y } => {
+                        loop {
+                            match receiver.try_recv() {
+                                Ok(CaptureMouseHookEvent::OverlayMove {
+                                    x: next_x,
+                                    y: next_y,
+                                }) => {
+                                    x = next_x;
+                                    y = next_y;
+                                }
+                                Ok(other_event) => {
+                                    deferred_event = Some(other_event);
+                                    break;
+                                }
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                Err(mpsc::TryRecvError::Disconnected) => return,
+                            }
+                        }
+                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_move", x, y);
+                    }
+                    CaptureMouseHookEvent::Up { x, y } => {
+                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_up", x, y);
+                    }
+                    CaptureMouseHookEvent::OverlayUp { x, y } => {
+                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_up", x, y);
+                    }
+                    CaptureMouseHookEvent::Wheel { x, y } => {
+                        let _ = (x, y);
+                    }
+                    CaptureMouseHookEvent::OverlayWheel { x, y, delta_y } => {
+                        emit_overlay_wheel_event(
+                            &emit_window,
+                            "overlay/global_mouse_wheel",
+                            x,
+                            y,
+                            delta_y,
+                        );
+                    }
+                }
+            }
+        });
+
+    let _ = std::thread::Builder::new()
+        .name("hook-capture-mouse-hook".to_string())
+        .spawn(move || {
+            let hook = match unsafe {
+                SetWindowsHookExW(WH_MOUSE_LL, Some(capture_mouse_hook_proc), None, 0)
+            } {
+                Ok(hook) => {
+                    append_runtime_log_line("capture_mouse_hook_install_success");
+                    hook
+                }
+                Err(error) => {
+                    append_runtime_log_line(&format!(
+                        "capture_mouse_hook_install_failed :: {}",
+                        error
+                    ));
+                    return;
+                }
+            };
+
+            let mut msg = MSG::default();
+            while unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
+                let _ = unsafe { TranslateMessage(&msg) };
+                unsafe { DispatchMessageW(&msg) };
+            }
+            let _ = unsafe { UnhookWindowsHookEx(hook) };
+            append_runtime_log_line("capture_mouse_hook_thread_exited");
+        });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_capture_mouse_hook_thread(_window: tauri::WebviewWindow) {}
 
 fn refresh_overlay_interactivity_for_current_cursor(
     window: &tauri::WebviewWindow,
@@ -980,12 +1345,23 @@ fn refresh_overlay_interactivity_for_current_cursor(
         None => return,
     };
 
+    let drag_active = OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst);
     let should_ignore = match hit_map.rectangles.lock() {
-        Ok(rects) => should_ignore_cursor_events(&rects, cursor_x, cursor_y),
+        Ok(rects) => {
+            if drag_active {
+                false
+            } else {
+                should_ignore_cursor_events(&rects, cursor_x, cursor_y)
+            }
+        }
         Err(_) => return,
     };
 
     let _ = window.set_ignore_cursor_events(should_ignore);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);
+    if !should_ignore {
+        apply_overlay_no_activate(window);
+    }
     append_runtime_log_line(&format!(
         "refresh_overlay_interactivity :: cursor_x={} cursor_y={} should_ignore={}",
         cursor_x, cursor_y, should_ignore
@@ -1005,6 +1381,76 @@ fn current_cursor_position_physical() -> Option<(f64, f64)> {
 #[cfg(not(target_os = "windows"))]
 fn current_cursor_position_physical() -> Option<(f64, f64)> {
     None
+}
+
+#[cfg(target_os = "windows")]
+fn set_system_cursor_to_crosshair(cursor_id: SYSTEM_CURSOR_ID) -> bool {
+    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_CROSS) }) else {
+        return false;
+    };
+    let Ok(cursor_copy) = (unsafe { CopyIcon(HICON(cursor.0)) }) else {
+        return false;
+    };
+    unsafe { SetSystemCursor(HCURSOR(cursor_copy.0), cursor_id) }.is_ok()
+}
+
+#[cfg(target_os = "windows")]
+fn set_capture_cursor_crosshair() {
+    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.load(Ordering::SeqCst) {
+        return;
+    }
+
+    let mut updated_any = false;
+    for cursor_id in [
+        OCR_NORMAL,
+        OCR_IBEAM,
+        OCR_CROSS,
+        OCR_HAND,
+        OCR_NO,
+        OCR_SIZEALL,
+        OCR_SIZENESW,
+        OCR_SIZENS,
+        OCR_SIZENWSE,
+        OCR_SIZEWE,
+        OCR_UP,
+    ] {
+        updated_any |= set_system_cursor_to_crosshair(cursor_id);
+    }
+
+    if updated_any {
+        CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(true, Ordering::SeqCst);
+        append_runtime_log_line("capture_cursor_crosshair_enabled");
+    } else {
+        append_runtime_log_line("capture_cursor_crosshair_failed");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_capture_cursor_crosshair() {}
+
+#[cfg(target_os = "windows")]
+fn clear_capture_cursor_crosshair() {
+    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.swap(false, Ordering::SeqCst) {
+        let _ = unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) };
+        append_runtime_log_line("capture_cursor_crosshair_restored");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_capture_cursor_crosshair() {}
+
+fn set_capture_input_runtime_active(active: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        CAPTURE_MOUSE_HOOK_ACTIVE.store(active, Ordering::SeqCst);
+        append_runtime_log_line(&format!("capture_mouse_hook_active :: {}", active));
+    }
+
+    if active {
+        set_capture_cursor_crosshair();
+    } else {
+        clear_capture_cursor_crosshair();
+    }
 }
 
 #[tauri::command]
@@ -1363,10 +1809,13 @@ fn update_pin_rects(
     rects: Vec<mouse_monitor::Rect>,
 ) {
     if let Ok(mut rectangles) = state.rectangles.lock() {
-        *rectangles = rects;
+        *rectangles = rects.clone();
     } else {
         append_runtime_log_line("update_pin_rects_lock_failed");
         return;
+    }
+    if let Ok(mut overlay_rectangles) = overlay_mouse_hit_map().lock() {
+        *overlay_rectangles = rects;
     }
 
     if let Some(window) = app.get_webview_window("main") {
@@ -1386,12 +1835,17 @@ fn set_mouse_monitor_active(
         append_runtime_log_line("set_mouse_monitor_active_lock_failed");
         return;
     }
+    OVERLAY_MOUSE_HIT_MAP_ACTIVE.store(active, Ordering::SeqCst);
+    if !active {
+        OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+        OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    }
 
-    // If disabling monitor, ensure window is interactive (Selection Mode / Normal Mode)
+    // Capture selection is driven by the backend global input hook. Keep the
+    // caller in charge of hit-testing so capture mode can remain click-through
+    // and avoid placing an interactive transparent WebView over video surfaces.
     if let Some(window) = app.get_webview_window("main") {
-        if !active {
-            let _ = window.set_ignore_cursor_events(false);
-        } else {
+        if active {
             refresh_overlay_interactivity_for_current_cursor(&window, &state);
         }
     }
@@ -2343,8 +2797,54 @@ fn get_installed_fonts() -> Result<Vec<String>, String> {
     installed_font_families().map(|fonts| fonts.clone())
 }
 
+#[cfg(target_os = "windows")]
+fn set_overlay_no_activate_flag(window: &tauri::WebviewWindow, enabled: bool) {
+    let Ok(hwnd) = window.hwnd() else {
+        append_runtime_log_line("overlay_no_activate_hwnd_failed");
+        return;
+    };
+    let hwnd = HWND(hwnd.0);
+
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let flag = WS_EX_NOACTIVATE.0 as isize;
+        let next_style = if enabled { style | flag } else { style & !flag };
+        if next_style != style {
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next_style);
+        }
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_overlay_no_activate(window: &tauri::WebviewWindow) {
+    set_overlay_no_activate_flag(window, true);
+    append_runtime_log_line("overlay_no_activate_applied");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_overlay_no_activate(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "windows")]
+fn clear_overlay_no_activate(window: &tauri::WebviewWindow) {
+    set_overlay_no_activate_flag(window, false);
+    append_runtime_log_line("overlay_no_activate_cleared");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_overlay_no_activate(_window: &tauri::WebviewWindow) {}
+
 fn setup_overlay_window(window: &tauri::WebviewWindow) {
     let _ = window.set_content_protected(false);
+    apply_overlay_no_activate(window);
     let _ = window.set_decorations(false);
     let _ = window.set_title("");
     let _ = window.set_skip_taskbar(true);
@@ -2366,6 +2866,7 @@ fn setup_overlay_window(window: &tauri::WebviewWindow) {
     if let Err(e) = window.show() {
         println!("Failed to show window: {}", e);
     }
+    apply_overlay_no_activate(window);
 }
 
 #[derive(Clone)]
@@ -3070,12 +3571,15 @@ fn set_capture_input_active(state: tauri::State<SharedCaptureInputState>, active
     if let Ok(mut guard) = state.active.lock() {
         *guard = active;
         append_runtime_log_line(&format!("set_capture_input_active :: {}", active));
+        set_capture_input_runtime_active(active);
     }
 }
 
 fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
     let _ = window.set_content_protected(false);
+    clear_overlay_no_activate(window);
     let _ = window.set_ignore_cursor_events(false);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
     let _ = window.set_title("Hook");
     let _ = window.set_skip_taskbar(false);
     let _ = window.set_always_on_top(false);
@@ -3099,10 +3603,13 @@ fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
 fn show_overlay_host_impl(window: &tauri::WebviewWindow, click_through: bool) {
     setup_overlay_window(window);
     let _ = window.set_ignore_cursor_events(click_through);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(click_through, Ordering::SeqCst);
 }
 
 fn set_overlay_click_through_impl(window: &tauri::WebviewWindow, click_through: bool) {
     let _ = window.set_ignore_cursor_events(click_through);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(click_through, Ordering::SeqCst);
+    apply_overlay_no_activate(window);
 }
 
 fn set_overlay_capture_exclusion_impl(window: &tauri::WebviewWindow, enabled: bool) {
@@ -3116,6 +3623,7 @@ fn set_overlay_capture_exclusion_impl(window: &tauri::WebviewWindow, enabled: bo
 
 fn hide_to_tray_impl(window: &tauri::WebviewWindow) {
     let _ = window.set_ignore_cursor_events(false);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
     if let Err(e) = window.hide() {
         println!("Failed to hide window to tray: {}", e);
     }
@@ -3123,12 +3631,14 @@ fn hide_to_tray_impl(window: &tauri::WebviewWindow) {
 
 fn enter_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_capture_mode");
+    set_capture_input_runtime_active(true);
     show_overlay_host_impl(window, true);
 
     println!("Overlay setup done. Emitting trigger-capture...");
     if let Err(e) = window.emit("trigger-capture", ()) {
         println!("Failed to emit trigger-capture: {}", e);
         append_runtime_log_line(&format!("enter_capture_mode emit_failed :: {}", e));
+        set_capture_input_runtime_active(false);
     } else {
         append_runtime_log_line("enter_capture_mode emitted_trigger_capture");
     }
@@ -3136,11 +3646,13 @@ fn enter_capture_mode(window: &tauri::WebviewWindow) {
 
 fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_long_capture_mode");
+    set_capture_input_runtime_active(true);
     show_overlay_host_impl(window, true);
 
     if let Err(e) = window.emit("trigger-long-capture", ()) {
         println!("Failed to emit trigger-long-capture: {}", e);
         append_runtime_log_line(&format!("enter_long_capture_mode emit_failed :: {}", e));
+        set_capture_input_runtime_active(false);
     } else {
         append_runtime_log_line("enter_long_capture_mode emitted_trigger_long_capture");
     }
@@ -3894,8 +4406,40 @@ fn spawn_voice_session_for_window(window: tauri::WebviewWindow) {
     });
 }
 
+#[cfg(target_os = "windows")]
+fn configure_webview2_video_safe_composition() {
+    const ENV_NAME: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+    const VIDEO_SAFE_ARGS: &[&str] = &[
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+        "--disable-zero-copy",
+        "--disable-features=UseSkiaRenderer,CanvasOopRasterization",
+    ];
+
+    let existing_args = std::env::var(ENV_NAME).unwrap_or_default();
+    let mut combined_args = existing_args.clone();
+    for arg in VIDEO_SAFE_ARGS {
+        if existing_args.contains(arg) || combined_args.contains(arg) {
+            continue;
+        }
+        if !combined_args.trim().is_empty() {
+            combined_args.push(' ');
+        }
+        combined_args.push_str(arg);
+    }
+
+    std::env::set_var(ENV_NAME, combined_args);
+    append_runtime_log_line("webview2_video_safe_composition_args_applied");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_webview2_video_safe_composition() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    configure_webview2_video_safe_composition();
+
     let tauri_ctrl_1_last_trigger = Arc::new(std::sync::Mutex::new(
         std::time::Instant::now() - std::time::Duration::from_secs(2),
     ));
@@ -4200,6 +4744,7 @@ pub fn run() {
                     boot_profile.art_loom_enabled,
                     boot_profile.art_loom_ws_url
                 ));
+                install_capture_mouse_hook_thread(window.clone());
                 if boot_profile.initial_ui_mode == "tray" {
                     hide_to_tray_impl(&window);
                 } else if boot_profile.initial_ui_mode == "canvas" {
@@ -4215,60 +4760,91 @@ pub fn run() {
 
                 // Start Global Event Listener (Inputs)
                 std::thread::spawn(move || {
-                    let mut last_esc = std::time::Instant::now() - std::time::Duration::from_secs(1);
-                    let mut is_ignoring_events = false;
-                    let mut last_mouse_x = 0.0f64;
-                    let mut last_mouse_y = 0.0f64;
-                    let mut ctrl_pressed = false;
-                    let mut last_capture_trigger =
-                        std::time::Instant::now() - std::time::Duration::from_secs(2);
+                    struct RdevInputRuntimeState {
+                        last_esc: std::time::Instant,
+                        is_ignoring_events: bool,
+                        ctrl_pressed: bool,
+                        last_capture_trigger: std::time::Instant,
+                    }
+
+                    let input_runtime_state = std::sync::Mutex::new(RdevInputRuntimeState {
+                        last_esc: std::time::Instant::now()
+                            - std::time::Duration::from_secs(1),
+                        is_ignoring_events: false,
+                        ctrl_pressed: false,
+                        last_capture_trigger: std::time::Instant::now()
+                            - std::time::Duration::from_secs(2),
+                    });
 
                     if let Err(error) = rdev::listen(move |event| {
-                        match event.event_type {
+                        let mut input_state = match input_runtime_state.lock() {
+                            Ok(guard) => guard,
+                            Err(_) => return,
+                        };
+
+                        match &event.event_type {
                             rdev::EventType::KeyPress(rdev::Key::ControlLeft)
                             | rdev::EventType::KeyPress(rdev::Key::ControlRight) => {
-                                ctrl_pressed = true;
+                                input_state.ctrl_pressed = true;
                             }
                             rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
                             | rdev::EventType::KeyRelease(rdev::Key::ControlRight) => {
-                                ctrl_pressed = false;
+                                input_state.ctrl_pressed = false;
                             }
                             rdev::EventType::KeyPress(rdev::Key::Num1) => {
-                                if ctrl_pressed
+                                if input_state.ctrl_pressed
                                     && !ctrl_1_global_registered_for_rdev.load(Ordering::Relaxed)
-                                    && last_capture_trigger.elapsed()
+                                    && input_state.last_capture_trigger.elapsed()
                                         > std::time::Duration::from_millis(500)
                                 {
-                                    last_capture_trigger = std::time::Instant::now();
+                                    input_state.last_capture_trigger = std::time::Instant::now();
                                     append_runtime_log_line("rdev_ctrl1_triggered");
                                     enter_capture_mode(&window);
                                 }
                             }
                             rdev::EventType::KeyPress(rdev::Key::Num3) => {
-                                if ctrl_pressed
+                                if input_state.ctrl_pressed
                                     && !ctrl_3_global_registered_for_rdev.load(Ordering::Relaxed)
-                                    && last_capture_trigger.elapsed()
+                                    && input_state.last_capture_trigger.elapsed()
                                         > std::time::Duration::from_millis(500)
                                 {
-                                    last_capture_trigger = std::time::Instant::now();
+                                    input_state.last_capture_trigger = std::time::Instant::now();
                                     append_runtime_log_line("rdev_ctrl3_triggered");
                                     enter_long_capture_mode(&window);
                                 }
                             }
                             rdev::EventType::KeyPress(rdev::Key::Escape) => {
-                                if last_esc.elapsed() < std::time::Duration::from_millis(400) {
+                                if input_state.last_esc.elapsed()
+                                    < std::time::Duration::from_millis(400)
+                                {
                                     println!("Double ESC detected - Emergency Exit.");
+                                    set_capture_input_runtime_active(false);
                                     std::process::exit(0);
                                 }
-                                last_esc = std::time::Instant::now();
+                                input_state.last_esc = std::time::Instant::now();
                                 append_runtime_log_line("rdev_escape_triggered");
+                                set_capture_input_runtime_active(false);
                                 let _ = window.emit("trigger-escape", ());
+                            }
+                            rdev::EventType::KeyPress(rdev::Key::Delete)
+                            | rdev::EventType::KeyPress(rdev::Key::Backspace) => {
+                                append_runtime_log_line("rdev_delete_triggered");
+                                let _ = window.emit("trigger-delete", ());
                             }
                             rdev::EventType::KeyPress(rdev::Key::Return) => {
                                 append_runtime_log_line("rdev_enter_triggered");
                                 let _ = window.emit("trigger-long-capture-finish", ());
                             }
                             rdev::EventType::Wheel { delta_x, delta_y } => {
+                                let capture_active = capture_input_state_clone
+                                    .active
+                                    .lock()
+                                    .map(|guard| *guard)
+                                    .unwrap_or(false);
+                                if capture_active {
+                                    return;
+                                }
+
                                 let has_long_capture_sessions = long_capture_sessions_clone
                                     .sessions
                                     .lock()
@@ -4281,22 +4857,23 @@ pub fn run() {
                                         delta_x, delta_y
                                     ));
                                     let _ = window.emit("trigger-long-capture-wheel", LongCaptureWheelEvent {
-                                        delta_x,
-                                        delta_y,
+                                        delta_x: *delta_x,
+                                        delta_y: *delta_y,
                                     });
                                 }
                             }
                             rdev::EventType::MouseMove { x, y } => {
-                                last_mouse_x = x;
-                                last_mouse_y = y;
+                                let x = *x;
+                                let y = *y;
                                 let capture_active = capture_input_state_clone
                                     .active
                                     .lock()
                                     .map(|guard| *guard)
                                     .unwrap_or(false);
                                 if capture_active {
-                                    emit_capture_mouse_event(&window, "capture/global_mouse_move", x, y);
+                                    return;
                                 }
+
                                 // Hit Testing Logic
                                 let active = hit_map_clone
                                     .active
@@ -4304,59 +4881,37 @@ pub fn run() {
                                     .map(|guard| *guard)
                                     .unwrap_or(false);
                                 if active {
+                                    let drag_active =
+                                        OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst);
                                     let should_ignore = hit_map_clone
                                         .rectangles
                                         .lock()
-                                        .map(|rects| should_ignore_cursor_events(&rects, x, y))
+                                        .map(|rects| {
+                                            if drag_active {
+                                                false
+                                            } else {
+                                                should_ignore_cursor_events(&rects, x, y)
+                                            }
+                                        })
                                         .unwrap_or(false);
 
-                                    if should_ignore != is_ignoring_events {
+                                    if should_ignore != input_state.is_ignoring_events {
                                         // println!("State Change: Ignore Events = {} (Mouse: {},{})", should_ignore, x, y);
                                         let _ = window.set_ignore_cursor_events(should_ignore);
-                                        is_ignoring_events = should_ignore;
+                                        if !should_ignore {
+                                            apply_overlay_no_activate(&window);
+                                        }
+                                        input_state.is_ignoring_events = should_ignore;
                                     }
                                 } else {
-                                    is_ignoring_events = false;
-                                }
-                            }
-                            rdev::EventType::ButtonPress(rdev::Button::Left) => {
-                                let capture_active = capture_input_state_clone
-                                    .active
-                                    .lock()
-                                    .map(|guard| *guard)
-                                    .unwrap_or(false);
-                                if capture_active {
-                                    let (global_x, global_y) =
-                                        current_cursor_position_physical().unwrap_or((last_mouse_x, last_mouse_y));
-                                    emit_capture_mouse_event(
-                                        &window,
-                                        "capture/global_mouse_down",
-                                        global_x,
-                                        global_y,
-                                    );
-                                }
-                            }
-                            rdev::EventType::ButtonRelease(rdev::Button::Left) => {
-                                let capture_active = capture_input_state_clone
-                                    .active
-                                    .lock()
-                                    .map(|guard| *guard)
-                                    .unwrap_or(false);
-                                if capture_active {
-                                    let (global_x, global_y) =
-                                        current_cursor_position_physical().unwrap_or((last_mouse_x, last_mouse_y));
-                                    emit_capture_mouse_event(
-                                        &window,
-                                        "capture/global_mouse_up",
-                                        global_x,
-                                        global_y,
-                                    );
+                                    input_state.is_ignoring_events = false;
                                 }
                             }
                             _ => {}
                         }
                     }) {
                         println!("Error: {:?}", error);
+                        append_runtime_log_line(&format!("rdev_listen_failed :: {:?}", error));
                     }
                 });
             }
@@ -4780,9 +5335,15 @@ mod app_cli_tests {
 
         std::env::remove_var(env_name);
 
-        assert!(source_path.exists(), "original sticker file should remain in place");
+        assert!(
+            source_path.exists(),
+            "original sticker file should remain in place"
+        );
         assert!(staged_path.exists(), "staged drag file should exist");
-        assert_ne!(staged_path, source_path, "staged path should differ from source path");
+        assert_ne!(
+            staged_path, source_path,
+            "staged path should differ from source path"
+        );
         assert_eq!(
             std::fs::read(&staged_path).expect("read staged file"),
             source_bytes
