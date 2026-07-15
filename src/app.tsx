@@ -21,6 +21,7 @@ import { captureFrozenStickerSnapshot } from "./services/stickerSnapshot";
 // Stores & Services
 import { graphStore } from "./store/graphStore";
 import {
+    linkingState,
     setLinkingState,
     setMousePos,
     isSelecting,
@@ -39,6 +40,7 @@ import {
     selectedStickerAnnotationId,
     longCaptureSession,
     setInstalledStickerFonts,
+    draggingStickerId,
 } from "./store/uiStore";
 
 
@@ -101,6 +103,7 @@ type OverlaySyntheticMousePayload = {
     altKey?: boolean;
     shiftKey?: boolean;
     deltaY?: number;
+    nativeDragPreflight?: boolean;
 };
 
 const resolveVoiceHotkeyStatus = (payload: VoiceHotkeyPayload): VoiceStatus => {
@@ -163,11 +166,15 @@ export default function App() {
 
   const STICKER_GLOBAL_DELETE_ARM_WINDOW_MS = 2500;
   const OVERLAY_SYNTHETIC_CLICK_MAX_DISTANCE = 4;
+  const OVERLAY_SYNTHETIC_DOUBLE_CLICK_MAX_DELAY_MS = 320;
   let lastStickerKeyboardDeleteArmAt = 0;
   let overlaySyntheticPointerTarget: EventTarget | null = null;
   let overlaySyntheticPointerDownTarget: EventTarget | null = null;
   let overlaySyntheticHoverTarget: EventTarget | null = null;
   let overlaySyntheticPointerDownPoint: { x: number; y: number } | null = null;
+  let overlaySyntheticLastClickTarget: EventTarget | null = null;
+  let overlaySyntheticLastClickPoint: { x: number; y: number } | null = null;
+  let overlaySyntheticLastClickAt = 0;
   let overlaySyntheticPointerActive = false;
   let overlaySyntheticPrimaryButtonDown = false;
   let overlaySyntheticMoveRelayActive = false;
@@ -189,11 +196,30 @@ export default function App() {
       const clientX = payload.x ?? payload.globalX ?? 0;
       const clientY = payload.y ?? payload.globalY ?? 0;
       const appMain = document.getElementById("app-main");
+      const resolveEditableSyntheticControl = (target: EventTarget | null) => {
+          if (!(target instanceof Element)) return null;
+          if (
+              target instanceof HTMLInputElement ||
+              target instanceof HTMLSelectElement ||
+              target instanceof HTMLTextAreaElement
+          ) {
+              return target;
+          }
+          return target.closest("input, select, textarea");
+      };
+      const focusEditableSyntheticControl = (target: EventTarget | null) => {
+          const editable = resolveEditableSyntheticControl(target);
+          if (!editable || !(editable instanceof HTMLElement)) return;
+          editable.focus();
+      };
       const isOverlayRootTarget = (target: EventTarget | null) =>
           target === appMain ||
           target === document.body ||
           target === document.documentElement ||
           target === window;
+      const isStickerInteractionRootTarget = (target: EventTarget | null) =>
+          target instanceof Element &&
+          target.getAttribute("data-sticker-interaction-root") === "true";
       const resolveTarget = (allowFallback: boolean) => {
           const rawTarget = document.elementFromPoint(clientX, clientY) as EventTarget | null;
           if (!rawTarget || isOverlayRootTarget(rawTarget)) {
@@ -314,24 +340,41 @@ export default function App() {
           pointerType: "mouse",
           isPrimary: true,
       };
+      const shouldResolveLiveOverlayTarget =
+          linkingState().isLinking && (type === "mousemove" || type === "mouseup");
 
       let target: EventTarget | null =
           type === "mousemove" && !overlaySyntheticPrimaryButtonDown
               ? resolveTarget(false)
               : resolveTarget(true);
+      const shouldBypassSyntheticPointerCapture =
+          type === "mousedown" &&
+          !!payload.shiftKey &&
+          isStickerInteractionRootTarget(target);
       if (type === "mousedown") {
-          resetOverlaySyntheticPointerState();
-          overlaySyntheticPointerTarget = target;
-          overlaySyntheticPointerDownTarget = target;
-          overlaySyntheticPointerDownPoint = { x: clientX, y: clientY };
-          overlaySyntheticPointerActive = true;
-          overlaySyntheticPrimaryButtonDown = true;
+          if (shouldBypassSyntheticPointerCapture) {
+              overlaySyntheticPointerDownTarget = null;
+              overlaySyntheticPointerDownPoint = null;
+              resetOverlaySyntheticPointerState();
+          } else {
+              resetOverlaySyntheticPointerState();
+              overlaySyntheticPointerTarget = target;
+              overlaySyntheticPointerDownTarget = target;
+              overlaySyntheticPointerDownPoint = { x: clientX, y: clientY };
+              overlaySyntheticPointerActive = true;
+              overlaySyntheticPrimaryButtonDown = true;
+          }
+      } else if (shouldResolveLiveOverlayTarget) {
+          target = resolveTarget(true);
       } else if (
           (type === "mousemove" || type === "mouseup") &&
           overlaySyntheticPointerActive &&
           overlaySyntheticPointerTarget
       ) {
           target = overlaySyntheticPointerTarget;
+      }
+      if (type === "mousemove" && overlaySyntheticPrimaryButtonDown && draggingStickerId()) {
+          target = appMain ?? window;
       }
 
       if (!target) {
@@ -345,6 +388,9 @@ export default function App() {
           type === "contextmenu"
       ) {
           dispatchHoverTransition(target, pointerInit, baseInit);
+      }
+      if (type === "mousedown") {
+          focusEditableSyntheticControl(target);
       }
 
       if (type !== "wheel" && type !== "contextmenu" && typeof PointerEvent !== "undefined") {
@@ -383,7 +429,27 @@ export default function App() {
                   clientY - overlaySyntheticPointerDownPoint.y,
               ) <= OVERLAY_SYNTHETIC_CLICK_MAX_DISTANCE
           ) {
+              focusEditableSyntheticControl(target);
               target.dispatchEvent(new MouseEvent("click", buildBaseInit(0, 0)));
+              const clickTime = Date.now();
+              const isDoubleClick =
+                  overlaySyntheticLastClickTarget === target &&
+                  overlaySyntheticLastClickPoint &&
+                  clickTime - overlaySyntheticLastClickAt <= OVERLAY_SYNTHETIC_DOUBLE_CLICK_MAX_DELAY_MS &&
+                  Math.hypot(
+                      clientX - overlaySyntheticLastClickPoint.x,
+                      clientY - overlaySyntheticLastClickPoint.y,
+                  ) <= OVERLAY_SYNTHETIC_CLICK_MAX_DISTANCE;
+              if (isDoubleClick) {
+                  target.dispatchEvent(new MouseEvent("dblclick", buildBaseInit(0, 0)));
+                  overlaySyntheticLastClickTarget = null;
+                  overlaySyntheticLastClickPoint = null;
+                  overlaySyntheticLastClickAt = 0;
+              } else {
+                  overlaySyntheticLastClickTarget = target;
+                  overlaySyntheticLastClickPoint = { x: clientX, y: clientY };
+                  overlaySyntheticLastClickAt = clickTime;
+              }
           }
           overlaySyntheticPointerDownTarget = null;
           overlaySyntheticPointerDownPoint = null;
@@ -1248,21 +1314,45 @@ export default function App() {
           const unlistenOverlayMouseDown = await listen<OverlaySyntheticMousePayload>(
               "overlay/global_mouse_down",
               (event) => {
-                  dispatchSyntheticOverlayMouseEvent("mousedown", event.payload);
+                  if (event.payload?.nativeDragPreflight) {
+                      window.dispatchEvent(
+                          new CustomEvent("hook:overlay-native-drag-preflight-down", {
+                              detail: event.payload,
+                          }),
+                      );
+                  } else {
+                      dispatchSyntheticOverlayMouseEvent("mousedown", event.payload);
+                  }
               },
           );
 
           const unlistenOverlayMouseMove = await listen<OverlaySyntheticMousePayload>(
               "overlay/global_mouse_move",
               (event) => {
-                  dispatchSyntheticOverlayMouseEvent("mousemove", event.payload);
+                  if (event.payload?.nativeDragPreflight) {
+                      window.dispatchEvent(
+                          new CustomEvent("hook:overlay-native-drag-preflight-move", {
+                              detail: event.payload,
+                          }),
+                      );
+                  } else {
+                      dispatchSyntheticOverlayMouseEvent("mousemove", event.payload);
+                  }
               },
           );
 
           const unlistenOverlayMouseUp = await listen<OverlaySyntheticMousePayload>(
               "overlay/global_mouse_up",
               (event) => {
-                  dispatchSyntheticOverlayMouseEvent("mouseup", event.payload);
+                  if (event.payload?.nativeDragPreflight) {
+                      window.dispatchEvent(
+                          new CustomEvent("hook:overlay-native-drag-preflight-up", {
+                              detail: event.payload,
+                          }),
+                      );
+                  } else {
+                      dispatchSyntheticOverlayMouseEvent("mouseup", event.payload);
+                  }
               },
           );
 
@@ -1445,7 +1535,7 @@ export default function App() {
   // Global Event Handlers
   const handleGlobalMouseMove = (e: MouseEvent) => {
       setMousePos({ x: e.clientX, y: e.clientY });
-      if (!overlaySyntheticMoveRelayActive) {
+      if (!overlaySyntheticMoveRelayActive && !draggingStickerId()) {
           relayOverlaySyntheticPointerMove(e);
       }
       handleDragMove(e);

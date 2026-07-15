@@ -36,10 +36,12 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 // Windows Imports
 #[cfg(target_os = "windows")]
 use uiautomation::UIAutomation;
+#[cfg(target_os = "windows")]
+use uiautomation::types::Point as UiaPoint;
 
 // Import Windows specific modules for shared memory
 #[cfg(target_os = "windows")]
-use windows::core::{PCWSTR, PWSTR};
+use windows::core::{Interface, PCWSTR, PWSTR};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 #[cfg(target_os = "windows")]
@@ -55,6 +57,14 @@ use windows::Win32::System::Threading::{
     GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
 };
 #[cfg(target_os = "windows")]
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+};
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Variant::{
+    VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_I4,
+};
+#[cfg(target_os = "windows")]
 use windows::Win32::UI::Controls::Dialogs::{
     CommDlgExtendedError, GetOpenFileNameW, GetSaveFileNameW, CDN_INITDONE, OFN_ENABLEHOOK,
     OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_NOCHANGEDIR, OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST,
@@ -67,18 +77,21 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, CallWindowProcW, CopyIcon, CreateWindowExW, DefWindowProcW, DispatchMessageW,
-    GetCursorPos, GetMessageW, GetParent, GetWindowLongPtrW, GetWindowRect, LoadCursorW,
-    SetLayeredWindowAttributes, SetSystemCursor, SetWindowLongPtrW, SetWindowPos,
+    GetAncestor, GetClassNameW, GetCursorPos, GetMessageW, GetParent, GetWindowLongPtrW,
+    GetWindowRect, LoadCursorW, SetLayeredWindowAttributes, SetSystemCursor, SetWindowLongPtrW, SetWindowPos,
     SetWindowsHookExW, ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx,
-    GWLP_WNDPROC, GWL_EXSTYLE, HCURSOR, HC_ACTION, HICON, HWND_TOPMOST, IDC_CROSS, LWA_ALPHA,
+    WindowFromPoint, GA_ROOT, GWLP_WNDPROC, GWL_EXSTYLE, HCURSOR, HC_ACTION, HICON, HWND_TOPMOST, IDC_CROSS, LWA_ALPHA,
     MA_NOACTIVATE, MSG, MSLLHOOKSTRUCT, OCR_CROSS, OCR_HAND, OCR_IBEAM, OCR_NO, OCR_NORMAL,
     OCR_SIZEALL, OCR_SIZENESW, OCR_SIZENS, OCR_SIZENWSE, OCR_SIZEWE, OCR_UP, SPI_SETCURSORS,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
     SW_HIDE, SW_SHOWNA, SYSTEM_CURSOR_ID, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NOTIFY,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDPROC, WS_EX_LAYERED,
+    WS_EX_TRANSPARENT,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
 };
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::Shell::{IWebBrowser2, IShellWindows, ShellWindows};
 
 // =====================================
 // New WinAPI helpers for Shared Memory
@@ -926,13 +939,21 @@ fn capture_window_metrics(window: &tauri::WebviewWindow) -> Option<CaptureWindow
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ModifierSnapshot {
+    ctrl_pressed: bool,
+    alt_pressed: bool,
+    shift_pressed: bool,
+}
+
 fn emit_capture_mouse_event(
     window: &tauri::WebviewWindow,
     event_name: &str,
     global_x: f64,
     global_y: f64,
+    modifiers: ModifierSnapshot,
+    native_drag_preflight: bool,
 ) {
-    let (ctrl_pressed, alt_pressed, shift_pressed) = current_modifier_state();
     let sample =
         sample_screen_color_physical(global_x.round() as i32, global_y.round() as i32).ok();
     if let Some(metrics) = capture_window_metrics(window) {
@@ -946,9 +967,10 @@ fn emit_capture_mouse_event(
                 "scaleFactor": metrics.scale_factor,
                 "physicalOriginX": metrics.physical_origin_x,
                 "physicalOriginY": metrics.physical_origin_y,
-                "ctrlKey": ctrl_pressed,
-                "altKey": alt_pressed,
-                "shiftKey": shift_pressed,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
                 "hex": sample.hex,
                 "rgb": sample.rgb,
             }),
@@ -960,9 +982,10 @@ fn emit_capture_mouse_event(
                 "scaleFactor": metrics.scale_factor,
                 "physicalOriginX": metrics.physical_origin_x,
                 "physicalOriginY": metrics.physical_origin_y,
-                "ctrlKey": ctrl_pressed,
-                "altKey": alt_pressed,
-                "shiftKey": shift_pressed,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
             }),
         };
         let _ = window.emit(event_name, payload);
@@ -973,9 +996,10 @@ fn emit_capture_mouse_event(
                 "y": global_y,
                 "globalX": global_x,
                 "globalY": global_y,
-                "ctrlKey": ctrl_pressed,
-                "altKey": alt_pressed,
-                "shiftKey": shift_pressed,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
                 "hex": sample.hex,
                 "rgb": sample.rgb,
             }),
@@ -984,9 +1008,10 @@ fn emit_capture_mouse_event(
                 "y": global_y,
                 "globalX": global_x,
                 "globalY": global_y,
-                "ctrlKey": ctrl_pressed,
-                "altKey": alt_pressed,
-                "shiftKey": shift_pressed,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
             }),
         };
         let _ = window.emit(event_name, payload);
@@ -994,16 +1019,21 @@ fn emit_capture_mouse_event(
 }
 
 #[cfg(target_os = "windows")]
-fn current_modifier_state() -> (bool, bool, bool) {
-    let ctrl_pressed = unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0;
-    let alt_pressed = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } < 0;
-    let shift_pressed = unsafe { GetAsyncKeyState(VK_SHIFT.0 as i32) } < 0;
-    (ctrl_pressed, alt_pressed, shift_pressed)
+fn current_modifier_snapshot() -> ModifierSnapshot {
+    ModifierSnapshot {
+        ctrl_pressed: unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0,
+        alt_pressed: unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } < 0,
+        shift_pressed: unsafe { GetAsyncKeyState(VK_SHIFT.0 as i32) } < 0,
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn current_modifier_state() -> (bool, bool, bool) {
-    (false, false, false)
+fn current_modifier_snapshot() -> ModifierSnapshot {
+    ModifierSnapshot {
+        ctrl_pressed: false,
+        alt_pressed: false,
+        shift_pressed: false,
+    }
 }
 
 fn emit_overlay_wheel_event(
@@ -1012,8 +1042,8 @@ fn emit_overlay_wheel_event(
     global_x: f64,
     global_y: f64,
     delta_y: f64,
+    modifiers: ModifierSnapshot,
 ) {
-    let (ctrl_pressed, alt_pressed, shift_pressed) = current_modifier_state();
     if let Some(metrics) = capture_window_metrics(window) {
         let local = normalize_global_physical_to_local_logical(global_x, global_y, metrics);
         let payload = serde_json::json!({
@@ -1024,10 +1054,10 @@ fn emit_overlay_wheel_event(
             "scaleFactor": metrics.scale_factor,
             "physicalOriginX": metrics.physical_origin_x,
             "physicalOriginY": metrics.physical_origin_y,
-            "ctrlKey": ctrl_pressed,
-            "altKey": alt_pressed,
-            "shiftKey": shift_pressed,
-            "deltaY": delta_y,
+            "ctrlKey": modifiers.ctrl_pressed,
+            "altKey": modifiers.alt_pressed,
+            "shiftKey": modifiers.shift_pressed,
+            "deltaY": -delta_y,
         });
         let _ = window.emit(event_name, payload);
     } else {
@@ -1036,10 +1066,10 @@ fn emit_overlay_wheel_event(
             "y": global_y,
             "globalX": global_x,
             "globalY": global_y,
-            "ctrlKey": ctrl_pressed,
-            "altKey": alt_pressed,
-            "shiftKey": shift_pressed,
-            "deltaY": delta_y,
+            "ctrlKey": modifiers.ctrl_pressed,
+            "altKey": modifiers.alt_pressed,
+            "shiftKey": modifiers.shift_pressed,
+            "deltaY": -delta_y,
         });
         let _ = window.emit(event_name, payload);
     }
@@ -1048,15 +1078,30 @@ fn emit_overlay_wheel_event(
 #[cfg(target_os = "windows")]
 #[derive(Debug, Clone, Copy)]
 enum CaptureMouseHookEvent {
-    Move { x: f64, y: f64 },
-    Down { x: f64, y: f64 },
-    Up { x: f64, y: f64 },
-    Wheel { x: f64, y: f64 },
-    OverlayDown { x: f64, y: f64 },
-    OverlayMove { x: f64, y: f64 },
-    OverlayUp { x: f64, y: f64 },
-    OverlayWheel { x: f64, y: f64, delta_y: f64 },
-    OverlayContextMenu { x: f64, y: f64 },
+    Move { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Down { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Up { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Wheel { x: f64, y: f64, modifiers: ModifierSnapshot },
+    OverlayDown {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayMove {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayUp {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayWheel { x: f64, y: f64, delta_y: f64, modifiers: ModifierSnapshot },
+    OverlayContextMenu { x: f64, y: f64, modifiers: ModifierSnapshot },
 }
 
 #[cfg(target_os = "windows")]
@@ -1079,7 +1124,13 @@ static OVERLAY_MOUSE_HOOK_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
 static OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
 static OVERLAY_MOUSE_HOOK_HOVER_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static NATIVE_FILE_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static MAIN_UI_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 #[cfg(target_os = "windows")]
 static OVERLAY_CLICK_THROUGH_ACTIVE: AtomicBool = AtomicBool::new(true);
 #[cfg(target_os = "windows")]
@@ -1097,8 +1148,53 @@ fn queue_capture_mouse_hook_event(event: CaptureMouseHookEvent) {
 }
 
 #[cfg(target_os = "windows")]
+fn is_main_ui_thread() -> bool {
+    MAIN_UI_THREAD_ID
+        .get()
+        .map(|thread_id| *thread_id == std::thread::current().id())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
 fn overlay_mouse_hit_map() -> &'static Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>> {
     OVERLAY_MOUSE_HIT_MAP.get_or_init(|| Arc::new(std::sync::Mutex::new(Vec::new())))
+}
+
+#[cfg(target_os = "windows")]
+fn is_sticker_body_synthetic_rect(rect: &mouse_monitor::Rect) -> bool {
+    rect.name == "MINI" || rect.name == "FULL"
+}
+
+#[cfg(target_os = "windows")]
+fn is_overlay_ui_synthetic_rect(rect: &mouse_monitor::Rect) -> bool {
+    matches!(
+        rect.name.as_str(),
+        "STICKER_TOP_STRIP"
+            | "STICKER_TOP_STRIP_MENU"
+            | "STICKER_CONTEXT_MENU_ROOT"
+            | "ACTIONS_MENU"
+            | "PARAMS_PANEL"
+            | "TEXT_EDITOR"
+            | "EXEC_SETTINGS"
+            | "COLOR_PICKER"
+    ) || rect.name.starts_with("PORT_IN_")
+        || rect.name.starts_with("PORT_OUT_")
+}
+
+#[cfg(target_os = "windows")]
+fn is_synthetic_overlay_rect(rect: &mouse_monitor::Rect) -> bool {
+    is_sticker_body_synthetic_rect(rect) || is_overlay_ui_synthetic_rect(rect)
+}
+
+#[cfg(target_os = "windows")]
+fn should_overlay_window_ignore_cursor_events(
+    rects: &[mouse_monitor::Rect],
+    x: f64,
+    y: f64,
+) -> bool {
+    !rects
+        .iter()
+        .any(|rect| !is_synthetic_overlay_rect(rect) && rect.contains(x, y))
 }
 
 #[cfg(target_os = "windows")]
@@ -1112,7 +1208,27 @@ fn should_route_overlay_mouse_events(x: f64, y: f64) -> bool {
     overlay_mouse_hit_map()
         .lock()
         .ok()
-        .map(|rects| rects.iter().any(|rect| rect.contains(x, y)))
+        .map(|rects| {
+            rects
+                .iter()
+                .any(|rect| is_synthetic_overlay_rect(rect) && rect.contains(x, y))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn is_pointer_over_sticker_body_synthetic_rect(x: f64, y: f64) -> bool {
+    if !OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst) {
+        return false;
+    }
+    overlay_mouse_hit_map()
+        .lock()
+        .ok()
+        .map(|rects| {
+            rects
+                .iter()
+                .any(|rect| is_sticker_body_synthetic_rect(rect) && rect.contains(x, y))
+        })
         .unwrap_or(false)
 }
 
@@ -1130,71 +1246,133 @@ unsafe extern "system" fn capture_mouse_hook_proc(
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
+    if NATIVE_FILE_DRAG_ACTIVE.load(Ordering::SeqCst) {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
     let mouse = unsafe { *(lparam.0 as *const MSLLHOOKSTRUCT) };
     let x = mouse.pt.x as f64;
     let y = mouse.pt.y as f64;
+    let modifiers = current_modifier_snapshot();
     let capture_active = CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst);
     let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
     let overlay_hover_active = OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.load(Ordering::SeqCst);
-    if !capture_active && !should_route_overlay_mouse && !overlay_hover_active {
+    let native_drag_preflight_active =
+        OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.load(Ordering::SeqCst);
+    if !capture_active
+        && !should_route_overlay_mouse
+        && !overlay_hover_active
+        && !native_drag_preflight_active
+    {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
     match wparam.0 as u32 {
         WM_MOUSEMOVE => {
             if capture_active {
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Move { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Move { x, y, modifiers });
             }
-            if !capture_active && should_route_overlay_mouse {
+            if !capture_active && (should_route_overlay_mouse || native_drag_preflight_active) {
                 OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
             }
             if !capture_active && overlay_hover_active {
                 OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(false, Ordering::SeqCst);
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
             }
         }
         WM_LBUTTONDOWN => {
             if capture_active {
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Down { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Down { x, y, modifiers });
                 return LRESULT(1);
             }
             if should_route_overlay_mouse {
+                let shift_sticker_native_drag_preflight =
+                    modifiers.shift_pressed && is_pointer_over_sticker_body_synthetic_rect(x, y);
+                if shift_sticker_native_drag_preflight {
+                    OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE
+                        .store(true, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                    append_runtime_log_line(&format!(
+                        "overlay_native_drag_preflight_start :: x={} y={}",
+                        x, y
+                    ));
+                    queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight: true,
+                    });
+                    return LRESULT(1);
+                }
                 OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(true, Ordering::SeqCst);
                 OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(true, Ordering::SeqCst);
+                OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(false, Ordering::SeqCst);
                 OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
                 promote_overlay_input_shield_to_fullscreen();
                 append_runtime_log_line(&format!(
                     "overlay_drag_start :: synthetic={} x={} y={}",
                     true, x, y
                 ));
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: false,
+                });
                 return LRESULT(1);
             }
         }
         WM_LBUTTONUP => {
             if capture_active {
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Up { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Up { x, y, modifiers });
                 return LRESULT(1);
             }
             let drag_active = OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
             let synthetic_drag_active =
                 OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
-            if drag_active || synthetic_drag_active || should_route_overlay_mouse {
+            let native_drag_preflight_active =
+                OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.swap(false, Ordering::SeqCst);
+            if drag_active
+                || synthetic_drag_active
+                || native_drag_preflight_active
+                || should_route_overlay_mouse
+            {
                 append_runtime_log_line(&format!(
                     "overlay_drag_end :: synthetic={} x={} y={}",
                     synthetic_drag_active, x, y
                 ));
             }
-            if drag_active || synthetic_drag_active || should_route_overlay_mouse {
+            if drag_active
+                || synthetic_drag_active
+                || native_drag_preflight_active
+                || should_route_overlay_mouse
+            {
                 OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(should_route_overlay_mouse, Ordering::SeqCst);
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayUp { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayUp {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
                 return LRESULT(1);
             }
         }
         WM_MOUSEWHEEL => {
             if capture_active {
-                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Wheel { x, y });
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Wheel { x, y, modifiers });
                 return LRESULT(1);
             }
             if should_route_overlay_mouse {
@@ -1203,6 +1381,7 @@ unsafe extern "system" fn capture_mouse_hook_proc(
                     x,
                     y,
                     delta_y,
+                    modifiers,
                 });
                 OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
                 return LRESULT(1);
@@ -1219,6 +1398,7 @@ unsafe extern "system" fn capture_mouse_hook_proc(
                     queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayContextMenu {
                         x,
                         y,
+                        modifiers,
                     });
                 }
                 return LRESULT(1);
@@ -1254,15 +1434,21 @@ fn install_capture_mouse_hook_thread(window: tauri::WebviewWindow) {
                 };
 
                 match event {
-                    CaptureMouseHookEvent::Move { mut x, mut y } => {
+                    CaptureMouseHookEvent::Move {
+                        mut x,
+                        mut y,
+                        mut modifiers,
+                    } => {
                         loop {
                             match receiver.try_recv() {
                                 Ok(CaptureMouseHookEvent::Move {
                                     x: next_x,
                                     y: next_y,
+                                    modifiers: next_modifiers,
                                 }) => {
                                     x = next_x;
                                     y = next_y;
+                                    modifiers = next_modifiers;
                                 }
                                 Ok(other_event) => {
                                     deferred_event = Some(other_event);
@@ -1272,24 +1458,67 @@ fn install_capture_mouse_hook_thread(window: tauri::WebviewWindow) {
                                 Err(mpsc::TryRecvError::Disconnected) => return,
                             }
                         }
-                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_move", x, y);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_move",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
                     }
-                    CaptureMouseHookEvent::Down { x, y } => {
-                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_down", x, y);
+                    CaptureMouseHookEvent::Down { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_down",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
                     }
-                    CaptureMouseHookEvent::OverlayDown { x, y } => {
+                    CaptureMouseHookEvent::OverlayDown {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight,
+                    } => {
                         sync_overlay_input_shield_from_runtime_state(&emit_window);
-                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_down", x, y);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_down",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
                     }
-                    CaptureMouseHookEvent::OverlayMove { mut x, mut y } => {
+                    CaptureMouseHookEvent::OverlayMove {
+                        mut x,
+                        mut y,
+                        mut modifiers,
+                        native_drag_preflight,
+                    } => {
                         loop {
                             match receiver.try_recv() {
                                 Ok(CaptureMouseHookEvent::OverlayMove {
                                     x: next_x,
                                     y: next_y,
+                                    modifiers: next_modifiers,
+                                    native_drag_preflight: next_native_drag_preflight,
                                 }) => {
+                                    if next_native_drag_preflight != native_drag_preflight {
+                                        deferred_event = Some(CaptureMouseHookEvent::OverlayMove {
+                                            x: next_x,
+                                            y: next_y,
+                                            modifiers: next_modifiers,
+                                            native_drag_preflight: next_native_drag_preflight,
+                                        });
+                                        break;
+                                    }
                                     x = next_x;
                                     y = next_y;
+                                    modifiers = next_modifiers;
                                 }
                                 Ok(other_event) => {
                                     deferred_event = Some(other_event);
@@ -1299,29 +1528,68 @@ fn install_capture_mouse_hook_thread(window: tauri::WebviewWindow) {
                                 Err(mpsc::TryRecvError::Disconnected) => return,
                             }
                         }
-                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_move", x, y);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_move",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
                     }
-                    CaptureMouseHookEvent::Up { x, y } => {
-                        emit_capture_mouse_event(&emit_window, "capture/global_mouse_up", x, y);
+                    CaptureMouseHookEvent::Up { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_up",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
                     }
-                    CaptureMouseHookEvent::OverlayUp { x, y } => {
+                    CaptureMouseHookEvent::OverlayUp {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight,
+                    } => {
                         sync_overlay_input_shield_from_runtime_state(&emit_window);
-                        emit_capture_mouse_event(&emit_window, "overlay/global_mouse_up", x, y);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_up",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
                     }
-                    CaptureMouseHookEvent::Wheel { x, y } => {
-                        let _ = (x, y);
+                    CaptureMouseHookEvent::Wheel { x, y, modifiers } => {
+                        let _ = (x, y, modifiers);
                     }
-                    CaptureMouseHookEvent::OverlayWheel { x, y, delta_y } => {
+                    CaptureMouseHookEvent::OverlayWheel {
+                        x,
+                        y,
+                        delta_y,
+                        modifiers,
+                    } => {
                         emit_overlay_wheel_event(
                             &emit_window,
                             "overlay/global_mouse_wheel",
                             x,
                             y,
                             delta_y,
+                            modifiers,
                         );
                     }
-                    CaptureMouseHookEvent::OverlayContextMenu { x, y } => {
-                        emit_capture_mouse_event(&emit_window, "overlay/global_context_menu", x, y);
+                    CaptureMouseHookEvent::OverlayContextMenu { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_context_menu",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
                     }
                 }
             }
@@ -1377,16 +1645,22 @@ fn refresh_overlay_interactivity_for_current_cursor(
         None => return,
     };
 
-    if hit_map.rectangles.lock().is_err() {
+    let rects = match hit_map.rectangles.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => return,
+    };
+
+    let should_ignore = should_overlay_window_ignore_cursor_events(&rects, cursor_x, cursor_y);
+
+    if window.set_ignore_cursor_events(should_ignore).is_err() {
         return;
     }
-
-    let _ = window.set_ignore_cursor_events(true);
-    OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);
+    set_overlay_transparent_style(window, should_ignore);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);
     apply_overlay_no_activate(window);
     append_runtime_log_line(&format!(
         "refresh_overlay_interactivity :: cursor_x={} cursor_y={} should_ignore={}",
-        cursor_x, cursor_y, true
+        cursor_x, cursor_y, should_ignore
     ));
 }
 
@@ -1586,39 +1860,458 @@ fn save_sticker_image_as(
 }
 
 #[cfg(target_os = "windows")]
-fn start_native_file_drag(
+fn variant_i4(value: i32) -> VARIANT {
+    VARIANT {
+        Anonymous: VARIANT_0 {
+            Anonymous: std::mem::ManuallyDrop::new(VARIANT_0_0 {
+                vt: VT_I4,
+                wReserved1: 0,
+                wReserved2: 0,
+                wReserved3: 0,
+                Anonymous: VARIANT_0_0_0 { lVal: value },
+            }),
+        },
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn percent_decode_utf8(input: &str) -> String {
+    let mut bytes = Vec::with_capacity(input.len());
+    let raw = input.as_bytes();
+    let mut index = 0;
+    while index < raw.len() {
+        if raw[index] == b'%' && index + 2 < raw.len() {
+            if let Ok(hex) = u8::from_str_radix(&input[index + 1..index + 3], 16) {
+                bytes.push(hex);
+                index += 3;
+                continue;
+            }
+        }
+        bytes.push(raw[index]);
+        index += 1;
+    }
+    String::from_utf8_lossy(&bytes).to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn path_from_file_url(url: &str) -> Option<PathBuf> {
+    let rest = url.strip_prefix("file://")?;
+    let (host, path_part) = if let Some((host, path)) = rest.split_once('/') {
+        (host, format!("/{}", path))
+    } else {
+        ("", String::new())
+    };
+    let decoded_path = percent_decode_utf8(&path_part);
+    let path = if host.is_empty() {
+        let without_leading_slash = if decoded_path.len() >= 3
+            && decoded_path.as_bytes().first() == Some(&b'/')
+            && decoded_path.as_bytes().get(2) == Some(&b':')
+        {
+            &decoded_path[1..]
+        } else {
+            decoded_path.as_str()
+        };
+        without_leading_slash.replace('/', "\\")
+    } else {
+        format!(
+            "\\\\{}{}",
+            percent_decode_utf8(host),
+            decoded_path.replace('/', "\\")
+        )
+    };
+    if path.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(path))
+}
+
+#[cfg(target_os = "windows")]
+fn point_in_rect(x: i32, y: i32, rect: &RECT) -> bool {
+    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+}
+
+#[cfg(target_os = "windows")]
+fn explorer_folder_candidates_at_point(x: i32, y: i32) -> Vec<(PathBuf, i64, bool)> {
+    let mut candidates = Vec::new();
+    let point = POINT { x, y };
+    let point_root = unsafe {
+        let hwnd = WindowFromPoint(point);
+        if hwnd.0.is_null() {
+            HWND(std::ptr::null_mut())
+        } else {
+            GetAncestor(hwnd, GA_ROOT)
+        }
+    };
+
+    let com_initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok() };
+    let shell_windows = unsafe { CoCreateInstance::<_, IShellWindows>(&ShellWindows, None, CLSCTX_ALL) };
+    let Ok(shell_windows) = shell_windows else {
+        if com_initialized {
+            unsafe { CoUninitialize() };
+        }
+        return candidates;
+    };
+
+    let count = unsafe { shell_windows.Count().unwrap_or(0) };
+    for index in 0..count {
+        let item_variant = variant_i4(index);
+        let Ok(dispatch) = (unsafe { shell_windows.Item(&item_variant) }) else {
+            continue;
+        };
+        let Ok(browser) = dispatch.cast::<IWebBrowser2>() else {
+            continue;
+        };
+        let Ok(shell_hwnd) = (unsafe { browser.HWND() }) else {
+            continue;
+        };
+        let hwnd = HWND(shell_hwnd.0 as *mut _);
+        if hwnd.0.is_null() {
+            continue;
+        }
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() || !point_in_rect(x, y, &rect) {
+            continue;
+        }
+        let Ok(location_url) = (unsafe { browser.LocationURL() }) else {
+            continue;
+        };
+        let Some(folder_path) = path_from_file_url(&location_url.to_string()) else {
+            continue;
+        };
+        if !folder_path.is_dir() {
+            continue;
+        }
+        let area = i64::from(rect.right - rect.left) * i64::from(rect.bottom - rect.top);
+        candidates.push((folder_path, area, !point_root.0.is_null() && point_root == hwnd));
+    }
+
+    if com_initialized {
+        unsafe { CoUninitialize() };
+    }
+    candidates
+}
+
+#[cfg(target_os = "windows")]
+fn window_class_name_at_point(x: i32, y: i32) -> Option<String> {
+    let hwnd = unsafe { WindowFromPoint(POINT { x, y }) };
+    if hwnd.0.is_null() {
+        return None;
+    }
+    let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    let target = if root.0.is_null() { hwnd } else { root };
+    let mut buffer = [0u16; 256];
+    let len = unsafe { GetClassNameW(target, &mut buffer) };
+    if len <= 0 {
+        return None;
+    }
+    Some(String::from_utf16_lossy(&buffer[..len as usize]))
+}
+
+#[cfg(target_os = "windows")]
+fn desktop_dir_for_drag_export() -> Option<PathBuf> {
+    dirs::desktop_dir().filter(|path| path.is_dir())
+}
+
+#[cfg(target_os = "windows")]
+fn explorer_child_folder_at_point(x: i32, y: i32, parent_dir: &Path) -> Option<PathBuf> {
+    let automation = UIAutomation::new().ok()?;
+    let element = automation.element_from_point(UiaPoint::new(x, y)).ok()?;
+    let name = element.get_name().ok()?;
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed.contains('\\') || trimmed.contains('/') {
+        return None;
+    }
+    let candidate = parent_dir.join(trimmed);
+    if candidate.is_dir() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_drag_export_target_dir(global_x: f64, global_y: f64) -> Result<PathBuf, String> {
+    let x = global_x.round() as i32;
+    let y = global_y.round() as i32;
+    let mut candidates = explorer_folder_candidates_at_point(x, y);
+    candidates.sort_by_key(|(_, area, root_match)| (!*root_match, *area));
+    if let Some((path, _, root_match)) = candidates.into_iter().next() {
+        if let Some(child_folder) = explorer_child_folder_at_point(x, y, &path) {
+            append_runtime_log_line(&format!(
+                "sticker_drag_export_target_explorer_child :: x={} y={} rootMatch={} parent={} path={}",
+                x,
+                y,
+                root_match,
+                path.to_string_lossy(),
+                child_folder.to_string_lossy()
+            ));
+            return Ok(child_folder);
+        }
+        append_runtime_log_line(&format!(
+            "sticker_drag_export_target_explorer :: x={} y={} rootMatch={} path={}",
+            x,
+            y,
+            root_match,
+            path.to_string_lossy()
+        ));
+        return Ok(path);
+    }
+
+    let class_name = window_class_name_at_point(x, y).unwrap_or_else(|| "unknown".to_string());
+    if matches!(
+        class_name.as_str(),
+        "Progman" | "WorkerW" | "SHELLDLL_DefView" | "SysListView32"
+    ) {
+        if let Some(desktop) = desktop_dir_for_drag_export() {
+            append_runtime_log_line(&format!(
+                "sticker_drag_export_target_desktop :: x={} y={} class={} path={}",
+                x,
+                y,
+                class_name,
+                desktop.to_string_lossy()
+            ));
+            return Ok(desktop);
+        }
+    }
+
+    append_runtime_log_line(&format!(
+        "sticker_drag_export_target_missing :: x={} y={} class={}",
+        x, y, class_name
+    ));
+    Err(format!(
+        "No Explorer folder found under release cursor ({}, {})",
+        x, y
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn drag_export_filename(filename_hint: Option<&str>, source_path: Option<&Path>) -> String {
+    let stem = filename_hint
+        .map(|hint| sanitize_drag_filename_hint(Some(hint)))
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            source_path
+                .and_then(|path| path.file_stem())
+                .and_then(|stem| stem.to_str())
+                .map(|stem| sanitize_drag_filename_hint(Some(stem)))
+        })
+        .unwrap_or_else(|| "hook".to_string());
+    let extension = source_path
+        .and_then(|path| path.extension())
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            extension
+                .chars()
+                .filter(|ch| ch.is_ascii_alphanumeric())
+                .take(8)
+                .collect::<String>()
+                .to_ascii_lowercase()
+        })
+        .filter(|extension| !extension.is_empty())
+        .unwrap_or_else(|| "png".to_string());
+    format!("{}.{}", stem, extension)
+}
+
+#[cfg(target_os = "windows")]
+fn unique_drag_export_path(target_dir: &Path, filename: &str) -> PathBuf {
+    let candidate = target_dir.join(filename);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("hook");
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    for index in 2..10_000 {
+        let next_name = if let Some(extension) = extension {
+            format!("{}_{}.{}", stem, index, extension)
+        } else {
+            format!("{}_{}", stem, index)
+        };
+        let next = target_dir.join(next_name);
+        if !next.exists() {
+            return next;
+        }
+    }
+    target_dir.join(format!("{}_{}.png", stem, file_timestamp_component()))
+}
+
+#[cfg(target_os = "windows")]
+fn write_drag_export_bytes(
+    image_data: &[u8],
+    filename_hint: Option<String>,
+    global_x: f64,
+    global_y: f64,
+) -> Result<String, String> {
+    let target_dir = resolve_drag_export_target_dir(global_x, global_y)?;
+    let filename = drag_export_filename(filename_hint.as_deref(), None);
+    let target_path = unique_drag_export_path(&target_dir, &filename);
+    let mut file = File::create(&target_path)
+        .map_err(|e| format!("Failed to create drag export file: {}", e))?;
+    file.write_all(image_data)
+        .map_err(|e| format!("Failed to write drag export file: {}", e))?;
+    let path_string = target_path.to_string_lossy().to_string();
+    append_runtime_log_line(&format!("sticker_drag_export_saved :: path={}", path_string));
+    Ok(path_string)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn save_sticker_drag_export(
+    base64_image: String,
+    filename_hint: Option<String>,
+    global_x: f64,
+    global_y: f64,
+) -> Result<String, String> {
+    let image_data = decode_base64_image_data(&base64_image)?;
+    write_drag_export_bytes(&image_data, filename_hint, global_x, global_y)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn save_sticker_drag_export(
+    app: tauri::AppHandle,
+    base64_image: String,
+    filename_hint: Option<String>,
+    _global_x: f64,
+    _global_y: f64,
+) -> Result<String, String> {
+    let _ = filename_hint;
+    save_sticker_image(app, base64_image)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn save_sticker_drag_export_from_path(
+    path: String,
+    filename_hint: Option<String>,
+    global_x: f64,
+    global_y: f64,
+) -> Result<String, String> {
+    let source_path = PathBuf::from(&path);
+    if !source_path.is_file() {
+        return Err(format!("Sticker drag export source is not a file: {}", path));
+    }
+    let target_dir = resolve_drag_export_target_dir(global_x, global_y)?;
+    let filename = drag_export_filename(filename_hint.as_deref(), Some(&source_path));
+    let target_path = unique_drag_export_path(&target_dir, &filename);
+    fs::copy(&source_path, &target_path)
+        .map_err(|e| format!("Failed to copy drag export file: {}", e))?;
+    let path_string = target_path.to_string_lossy().to_string();
+    append_runtime_log_line(&format!(
+        "sticker_drag_export_copied :: source={} target={}",
+        source_path.to_string_lossy(),
+        path_string
+    ));
+    Ok(path_string)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn save_sticker_drag_export_from_path(
+    path: String,
+    _filename_hint: Option<String>,
+    _global_x: f64,
+    _global_y: f64,
+) -> Result<String, String> {
+    Ok(path)
+}
+
+#[cfg(target_os = "windows")]
+fn start_native_file_drag_on_ui_thread(
     window: tauri::WebviewWindow,
     file_path: PathBuf,
-    hit_map: &SharedHitMap,
-) -> Result<String, String> {
-    let path_string = file_path.to_string_lossy().to_string();
-    set_overlay_click_through_impl(&window, true);
+    hit_map: SharedHitMap,
+) -> Result<(), String> {
+    OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(false, Ordering::SeqCst);
+    NATIVE_FILE_DRAG_ACTIVE.store(true, Ordering::SeqCst);
+    hide_overlay_input_shield_window();
+    let _ = window.set_ignore_cursor_events(true);
+    set_overlay_transparent_style(&window, true);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);
+    apply_overlay_no_activate(&window);
     append_runtime_log_line("native_drag_overlay_clickthrough :: true");
     append_runtime_log_line(&format!(
         "native_drag_start :: path={}",
-        cache_file_name_for_log(Path::new(&path_string))
+        cache_file_name_for_log(&file_path)
     ));
+    let drag_outcome = Arc::new(std::sync::Mutex::new(None));
+    let drag_outcome_slot = Arc::clone(&drag_outcome);
     let drag_result = drag::start_drag(
         &window,
         drag::DragItem::Files(vec![file_path.clone()]),
         drag::Image::File(file_path),
-        |result, cursor_position| {
-            append_runtime_log_line(&format!(
-                "native_drag_result :: result={:?} cursor_x={} cursor_y={}",
-                result, cursor_position.x, cursor_position.y
-            ));
+        move |outcome| {
+            if let Ok(mut guard) = drag_outcome_slot.lock() {
+                *guard = Some(outcome);
+            }
         },
         drag::Options {
-            mode: drag::DragMode::Move,
+            mode: drag::DragMode::Copy,
             ..Default::default()
         },
     )
     .map_err(|error| format!("Failed to start native drag: {}", error));
-    refresh_overlay_interactivity_for_current_cursor(&window, hit_map);
+    NATIVE_FILE_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    refresh_overlay_interactivity_for_current_cursor(&window, &hit_map);
+    sync_overlay_input_shield_from_runtime_state(&window);
     append_runtime_log_line("native_drag_overlay_restored");
     drag_result?;
+    if let Ok(guard) = drag_outcome.lock() {
+        if let Some(drag_outcome) = *guard {
+            append_runtime_log_line(&format!(
+                "native_drag_result :: result={:?} effect={} hresult={} cursor_x={} cursor_y={}",
+                drag_outcome.result,
+                drag_outcome.performed_effect.unwrap_or(0),
+                drag_outcome.platform_status.unwrap_or(0),
+                drag_outcome.cursor_position.x,
+                drag_outcome.cursor_position.y
+            ));
+        }
+    }
 
-    Ok(path_string)
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn start_native_file_drag(
+    window: tauri::WebviewWindow,
+    file_path: PathBuf,
+    hit_map: &SharedHitMap,
+) -> Result<(), String> {
+    if is_main_ui_thread() {
+        return start_native_file_drag_on_ui_thread(window, file_path, hit_map.clone());
+    }
+
+    append_runtime_log_line(&format!(
+        "native_drag_main_thread_dispatch :: current={:?} main={:?}",
+        std::thread::current().id(),
+        MAIN_UI_THREAD_ID.get()
+    ));
+
+    let (drag_completion_sender, drag_completion_receiver) = mpsc::sync_channel::<Result<(), String>>(1);
+    let window_for_main = window.clone();
+    let file_path_for_main = file_path.clone();
+    let hit_map_for_main = hit_map.clone();
+
+    window
+        .run_on_main_thread(move || {
+            let result =
+                start_native_file_drag_on_ui_thread(window_for_main, file_path_for_main, hit_map_for_main);
+            let _ = drag_completion_sender.send(result);
+        })
+        .map_err(|error| format!("Failed to dispatch native drag to main thread: {}", error))?;
+
+    drag_completion_receiver
+        .recv()
+        .map_err(|_| "Main-thread native drag completion channel closed".to_string())?
 }
 
 #[cfg(target_os = "windows")]
@@ -1645,7 +2338,8 @@ fn begin_sticker_native_file_drag(
     drop(file);
 
     let staged_drag_file = stage_drag_out_file_copy(&file_path)?;
-    start_native_file_drag(window, staged_drag_file, hit_map.inner())
+    start_native_file_drag(window, staged_drag_file, hit_map.inner())?;
+    Ok(file_path.to_string_lossy().to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -1655,7 +2349,7 @@ fn begin_sticker_native_file_drag_from_path(
     hit_map: tauri::State<'_, SharedHitMap>,
     path: String,
 ) -> Result<String, String> {
-    let file_path = PathBuf::from(path);
+    let file_path = PathBuf::from(path.clone());
     let metadata =
         fs::metadata(&file_path).map_err(|e| format!("Failed to stat drag source file: {}", e))?;
     if !metadata.is_file() {
@@ -1669,7 +2363,8 @@ fn begin_sticker_native_file_drag_from_path(
         return Err("Drag source must be inside Hook's clipboard cache".to_string());
     }
     let staged_drag_file = stage_drag_out_file_copy(&file_path)?;
-    start_native_file_drag(window, staged_drag_file, hit_map.inner())
+    start_native_file_drag(window, staged_drag_file, hit_map.inner())?;
+    Ok(path)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2855,6 +3550,36 @@ fn set_overlay_no_activate_flag(window: &tauri::WebviewWindow, enabled: bool) {
 }
 
 #[cfg(target_os = "windows")]
+fn set_overlay_transparent_style(window: &tauri::WebviewWindow, enabled: bool) {
+    let Ok(hwnd) = window.hwnd() else {
+        append_runtime_log_line("overlay_transparent_hwnd_failed");
+        return;
+    };
+    let hwnd = HWND(hwnd.0);
+
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let flag = WS_EX_TRANSPARENT.0 as isize;
+        let next_style = if enabled { style | flag } else { style & !flag };
+        if next_style != style {
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next_style);
+        }
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_overlay_transparent_style(_window: &tauri::WebviewWindow, _enabled: bool) {}
+
+#[cfg(target_os = "windows")]
 fn apply_overlay_no_activate(window: &tauri::WebviewWindow) {
     set_overlay_no_activate_flag(window, true);
     append_runtime_log_line("overlay_no_activate_applied");
@@ -2930,6 +3655,19 @@ fn overlay_input_shield_hwnd() -> Option<HWND> {
         .copied()
         .map(|value| HWND(value as *mut core::ffi::c_void))
 }
+
+#[cfg(target_os = "windows")]
+fn hide_overlay_input_shield_window() {
+    let Some(hwnd) = overlay_input_shield_hwnd() else {
+        return;
+    };
+
+    let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
+    append_runtime_log_line("overlay_input_shield_native_drag_hidden");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_overlay_input_shield_window() {}
 
 #[cfg(target_os = "windows")]
 fn promote_overlay_input_shield_to_fullscreen() {
@@ -3066,17 +3804,18 @@ fn sync_overlay_input_shield_region(
         return;
     }
 
-    let visible_rects: Vec<&mouse_monitor::Rect> = if active {
+    let shield_rects: Vec<&mouse_monitor::Rect> = if active {
         rects
             .iter()
-            .filter(|rect| rect.width > 0 && rect.height > 0)
+            .filter(|rect| {
+                rect.width > 0 && rect.height > 0 && is_synthetic_overlay_rect(rect)
+            })
             .collect()
     } else {
         Vec::new()
     };
-
     let empty_region = unsafe { CreateRectRgn(0, 0, 0, 0) };
-    if visible_rects.is_empty() {
+    if shield_rects.is_empty() {
         let _ = unsafe { SetWindowRgn(hwnd, Some(empty_region), true) };
         let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
         append_runtime_log_line("overlay_input_shield_hidden");
@@ -3084,7 +3823,7 @@ fn sync_overlay_input_shield_region(
     }
 
     let union_region = empty_region;
-    for rect in visible_rects {
+    for rect in shield_rects {
         let next_region =
             unsafe { CreateRectRgn(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height) };
         let _ = unsafe {
@@ -3097,7 +3836,6 @@ fn sync_overlay_input_shield_region(
         };
         let _ = unsafe { DeleteObject(next_region.into()) };
     }
-
     let _ = unsafe { SetWindowRgn(hwnd, Some(union_region), true) };
     let _ = unsafe { ShowWindow(hwnd, SW_SHOWNA) };
     append_runtime_log_line("overlay_input_shield_region_synced");
@@ -3877,6 +4615,7 @@ fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
     let _ = window.set_content_protected(false);
     clear_overlay_no_activate(window);
     let _ = window.set_ignore_cursor_events(false);
+    set_overlay_transparent_style(window, false);
     OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
     let _ = window.set_title("Hook");
     let _ = window.set_skip_taskbar(false);
@@ -3901,11 +4640,13 @@ fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
 fn show_overlay_host_impl(window: &tauri::WebviewWindow, click_through: bool) {
     setup_overlay_window(window);
     let _ = window.set_ignore_cursor_events(click_through);
+    set_overlay_transparent_style(window, click_through);
     OVERLAY_CLICK_THROUGH_ACTIVE.store(click_through, Ordering::SeqCst);
 }
 
 fn set_overlay_click_through_impl(window: &tauri::WebviewWindow, click_through: bool) {
     let _ = window.set_ignore_cursor_events(click_through);
+    set_overlay_transparent_style(window, click_through);
     OVERLAY_CLICK_THROUGH_ACTIVE.store(click_through, Ordering::SeqCst);
     apply_overlay_no_activate(window);
 }
@@ -3921,6 +4662,7 @@ fn set_overlay_capture_exclusion_impl(window: &tauri::WebviewWindow, enabled: bo
 
 fn hide_to_tray_impl(window: &tauri::WebviewWindow) {
     let _ = window.set_ignore_cursor_events(false);
+    set_overlay_transparent_style(window, false);
     OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
     if let Err(e) = window.hide() {
         println!("Failed to hide window to tray: {}", e);
@@ -4412,6 +5154,35 @@ fn set_overlay_click_through(app: tauri::AppHandle, click_through: bool) -> Resu
     Err("Window not found".to_string())
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_native_drag_preflight_active(active: bool) -> Result<(), String> {
+    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(active, Ordering::SeqCst);
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn set_native_drag_preflight_active(_active: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+fn focus_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        clear_overlay_no_activate(&window);
+        if let Err(error) = window.set_focus() {
+            apply_overlay_no_activate(&window);
+            return Err(format!("Failed to focus overlay window: {}", error));
+        }
+        apply_overlay_no_activate(&window);
+        append_runtime_log_line("focus_overlay_window");
+        return Ok(());
+    }
+
+    Err("Window not found".to_string())
+}
+
 #[tauri::command]
 fn set_overlay_capture_exclusion(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -4854,6 +5625,8 @@ pub fn run() {
              begin_sticker_native_file_drag_from_path,
              save_sticker_image,
              save_sticker_image_as,
+             save_sticker_drag_export,
+             save_sticker_drag_export_from_path,
              get_cursor_position,
             copy_to_clipboard,
             copy_node_image_to_clipboard,
@@ -4874,6 +5647,8 @@ pub fn run() {
             show_canvas_window,
             show_overlay_host,
             set_overlay_click_through,
+            set_native_drag_preflight_active,
+            focus_overlay_window,
             set_overlay_capture_exclusion,
             hide_to_tray,
             trigger_capture_mode,
@@ -4902,6 +5677,8 @@ pub fn run() {
             cli_engine::native_cli_execute
         ])
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            let _ = MAIN_UI_THREAD_ID.set(std::thread::current().id());
             let single_instance_guard =
                 match try_acquire_single_instance(&single_instance_name()) {
                     Ok(Some(guard)) => guard,
@@ -5162,6 +5939,10 @@ pub fn run() {
                             }
                             rdev::EventType::MouseMove { x, y } => {
                                 let _ = (x, y);
+                                if NATIVE_FILE_DRAG_ACTIVE.load(Ordering::SeqCst) {
+                                    input_state.is_ignoring_events = true;
+                                    return;
+                                }
                                 let capture_active = capture_input_state_clone
                                     .active
                                     .lock()
@@ -5178,13 +5959,24 @@ pub fn run() {
                                     .map(|guard| *guard)
                                     .unwrap_or(false);
                                 if active {
-                                    let rects_available =
-                                        hit_map_clone.rectangles.lock().map(|_| true).unwrap_or(false);
-                                    if rects_available && !input_state.is_ignoring_events {
-                                        let _ = window.set_ignore_cursor_events(true);
-                                        OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);
+                                    let should_ignore = hit_map_clone
+                                        .rectangles
+                                        .lock()
+                                        .map(|rects| {
+                                            should_overlay_window_ignore_cursor_events(
+                                                &rects,
+                                                *x,
+                                                *y,
+                                            )
+                                        })
+                                        .unwrap_or(true);
+                                    if should_ignore != input_state.is_ignoring_events {
+                                        let _ = window.set_ignore_cursor_events(should_ignore);
+                                        set_overlay_transparent_style(&window, should_ignore);
+                                        OVERLAY_CLICK_THROUGH_ACTIVE
+                                            .store(should_ignore, Ordering::SeqCst);
                                         apply_overlay_no_activate(&window);
-                                        input_state.is_ignoring_events = true;
+                                        input_state.is_ignoring_events = should_ignore;
                                     }
                                 } else {
                                     input_state.is_ignoring_events = false;

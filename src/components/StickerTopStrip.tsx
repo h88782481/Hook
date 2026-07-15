@@ -18,6 +18,7 @@ import { rasterizeStickerAnnotationsForUnit } from "../services/stickerRasterize
 import { syncService } from "../services/syncService";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import {
+    draggingStickerId,
     selectedStickerAnnotationId,
     selectedStickerAnnotationIds,
     stickerEditHistories,
@@ -406,7 +407,7 @@ const toolbarButtonRightBorderClass = `${toolbarButtonClass} border-r border-whi
 const toolbarButtonLeftBorderClass = `${toolbarButtonClass} border-l border-white/15`;
 const toolbarCornerToggleClass =
     "hook-toolbar-corner-toggle absolute bottom-0 right-0 z-10 flex h-6 w-6 items-center justify-center border-l border-t border-white/15 transition-colors";
-const toolbarMenuClass = "hook-toolbar-menu absolute left-0 top-full z-[1215] mt-1 min-w-[132px]";
+const toolbarMenuClass = "hook-toolbar-menu pointer-events-auto absolute left-0 top-full z-[1215] mt-1 min-w-[132px]";
 const toolbarMenuItemClass = "hook-toolbar-menu-item flex h-10 w-full items-center gap-2 px-3 text-left text-[12px] transition-colors";
 
 export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
@@ -418,6 +419,50 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const [currentHistoryAction, setCurrentHistoryAction] = createSignal<HistoryActionMode>("undo");
     const [currentRasterizeScope, setCurrentRasterizeScope] = createSignal<StickerRasterizeScope>("selected");
     let stripRef: HTMLDivElement | undefined;
+    const openMenuRectId = `sticker-top-strip-menu-${props.unitId}`;
+    let openMenuRectSyncRafIds: number[] = [];
+
+    const syncOpenToolbarMenuRect = () => {
+        if (!openMenu() || !stripRef) return false;
+        const menuElement = stripRef.querySelector<HTMLElement>("[data-top-strip-menu='true']");
+        if (!menuElement) return false;
+
+        const bounds = menuElement.getBoundingClientRect();
+        addOrUpdateRect({
+            id: openMenuRectId,
+            x: bounds.left,
+            y: bounds.top,
+            width: bounds.width,
+            height: bounds.height,
+            name: "STICKER_TOP_STRIP_MENU",
+        });
+        void syncService.updateBackendRects();
+        return true;
+    };
+
+    const cancelOpenToolbarMenuRectSync = () => {
+        for (const rafId of openMenuRectSyncRafIds) {
+            window.cancelAnimationFrame(rafId);
+        }
+        openMenuRectSyncRafIds = [];
+    };
+
+    const scheduleOpenToolbarMenuRectSync = () => {
+        if (typeof window === "undefined") return;
+        cancelOpenToolbarMenuRectSync();
+
+        const scheduleFrame = (remainingFrames: number) => {
+            const rafId = window.requestAnimationFrame(() => {
+                openMenuRectSyncRafIds = openMenuRectSyncRafIds.filter((item) => item !== rafId);
+                if (!syncOpenToolbarMenuRect() && remainingFrames > 0) {
+                    scheduleFrame(remainingFrames - 1);
+                }
+            });
+            openMenuRectSyncRafIds.push(rafId);
+        };
+
+        scheduleFrame(3);
+    };
 
     createEffect(() => {
         if (typeof window === "undefined") return;
@@ -453,6 +498,27 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         };
         window.addEventListener("pointerdown", closeOnOutsidePointer);
         onCleanup(() => window.removeEventListener("pointerdown", closeOnOutsidePointer));
+    });
+
+    createEffect(() => {
+        if (typeof window === "undefined") return;
+
+        if (!openMenu()) {
+            removeRect(openMenuRectId);
+            void syncService.updateBackendRects();
+            return;
+        }
+
+        scheduleOpenToolbarMenuRectSync();
+        const handleResize = () => scheduleOpenToolbarMenuRectSync();
+        window.addEventListener("resize", handleResize);
+
+        onCleanup(() => {
+            cancelOpenToolbarMenuRectSync();
+            window.removeEventListener("resize", handleResize);
+            removeRect(openMenuRectId);
+            void syncService.updateBackendRects();
+        });
     });
 
     const currentTransformMode = createMemo<StickerTransformMode>(() => stickerToolSettings.transformMode);
@@ -542,6 +608,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const currentRasterizeOption = createMemo(
         () => rasterizeScopeOptions.find((item) => item.mode === currentRasterizeScope()) ?? rasterizeScopeOptions[0],
     );
+    const draggingThisSticker = createMemo(() => draggingStickerId() === props.unitId);
     const canRasterizeSelected = createMemo(() => {
         const unit = currentUnit();
         if (!unit) return false;
@@ -637,6 +704,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
         layout();
         openMenu();
+        if (draggingThisSticker()) return;
 
         const rafId = window.requestAnimationFrame(() => {
             if (!stripRef) return;
@@ -649,6 +717,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
     onCleanup(() => {
         removeRect(`sticker-top-strip-${props.unitId}`);
+        removeRect(openMenuRectId);
         void syncService.updateBackendRects();
     });
 
@@ -713,6 +782,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={TRANSFORM_MODE_BUTTONS}>
                                     {(item) => {
@@ -776,6 +847,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={shapeToolOptions}>
                                     {(item) => (
@@ -832,6 +905,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={lineToolOptions}>
                                     {(item) => (
@@ -908,6 +983,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={labelToolOptions}>
                                     {(item) => (
@@ -967,6 +1044,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={effectToolOptions}>
                                     {(item) => (
@@ -1061,6 +1140,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={historyActionOptions}>
                                     {(item) => {
@@ -1074,7 +1155,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                                     "text-white/85 hover:bg-white/10": currentHistoryAction() !== item.mode && enabled,
                                                     "text-white/35": !enabled,
                                                 }}
-                                                disabled={!enabled}
                                                 onClick={() => {
                                                     setCurrentHistoryAction(item.mode);
                                                     setOpenMenu(null);
@@ -1129,6 +1209,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
+                                onPointerMove={(event) => event.stopPropagation()}
+                                onWheel={(event) => event.stopPropagation()}
                             >
                                 <For each={rasterizeScopeOptions}>
                                     {(item) => {
@@ -1142,7 +1224,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                                     "text-white/85 hover:bg-white/10": currentRasterizeScope() !== item.mode && enabled,
                                                     "text-white/35": !enabled,
                                                 }}
-                                                disabled={!enabled}
                                                 onClick={() => {
                                                     setCurrentRasterizeScope(item.mode);
                                                     setOpenMenu(null);

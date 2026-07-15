@@ -51,6 +51,7 @@ describe("Hook sticker double-click contract", () => {
         expect(unitViewSource).toContain("onDblClick={handleUnitDoubleClick}");
         expect(unitViewSource).not.toContain("onDblClick={props.onDoubleTap}");
         expect(topStripSource).toContain("onMouseDown={(event) => event.stopPropagation()}");
-        expect(propertyBarSource).toContain("onMouseDown={(event) => event.stopPropagation()}");
+        expect(propertyBarSource).toContain("event.stopPropagation();");
+        expect(propertyBarSource).toContain("api.focusOverlayWindow()");
     });
 });

@@ -44,14 +44,16 @@ describe("overlay synthetic hover relay contract", () => {
       "const relayOverlaySyntheticPointerMove = (event: MouseEvent) => {",
     );
 
-    expect(moveBlock).toContain("if !capture_active && should_route_overlay_mouse {");
+    expect(moveBlock).toContain("if !capture_active && (should_route_overlay_mouse || native_drag_preflight_active) {");
     expect(moveBlock).toContain("CaptureMouseHookEvent::OverlayMove");
+    expect(hookProcBlock).toContain("let native_drag_preflight_active =");
+    expect(moveBlock).toContain("native_drag_preflight_active");
     expect(moveBlock).not.toContain("return LRESULT(1);");
 
-    expect(refreshBlock).toContain("window.set_ignore_cursor_events(true)");
-    expect(refreshBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);");
-    expect(refreshBlock).not.toContain("window.set_ignore_cursor_events(should_ignore)");
-    expect(rdevMouseMoveBlock).not.toContain("window.set_ignore_cursor_events(should_ignore)");
+    expect(refreshBlock).toContain("should_overlay_window_ignore_cursor_events");
+    expect(refreshBlock).toContain("window.set_ignore_cursor_events(should_ignore)");
+    expect(refreshBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);");
+    expect(rdevMouseMoveBlock).toContain("window.set_ignore_cursor_events(should_ignore)");
 
     expect(dispatchBlock).toContain("\"mouseenter\"");
     expect(dispatchBlock).toContain("\"mouseleave\"");

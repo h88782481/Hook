@@ -27,13 +27,25 @@ describe("sticker edit transform contract", () => {
     const onOpacityStart = canvasUnitsSource.indexOf("onOpacityChange={(val) => {");
     const onResizeSource = canvasUnitsSource.slice(onResizeStart, onOpacityStart);
 
-    expect(canvasUnitsSource).toContain("const scheduleStickerResizeSync = () =>");
+    expect(canvasUnitsSource).toContain("const scheduleStickerResizeSync = (unitId: string) =>");
     expect(canvasUnitsSource).toContain("window.setTimeout(() => {");
+    expect(canvasUnitsSource).toContain("graphStore.actions.propagateStickerEditsFrom(unitId);");
     expect(canvasUnitsSource).toContain("void syncService.performWorkflowSync();");
-    expect(onResizeSource).toContain("graphStore.actions.resizeStickerFrame(u.id, nextFrame);");
-    expect(onResizeSource).toContain("scheduleStickerResizeSync();");
+    expect(onResizeSource).toContain("graphStore.actions.resizeStickerFrame(u.id, nextFrame, { propagate: false });");
+    expect(onResizeSource).toContain("scheduleStickerResizeSync(u.id);");
     expect(onResizeSource).not.toContain("syncService.updateBackendRects()");
     expect(onResizeSource).not.toContain("syncService.performWorkflowSync()");
+  });
+
+  it("debounces opacity wheel sync as well, so alt-wheel transparency edits do not run workflow sync on every wheel tick", () => {
+    const canvasUnitsSource = readSource("src/components/CanvasUnits.tsx");
+    const onOpacityStart = canvasUnitsSource.indexOf("onOpacityChange={(val) => {");
+    const dataResolutionStart = canvasUnitsSource.indexOf("// Data Resolution", onOpacityStart);
+    const onOpacitySource = canvasUnitsSource.slice(onOpacityStart, dataResolutionStart);
+
+    expect(canvasUnitsSource).toContain("const scheduleStickerAppearanceSync = () =>");
+    expect(onOpacitySource).toContain("scheduleStickerAppearanceSync();");
+    expect(onOpacitySource).not.toContain("syncService.performWorkflowSync()");
   });
 
   it("applies sticker opacity at the visual layer so annotations fade with the image", () => {

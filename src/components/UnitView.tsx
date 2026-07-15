@@ -1,4 +1,4 @@
-import { Component, For, Show, createEffect, onCleanup } from "solid-js";
+import { Component, For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { graphStore } from "../store/graphStore";
 import {
@@ -73,10 +73,25 @@ export const UnitView: Component<Props> = (props) => {
       | {
             x: number;
             y: number;
-            pointerId: number;
+            pointerId?: number;
+            started: boolean;
         }
       | null = null;
   let nativeStickerDragInFlight = false;
+  const [nativeStickerExportPreview, setNativeStickerExportPreview] = createSignal<{
+      x: number;
+      y: number;
+      src: string;
+      width: number;
+      height: number;
+  } | null>(null);
+  type NativeDragPreflightOverlayPayload = {
+      x?: number;
+      y?: number;
+      globalX?: number;
+      globalY?: number;
+      shiftKey?: boolean;
+  };
   const logWheelEvent = (phase: string, detail: string) => {
       void api.debugLogEvent("sticker-wheel-trace", `layer=unit phase=${phase} unit=${props.unit.id} ${detail}`);
   };
@@ -342,13 +357,63 @@ export const UnitView: Component<Props> = (props) => {
   const detachPendingNativeDragListeners = () => {
       if (typeof window === "undefined") return;
       window.removeEventListener("pointermove", handlePendingNativeDragPointerMove, true);
+      window.removeEventListener("mousemove", handlePendingNativeDragPointerMove, true);
       window.removeEventListener("pointerup", handlePendingNativeDragEnd, true);
+      window.removeEventListener("mouseup", handlePendingNativeDragEnd, true);
       window.removeEventListener("pointercancel", handlePendingNativeDragEnd, true);
+      window.removeEventListener("hook:overlay-native-drag-preflight-move", handlePendingNativeDragOverlayMove as EventListener, true);
+      window.removeEventListener("hook:overlay-native-drag-preflight-up", handlePendingNativeDragOverlayEnd as EventListener, true);
   };
 
   const clearPendingNativeStickerDrag = () => {
       nativeStickerDragStart = null;
+      setNativeStickerExportPreview(null);
+      void api.setNativeStickerDragPreflight(false);
       detachPendingNativeDragListeners();
+  };
+
+  const overlayPayloadClientPoint = (detail: NativeDragPreflightOverlayPayload | undefined) => {
+      const x = detail?.x ?? detail?.globalX;
+      const y = detail?.y ?? detail?.globalY;
+      if (typeof x !== "number" || typeof y !== "number") return null;
+      return { x, y };
+  };
+
+  const pointTargetsThisUnit = (x: number, y: number) => {
+      if (!unitContainerRef) return false;
+      const target = document.elementFromPoint(x, y);
+      if (target instanceof Element) {
+          const unitRoot = target.closest(".unit-container");
+          if (unitRoot) {
+              return unitRoot === unitContainerRef;
+          }
+      }
+      const rect = unitContainerRef.getBoundingClientRect();
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  };
+
+  const attachPendingNativeDragListeners = () => {
+      if (typeof window === "undefined") return;
+      detachPendingNativeDragListeners();
+      window.addEventListener("pointermove", handlePendingNativeDragPointerMove, true);
+      window.addEventListener("mousemove", handlePendingNativeDragPointerMove, true);
+      window.addEventListener("pointerup", handlePendingNativeDragEnd, true);
+      window.addEventListener("mouseup", handlePendingNativeDragEnd, true);
+      window.addEventListener("pointercancel", handlePendingNativeDragEnd, true);
+      window.addEventListener("hook:overlay-native-drag-preflight-move", handlePendingNativeDragOverlayMove as EventListener, true);
+      window.addEventListener("hook:overlay-native-drag-preflight-up", handlePendingNativeDragOverlayEnd as EventListener, true);
+  };
+
+  const beginPendingHookStickerExportDrag = (x: number, y: number, pointerId?: number) => {
+      if (nativeStickerDragInFlight) return;
+      void api.debugLogEvent(
+          "sticker-export-drag-capture",
+          `unit=${props.unit.id} x=${x} y=${y} pathFirst=${!!resolveExistingNativeDragFilePath()}`,
+      );
+      nativeStickerDragStart = { x, y, pointerId, started: false };
+      setNativeStickerExportPreview(null);
+      void api.setNativeStickerDragPreflight(true);
+      attachPendingNativeDragListeners();
   };
 
   const buildNativeStickerDragFilenameHint = () => {
@@ -382,7 +447,7 @@ export const UnitView: Component<Props> = (props) => {
       return unit.data.filePath;
   };
 
-  const beginNativeStickerDrag = async () => {
+  const beginHookStickerExportDrag = async (globalX: number, globalY: number) => {
       if (nativeStickerDragInFlight) return;
 
       nativeStickerDragInFlight = true;
@@ -391,16 +456,23 @@ export const UnitView: Component<Props> = (props) => {
           const existingDragPath = resolveExistingNativeDragFilePath();
           const useExistingPath = typeof existingDragPath === "string" && existingDragPath.length > 0;
           void api.debugLogEvent(
-              "sticker-native-drag-request",
-              `unit=${props.unit.id} pathFirst=${useExistingPath} hasFilePath=${!!unit.data.filePath} hasDragOutFilePath=${!!unit.data.dragOutFilePath}`,
+              "sticker-export-drag-request",
+              `unit=${props.unit.id} x=${globalX} y=${globalY} pathFirst=${useExistingPath} hasFilePath=${!!unit.data.filePath} hasDragOutFilePath=${!!unit.data.dragOutFilePath}`,
           );
           const path = useExistingPath
-               ? await api.beginStickerNativeFileDragFromPath(existingDragPath as string)
+               ? await api.saveStickerDragExportFromPath(
+                     existingDragPath as string,
+                     buildNativeStickerDragFilenameHint(),
+                     globalX,
+                     globalY,
+                 )
                : await (async () => {
                    const exportBase64 = await renderStickerComposite(unit);
-                   return api.beginStickerNativeFileDrag(
+                   return api.saveStickerDragExport(
                        exportBase64,
                        buildNativeStickerDragFilenameHint(),
+                       globalX,
+                       globalY,
                    );
                })();
           if (!useExistingPath) {
@@ -408,65 +480,110 @@ export const UnitView: Component<Props> = (props) => {
                   dragOutFilePath: path,
               });
           }
-          void api.debugLogEvent("sticker-native-drag-started", `unit=${props.unit.id} path=${path}`);
+          void api.debugLogEvent("sticker-export-drag-saved", `unit=${props.unit.id} path=${path}`);
       } catch (error) {
-          console.error("Native sticker drag failed", error);
+          console.error("Hook sticker export drag failed", error);
           void api.debugLogEvent(
-              "sticker-native-drag-failed",
+              "sticker-export-drag-failed",
               `unit=${props.unit.id} error=${error instanceof Error ? error.message : String(error)}`,
           );
       } finally {
           nativeStickerDragInFlight = false;
-          clearPendingNativeStickerDrag();
       }
   };
 
-  const handlePendingNativeDragPointerMove = (event: PointerEvent) => {
+  const updateHookStickerExportDragPreview = (x: number, y: number) => {
       const start = nativeStickerDragStart;
       if (!start || nativeStickerDragInFlight) return;
-      if (event.pointerId !== start.pointerId) return;
-
-      if (!event.shiftKey) {
-          clearPendingNativeStickerDrag();
+      if (!start.started && Math.hypot(x - start.x, y - start.y) < 6) {
           return;
       }
 
-      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < 6) {
-          return;
+      if (!start.started) {
+          start.started = true;
+          void api.debugLogEvent("sticker-export-drag-started", `unit=${props.unit.id} x=${x} y=${y}`);
       }
 
-      detachPendingNativeDragListeners();
-      void beginNativeStickerDrag();
+      const maxPreviewSize = 140;
+      const scale = Math.min(1, maxPreviewSize / Math.max(props.unit.w, props.unit.h, 1));
+      setNativeStickerExportPreview({
+          x,
+          y,
+          src: baseImageSrc(),
+          width: Math.max(24, props.unit.w * scale),
+          height: Math.max(24, props.unit.h * scale),
+      });
   };
 
-  const handlePendingNativeDragEnd = (event?: PointerEvent) => {
-      if (event && nativeStickerDragStart && event.pointerId !== nativeStickerDragStart.pointerId) {
+  const handlePendingNativeDragPointerMove = (event: PointerEvent | MouseEvent) => {
+      const start = nativeStickerDragStart;
+      if (!start || nativeStickerDragInFlight) return;
+      if ("pointerId" in event && start.pointerId !== undefined && event.pointerId !== start.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      updateHookStickerExportDragPreview(event.clientX, event.clientY);
+  };
+
+  const handlePendingNativeDragOverlayMove = (event: Event) => {
+      const start = nativeStickerDragStart;
+      if (!start || nativeStickerDragInFlight) return;
+      const detail = (event as CustomEvent<NativeDragPreflightOverlayPayload>).detail;
+      const point = overlayPayloadClientPoint(detail);
+      if (!point) return;
+      updateHookStickerExportDragPreview(point.x, point.y);
+  };
+
+  const handlePendingNativeDragEnd = (event?: PointerEvent | MouseEvent) => {
+      if (
+          event &&
+          nativeStickerDragStart &&
+          "pointerId" in event &&
+          nativeStickerDragStart.pointerId !== undefined &&
+          event.pointerId !== nativeStickerDragStart.pointerId
+      ) {
           return;
       }
+      const point = event ? { x: event.clientX, y: event.clientY } : null;
+      const shouldExport = !!nativeStickerDragStart?.started && !!point;
       clearPendingNativeStickerDrag();
+      if (shouldExport && point) {
+          void beginHookStickerExportDrag(point.x, point.y);
+      }
+  };
+
+  const handlePendingNativeDragOverlayDown = (event: Event) => {
+      if (props.unit.type !== "sticker" || !isTauriRuntimeAvailable()) return;
+      const detail = (event as CustomEvent<NativeDragPreflightOverlayPayload>).detail;
+      if (!detail?.shiftKey) return;
+      const point = overlayPayloadClientPoint(detail);
+      if (!point || !pointTargetsThisUnit(point.x, point.y)) return;
+      beginPendingHookStickerExportDrag(point.x, point.y);
+  };
+
+  const handlePendingNativeDragOverlayEnd = (event?: Event) => {
+      const detail = (event as CustomEvent<NativeDragPreflightOverlayPayload> | undefined)?.detail;
+      const point = overlayPayloadClientPoint(detail);
+      const shouldExport = !!nativeStickerDragStart?.started && !!point;
+      clearPendingNativeStickerDrag();
+      if (shouldExport && point) {
+          void beginHookStickerExportDrag(point.x, point.y);
+      }
   };
 
   const handleNativeStickerPointerDownCapture = (event: PointerEvent) => {
       if (props.unit.type !== "sticker" || !isTauriRuntimeAvailable() || !event.shiftKey) return;
       event.preventDefault();
       event.stopPropagation();
-      void api.debugLogEvent(
-          "sticker-native-drag-capture",
-          `unit=${props.unit.id} x=${event.clientX} y=${event.clientY} pathFirst=${!!resolveExistingNativeDragFilePath()}`,
-      );
-
-      nativeStickerDragStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-      detachPendingNativeDragListeners();
-      window.addEventListener("pointermove", handlePendingNativeDragPointerMove, true);
-      window.addEventListener("pointerup", handlePendingNativeDragEnd, true);
-      window.addEventListener("pointercancel", handlePendingNativeDragEnd, true);
+      beginPendingHookStickerExportDrag(event.clientX, event.clientY, event.pointerId);
   };
 
   createEffect(() => {
       if (props.unit.type !== "sticker") return;
       unitContainerRef?.addEventListener("pointerdown", handleNativeStickerPointerDownCapture, true);
+      window.addEventListener("hook:overlay-native-drag-preflight-down", handlePendingNativeDragOverlayDown as EventListener, true);
       onCleanup(() => {
           unitContainerRef?.removeEventListener("pointerdown", handleNativeStickerPointerDownCapture, true);
+          window.removeEventListener("hook:overlay-native-drag-preflight-down", handlePendingNativeDragOverlayDown as EventListener, true);
       });
   });
 
@@ -674,8 +791,8 @@ export const UnitView: Component<Props> = (props) => {
             const relX = (e.clientX - rect.left) / viewScale;
             const relY = (e.clientY - rect.top) / viewScale;
 
-            // Scaling Factor
-            const scaleFactor = 1 - e.deltaY * 0.001;
+            // Browser wheel direction: deltaY < 0 means wheel-up. Wheel-up should zoom in.
+            const scaleFactor = Math.max(0.5, Math.min(1.5, Math.exp(-e.deltaY * 0.001)));
 
             const newW = Math.max(24, currentUnit.w * scaleFactor);
             const newH = Math.max(24, currentUnit.h * scaleFactor);
@@ -708,7 +825,7 @@ export const UnitView: Component<Props> = (props) => {
                 : (currentUnit.data.opacityNormal ?? 1.0);
 
             // Step 0.05 per scroll click
-            const delta = e.deltaY * -0.001;
+            const delta = -e.deltaY * 0.001;
             const newOp = Math.max(0, Math.min(1, currentOp + delta));
 
             logWheelEvent(
@@ -719,6 +836,39 @@ export const UnitView: Component<Props> = (props) => {
         }
       }}
     >
+        <Show when={nativeStickerExportPreview()}>
+            {(preview) => (
+                <Portal>
+                    <div
+                        class="hook-sticker-export-drag-preview"
+                        style={{
+                            position: "fixed",
+                            left: `${preview().x + 18}px`,
+                            top: `${preview().y + 18}px`,
+                            width: `${preview().width}px`,
+                            height: `${preview().height}px`,
+                            "z-index": "2147483647",
+                            "pointer-events": "none",
+                            opacity: "0.86",
+                            border: "1px solid rgba(219, 255, 0, 0.85)",
+                            background: "rgba(0, 0, 0, 0.25)",
+                            "box-shadow": "0 4px 16px rgba(0, 0, 0, 0.35)",
+                        }}
+                    >
+                        <img
+                            src={preview().src}
+                            draggable={false}
+                            style={{
+                                width: "100%",
+                                height: "100%",
+                                "object-fit": "contain",
+                                display: "block",
+                            }}
+                        />
+                    </div>
+                </Portal>
+            )}
+        </Show>
         <UnitPorts
             unit={props.unit}
             capability={props.capability}

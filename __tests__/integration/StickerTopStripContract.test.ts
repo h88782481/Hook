@@ -127,9 +127,15 @@ describe("Hook sticker top strip contract", () => {
         expect(propertyBarSource).toContain('{ key: "solid", label: "━", title: "实线" }');
         expect(propertyBarSource).toContain('{ key: "dash-1", label: "╌", title: "虚线1" }');
         expect(propertyBarSource).toContain('{ key: "dash-2", label: "┄", title: "虚线2" }');
+        expect(propertyBarSource).toContain("MiniDropdownField");
+        expect(propertyBarSource).toContain("toggleDropdownMenu");
+        expect(propertyBarSource).toContain('data-top-strip-property-popup="true"');
+        expect(propertyBarSource).toContain("addOrUpdateRect");
+        expect(propertyBarSource).toContain("removeRect");
         expect(propertyBarSource).toContain(
-            'shapeStrokeDashPattern: event.currentTarget.value as "solid" | "dash-1" | "dash-2"',
+            'shapeStrokeDashPattern: value as "solid" | "dash-1" | "dash-2"',
         );
+        expect(propertyBarSource).not.toContain("<select");
         expect(propertyBarSource).not.toContain("class={dashButtonClass}");
         expect(propertyBarSource).toContain("SquareConstraintGlyphIcon");
         expect(propertyBarSource).toContain("Icon={SquareConstraintGlyphIcon}");
@@ -141,8 +147,8 @@ describe("Hook sticker top strip contract", () => {
         expect(propertyBarSource).toContain('settingKey="shapeCornerRadius"');
         expect(propertyBarSource).toContain('title="圆角半径"');
         expect(propertyBarSource).toContain("PolygonSidesIcon");
-        expect(propertyBarSource).toContain('onPointerDown={(event) => event.stopPropagation()}');
-        expect(propertyBarSource).toContain('onMouseDown={(event) => event.stopPropagation()}');
+        expect(propertyBarSource).toContain("event.stopPropagation();");
+        expect(propertyBarSource).toContain("api.focusOverlayWindow()");
         expect(propertyBarSource).toContain("<Portal>");
         expect(propertyBarSource).toContain("shapeConstrainSquare");
         expect(propertyBarSource).toContain("shapeSnapStep");

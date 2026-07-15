@@ -131,6 +131,10 @@ const getShapeFillColorForMode = (mode: DraftShape["mode"] | StickerCreateTool) 
     const key = getShapeFillColorKey(mode);
     return key ? stickerToolSettings[key] : "transparent";
 };
+const getDraftShapePreviewFill = (mode?: DraftShape["mode"]) =>
+    mode === "crop" ? "none" : getVisibleFill(getShapeFillColorForMode(mode ?? "shape-rect"));
+const getDraftShapePreviewDashArray = (mode?: DraftShape["mode"]) =>
+    mode === "crop" ? undefined : "4 2";
 
 type TransformInteractionKind = "move" | "rotate" | "scale";
 type TransformPivotMode = "group" | "own";
@@ -910,7 +914,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const isStraightLineAngleLockActive = (mode: DraftLine["mode"], event?: PointerEvent) =>
         isStraightLineMode(mode) && (!!event?.shiftKey || shiftPressed());
     const isStraightLineStepSnapActive = (mode: DraftLine["mode"], event?: PointerEvent) =>
-        isStraightLineMode(mode) && (!!event?.ctrlKey || ctrlPressed());
+        (mode === "line" || mode === "arrow") && (!!event?.ctrlKey || ctrlPressed());
     const getLineStrokeColor = (mode: DraftLine["mode"]) =>
         mode === "line" || mode === "arrow"
             ? stickerToolSettings.lineStrokeColor
@@ -1013,16 +1017,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             // still locks to 45° and takes precedence when both are active.
             const lineAngleSnapToggleActive = (mode: DraftLine["mode"]) =>
                 (mode === "line" || mode === "arrow") && stickerToolSettings.lineAngleSnap;
-            // The brush "步进" setting quantizes freehand points to a pixel grid so the
-            // stroke follows regular steps instead of a raw smooth path. 0 = off.
-            const brushSnapStep = () =>
-                currentDraft?.mode === "brush" && stickerToolSettings.shapeSnapStep > 0
-                    ? stickerToolSettings.shapeSnapStep
-                    : 0;
-            const snapPointToGrid = (value: { x: number; y: number }, step: number) =>
-                step > 0
-                    ? { x: Math.round(value.x / step) * step, y: Math.round(value.y / step) * step }
-                    : value;
             if (currentDraft?.mode === "content-eraser" && rasterizedEraseQueue.isActive) {
                 const lastPoint = currentDraft.points[currentDraft.points.length - 1] || point;
                 void applyLiveRasterizedAnnotationErase([lastPoint, point]);
@@ -1057,9 +1051,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                       ? constrainLinearToolEndpoint(prev.points[0], point, {
                                             snapStep: 10,
                                         })
-                                      : brushSnapStep() > 0
-                                        ? snapPointToGrid(point, brushSnapStep())
-                                        : point,
+                                      : point,
                               ],
                           }
                     : prev,
@@ -1558,15 +1550,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             || activeTool === "blur"
         ) {
             captureHostPointer(event.pointerId);
-            const brushStartStep =
-                activeTool === "brush" && stickerToolSettings.shapeSnapStep > 0 ? stickerToolSettings.shapeSnapStep : 0;
-            const startPoint =
-                brushStartStep > 0
-                    ? { x: Math.round(point.x / brushStartStep) * brushStartStep, y: Math.round(point.y / brushStartStep) * brushStartStep }
-                    : point;
             setDraftLine({
                 mode: activeTool,
-                points: [startPoint],
+                points: [point],
                 showArrowHead: activeTool === "arrow" || (activeTool === "line" && stickerToolSettings.lineArrowEnabled),
             });
         }
@@ -2640,10 +2626,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                                     height={draftRect().h}
                                                     rx={getShapeCornerRadius(draftShapeMode())}
                                                     ry={getShapeCornerRadius(draftShapeMode())}
-                                                    fill={getVisibleFill(getShapeFillColorForMode("shape-rect"))}
-                                                    stroke={getVisibleStroke(getShapeStrokeColorForMode("shape-rect"), stickerToolSettings.strokeWidth)}
+                                                    fill={getDraftShapePreviewFill(draftShapeMode())}
+                                                    stroke={getVisibleStroke(getShapeStrokeColorForMode(draftShapeMode() ?? "shape-rect"), stickerToolSettings.strokeWidth)}
                                                     stroke-width={stickerToolSettings.strokeWidth}
-                                                    stroke-dasharray="4 2"
+                                                    stroke-dasharray={getDraftShapePreviewDashArray(draftShapeMode())}
                                                 />
                                             }
                                         >
@@ -2652,10 +2638,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                                     buildPolygonPoints(draftRect(), stickerToolSettings.polygonSides),
                                                     getShapeCornerRadius(draftShapeMode()),
                                                 )}
-                                                fill={getVisibleFill(getShapeFillColorForMode("shape-polygon"))}
+                                                fill={getDraftShapePreviewFill(draftShapeMode())}
                                                 stroke={getVisibleStroke(getShapeStrokeColorForMode("shape-polygon"), stickerToolSettings.strokeWidth)}
                                                 stroke-width={stickerToolSettings.strokeWidth}
-                                                stroke-dasharray="4 2"
+                                                stroke-dasharray={getDraftShapePreviewDashArray(draftShapeMode())}
                                             />
                                         </Show>
                                     }
@@ -2665,10 +2651,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                             buildTrianglePoints(draftRect()),
                                             getShapeCornerRadius(draftShapeMode()),
                                         )}
-                                        fill={getVisibleFill(getShapeFillColorForMode("shape-triangle"))}
+                                        fill={getDraftShapePreviewFill(draftShapeMode())}
                                         stroke={getVisibleStroke(getShapeStrokeColorForMode("shape-triangle"), stickerToolSettings.strokeWidth)}
                                         stroke-width={stickerToolSettings.strokeWidth}
-                                        stroke-dasharray="4 2"
+                                        stroke-dasharray={getDraftShapePreviewDashArray(draftShapeMode())}
                                     />
                                 </Show>
                             }
@@ -2678,10 +2664,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                 cy={draftRect().y + draftRect().h / 2}
                                 rx={draftRect().w / 2}
                                 ry={draftRect().h / 2}
-                                fill={getVisibleFill(getShapeFillColorForMode("shape-ellipse"))}
+                                fill={getDraftShapePreviewFill(draftShapeMode())}
                                 stroke={getVisibleStroke(getShapeStrokeColorForMode("shape-ellipse"), stickerToolSettings.strokeWidth)}
                                 stroke-width={stickerToolSettings.strokeWidth}
-                                stroke-dasharray="4 2"
+                                stroke-dasharray={getDraftShapePreviewDashArray(draftShapeMode())}
                             />
                         </Show>
                     )}

@@ -601,6 +601,12 @@ export const api = {
     setOverlayClickThrough: (clickThrough: boolean): Promise<void> =>
         safeInvoke("set_overlay_click_through", { clickThrough }, () => undefined, false),
 
+    setNativeStickerDragPreflight: (active: boolean): Promise<void> =>
+        safeInvoke("set_native_drag_preflight_active", { active }, () => undefined, false),
+
+    focusOverlayWindow: (): Promise<void> =>
+        safeInvoke("focus_overlay_window", undefined, () => undefined, false),
+
     setOverlayCaptureExclusion: (enabled: boolean): Promise<void> =>
         safeInvoke("set_overlay_capture_exclusion", { enabled }, () => undefined, false),
 
@@ -792,6 +798,36 @@ export const api = {
             { path },
             () => {
                 throw new Error("Native sticker file drag from path requires the Tauri desktop runtime");
+            },
+            false,
+        ),
+
+    saveStickerDragExport: (
+        base64: string,
+        filenameHint: string | undefined,
+        globalX: number,
+        globalY: number,
+    ): Promise<string> =>
+        safeInvoke(
+            "save_sticker_drag_export",
+            { base64Image: base64, filenameHint, globalX, globalY },
+            () => {
+                throw new Error("Shift drag export requires the Tauri desktop runtime");
+            },
+            false,
+        ),
+
+    saveStickerDragExportFromPath: (
+        path: string,
+        filenameHint: string | undefined,
+        globalX: number,
+        globalY: number,
+    ): Promise<string> =>
+        safeInvoke(
+            "save_sticker_drag_export_from_path",
+            { path, filenameHint, globalX, globalY },
+            () => {
+                throw new Error("Shift drag export from path requires the Tauri desktop runtime");
             },
             false,
         ),

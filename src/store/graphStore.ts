@@ -103,7 +103,11 @@ const updateStickerEditData = (
     updateUnitData(id, nextUpdates);
 };
 
-const resizeStickerFrame = (id: string, frame: Pick<Unit, "x" | "y" | "w" | "h">) => {
+const resizeStickerFrame = (
+    id: string,
+    frame: Pick<Unit, "x" | "y" | "w" | "h">,
+    options: { propagate?: boolean } = {},
+) => {
     const unit = units.find((item) => item.id === id);
     if (!unit || unit.type !== "sticker") {
         updateUnit(id, frame);
@@ -120,7 +124,9 @@ const resizeStickerFrame = (id: string, frame: Pick<Unit, "x" | "y" | "w" | "h">
 
     if (Object.keys(editUpdates).length > 0) {
         updateStickerEditData(id, editUpdates);
-        propagateStickerEditsFrom(id);
+        if (options.propagate !== false) {
+            propagateStickerEditsFrom(id);
+        }
     }
 };
 

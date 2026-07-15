@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const unitViewSource = readFileSync(resolve(process.cwd(), "src/components/UnitView.tsx"), "utf8");
 const annotationLayerSource = readFileSync(resolve(process.cwd(), "src/components/StickerAnnotationLayer.tsx"), "utf8");
 const shortcutsSource = readFileSync(resolve(process.cwd(), "src/hooks/useShortcuts.ts"), "utf8");
+const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
 
 describe("Hook sticker wheel resize contract", () => {
     it("keeps the minified ctrl+wheel guard without focusing the sticker container during wheel opacity edits", () => {
@@ -12,8 +13,15 @@ describe("Hook sticker wheel resize contract", () => {
         expect(unitViewSource).toContain("if (isMinified()) return;");
         expect(unitViewSource).not.toContain("e.currentTarget.focus();");
         expect(unitViewSource).not.toContain("event.currentTarget.focus();");
-        expect(unitViewSource).toContain("const scaleFactor = 1 - e.deltaY * 0.001;");
+        expect(unitViewSource).toContain("const scaleFactor = Math.max(0.5, Math.min(1.5, Math.exp(-e.deltaY * 0.001)));");
         expect(unitViewSource).toContain("props.onOpacityChange(newOp);");
+    });
+
+    it("normalizes Windows overlay wheel input to browser WheelEvent direction so wheel-up zooms in and increases opacity", () => {
+        expect(rustSource).toContain('"deltaY": -delta_y');
+        expect(unitViewSource).toContain("Math.exp(-e.deltaY * 0.001)");
+        expect(unitViewSource).toContain("const delta = -e.deltaY * 0.001;");
+        expect(rustSource).not.toContain('"deltaY": delta_y');
     });
 
     it("lets ctrl+wheel bubble back to the sticker frame when ctrl+alt+wheel finds no selected annotations, so a prior alt-wheel opacity tweak cannot black-hole the next scale wheel", () => {

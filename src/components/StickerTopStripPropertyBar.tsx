@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, type Component } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js";
 import { Portal } from "solid-js/web";
 
 import { ColorPicker } from "./ColorPicker";
@@ -24,7 +24,9 @@ import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import { flipRasterizedAnnotationLayer } from "../services/stickerBitmapLayers";
 import { flipStickerEditDataForFrame } from "../services/stickerEditTransforms";
 import { mergeStickerFontFamilies } from "../services/fontCatalog";
+import { api } from "../services/api";
 import { syncService } from "../services/syncService";
+import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import {
     installedStickerFonts,
     selectedStickerAnnotationId,
@@ -51,6 +53,21 @@ interface MiniIconProps {
     class?: string;
 }
 
+interface MiniDropdownOption {
+    value: string;
+    label: string;
+    title?: string;
+}
+
+interface OpenMiniDropdownMenu {
+    id: string;
+    anchor: AnchorRect;
+    width: number;
+    options: MiniDropdownOption[];
+    value: string;
+    onSelect: (value: string) => void;
+}
+
 type SelectedExistingColorRole =
     | "selected-text-color"
     | "selected-serial-foreground"
@@ -62,8 +79,6 @@ const groupedShellClass =
     "flex h-6 shrink-0 items-center gap-0.5 border border-white/10 bg-black/35 px-0.5 text-white/85";
 const compactInputClass =
     "h-4 w-[28px] bg-transparent text-center text-[10px] text-white outline-none placeholder:text-white/30";
-const compactSelectClass =
-    "h-5 border border-white/10 bg-black/30 px-0.5 text-[10px] text-white outline-none";
 
 const dashOptions: Array<{ key: "solid" | "dash-1" | "dash-2"; label: string; title: string }> = [
     { key: "solid", label: "━", title: "实线" },
@@ -264,6 +279,10 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const [cropCornerRadiusDraft, setCropCornerRadiusDraft] = createSignal<string | null>(null);
     const [selectedTextSizeDraft, setSelectedTextSizeDraft] = createSignal<string | null>(null);
     const [selectedSerialRadiusDraft, setSelectedSerialRadiusDraft] = createSignal<string | null>(null);
+    const [openDropdownMenu, setOpenDropdownMenu] = createSignal<OpenMiniDropdownMenu | null>(null);
+    const dropdownRectId = `sticker-top-strip-property-dropdown-${props.unitId}`;
+    let openDropdownMenuRef: HTMLDivElement | undefined;
+    let dropdownRectSyncRafIds: number[] = [];
 
     const isShapeTool = createMemo(
         () =>
@@ -694,6 +713,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const openColorPicker = (slot: ShapeColorSettingKey, button: HTMLButtonElement) => {
         const rect = button.getBoundingClientRect();
+        closeDropdownMenu();
         setPickerInitialColor(null);
         setSelectedExistingColorRole(null);
         setActiveColorSlot(slot);
@@ -706,6 +726,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         button: HTMLButtonElement,
     ) => {
         const rect = button.getBoundingClientRect();
+        closeDropdownMenu();
         setActiveColorSlot(null);
         setSelectedExistingColorRole(role);
         setPickerInitialColor(color);
@@ -728,6 +749,121 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             }
         }
     };
+
+    const closeDropdownMenu = () => {
+        setOpenDropdownMenu(null);
+    };
+
+    const toggleDropdownMenu = (
+        id: string,
+        anchor: AnchorRect,
+        width: number,
+        options: MiniDropdownOption[],
+        value: string,
+        onSelect: (value: string) => void,
+    ) => {
+        setOpenDropdownMenu((current) => {
+            if (current?.id === id) {
+                return null;
+            }
+            return {
+                id,
+                anchor,
+                width,
+                options,
+                value,
+                onSelect,
+            };
+        });
+    };
+
+    const syncOpenDropdownRect = () => {
+        if (!openDropdownMenu() || !openDropdownMenuRef) return false;
+        const bounds = openDropdownMenuRef.getBoundingClientRect();
+        addOrUpdateRect({
+            id: dropdownRectId,
+            x: bounds.left,
+            y: bounds.top,
+            width: bounds.width,
+            height: bounds.height,
+            name: "STICKER_TOP_STRIP_MENU",
+        });
+        void syncService.updateBackendRects();
+        return true;
+    };
+
+    const cancelDropdownRectSync = () => {
+        for (const rafId of dropdownRectSyncRafIds) {
+            window.cancelAnimationFrame(rafId);
+        }
+        dropdownRectSyncRafIds = [];
+    };
+
+    const scheduleDropdownRectSync = () => {
+        if (typeof window === "undefined") return;
+        cancelDropdownRectSync();
+
+        const scheduleFrame = (remainingFrames: number) => {
+            const rafId = window.requestAnimationFrame(() => {
+                dropdownRectSyncRafIds = dropdownRectSyncRafIds.filter((item) => item !== rafId);
+                if (!syncOpenDropdownRect() && remainingFrames > 0) {
+                    scheduleFrame(remainingFrames - 1);
+                }
+            });
+            dropdownRectSyncRafIds.push(rafId);
+        };
+
+        scheduleFrame(3);
+    };
+
+    createEffect(() => {
+        const menu = openDropdownMenu();
+        if (typeof window === "undefined" || !menu) return;
+
+        scheduleDropdownRectSync();
+        const handleResize = () => scheduleDropdownRectSync();
+        window.addEventListener("resize", handleResize);
+
+        onCleanup(() => {
+            cancelDropdownRectSync();
+            window.removeEventListener("resize", handleResize);
+            removeRect(dropdownRectId);
+            void syncService.updateBackendRects();
+        });
+    });
+
+    createEffect(() => {
+        const menu = openDropdownMenu();
+        if (typeof window === "undefined" || !menu) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target;
+            if (target instanceof Node && openDropdownMenuRef?.contains(target)) {
+                return;
+            }
+            if (target instanceof Element) {
+                const trigger = target.closest(`[data-top-strip-popup-trigger="${menu.id}"]`);
+                if (trigger) {
+                    return;
+                }
+            }
+            closeDropdownMenu();
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                closeDropdownMenu();
+            }
+        };
+
+        window.addEventListener("pointerdown", handlePointerDown, true);
+        window.addEventListener("keydown", handleKeyDown, true);
+
+        onCleanup(() => {
+            window.removeEventListener("pointerdown", handlePointerDown, true);
+            window.removeEventListener("keydown", handleKeyDown, true);
+        });
+    });
 
     const MiniColorField: Component<{
         title: string;
@@ -940,46 +1076,132 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         </button>
     );
 
-    const MiniDashField: Component<{ title: string }> = (fieldProps) => (
-        <label class={groupedShellClass} title={fieldProps.title}>
-            <select
-                class={`${compactSelectClass} w-[34px] text-center`}
-                title="线型"
-                value={stickerToolSettings.shapeStrokeDashPattern}
-                onChange={(event) =>
-                    uiActions.patchStickerToolSettings({
-                        shapeStrokeDashPattern: event.currentTarget.value as "solid" | "dash-1" | "dash-2",
-                    })
-                }
+    const MiniDropdownField: Component<{
+        id: string;
+        title: string;
+        value: string;
+        options: MiniDropdownOption[];
+        onChange: (value: string) => void;
+        Icon?: Component<MiniIconProps>;
+        triggerWidthClass: string;
+        menuWidth: number;
+        triggerLabelClass?: string;
+    }> = (fieldProps) => {
+        let buttonRef: HTMLButtonElement | undefined;
+        const selectedOption = createMemo(
+            () => fieldProps.options.find((option) => option.value === fieldProps.value) ?? fieldProps.options[0],
+        );
+        const isOpen = createMemo(() => openDropdownMenu()?.id === fieldProps.id);
+
+        return (
+            <button
+                ref={buttonRef}
+                type="button"
+                data-top-strip-popup-trigger={fieldProps.id}
+                class={`${groupedShellClass} ${fieldProps.triggerWidthClass} justify-between`}
+                title={fieldProps.title}
+                onPointerDown={(event) => {
+                    event.stopPropagation();
+                    void api.focusOverlayWindow();
+                }}
+                onMouseDown={(event) => {
+                    event.stopPropagation();
+                    void api.focusOverlayWindow();
+                }}
+                onClick={() => {
+                    if (!buttonRef) return;
+                    const rect = buttonRef.getBoundingClientRect();
+                    toggleDropdownMenu(
+                        fieldProps.id,
+                        {
+                            x: rect.left,
+                            y: rect.top,
+                            width: rect.width,
+                            height: rect.height,
+                        },
+                        fieldProps.menuWidth,
+                        fieldProps.options,
+                        fieldProps.value,
+                        fieldProps.onChange,
+                    );
+                }}
             >
-                <For each={dashOptions}>
-                    {(option) => <option value={option.key}>{option.label}</option>}
-                </For>
-            </select>
-        </label>
+                <span class="flex min-w-0 items-center gap-1">
+                    {fieldProps.Icon
+                        ? (() => {
+                              const Icon = fieldProps.Icon!;
+                              return <Icon class="h-3.5 w-3.5 shrink-0 text-white/70" />;
+                          })()
+                        : null}
+                    <span
+                        class={`truncate text-left text-[10px] text-white ${
+                            fieldProps.triggerLabelClass ?? ""
+                        }`.trim()}
+                    >
+                        {selectedOption()?.label ?? fieldProps.value}
+                    </span>
+                </span>
+                <span class={`shrink-0 text-[9px] text-white/55 transition-transform ${isOpen() ? "rotate-180" : ""}`}>
+                    ▾
+                </span>
+            </button>
+        );
+    };
+
+    const MiniDashField: Component<{ title: string }> = (fieldProps) => (
+        <MiniDropdownField
+            id={`${props.unitId}-dash-pattern`}
+            title={fieldProps.title}
+            value={stickerToolSettings.shapeStrokeDashPattern}
+            options={dashOptions.map((option) => ({
+                value: option.key,
+                label: option.label,
+                title: option.title,
+            }))}
+            onChange={(value) => {
+                uiActions.patchStickerToolSettings({
+                    shapeStrokeDashPattern: value as "solid" | "dash-1" | "dash-2",
+                });
+                closeDropdownMenu();
+            }}
+            triggerWidthClass="w-[46px]"
+            menuWidth={72}
+            triggerLabelClass="text-center font-semibold"
+        />
     );
 
     const MiniFontField: Component<{ title: string; value: string; onChange: (value: string) => void }> = (fieldProps) => (
-        <label class={groupedShellClass} title={fieldProps.title}>
-            <TextIcon class="h-3.5 w-3.5 shrink-0 text-white/70" />
-            <select
-                class={`${compactSelectClass} w-[88px]`}
-                value={fieldProps.value}
-                onChange={(event) => fieldProps.onChange(event.currentTarget.value)}
-            >
-                <For each={availableFontFamilies()}>
-                    {(font) => <option value={font}>{font}</option>}
-                </For>
-            </select>
-        </label>
+        <MiniDropdownField
+            id={`${props.unitId}-${fieldProps.title}-font`}
+            title={fieldProps.title}
+            value={fieldProps.value}
+            options={availableFontFamilies().map((font) => ({
+                value: font,
+                label: font,
+                title: font,
+            }))}
+            onChange={(value) => {
+                fieldProps.onChange(value);
+                closeDropdownMenu();
+            }}
+            Icon={TextIcon}
+            triggerWidthClass="w-[110px]"
+            menuWidth={196}
+        />
     );
 
     return (
         <>
             <div
                 class="pointer-events-auto flex h-[40px] items-center gap-1.5 overflow-hidden border-b border-white/15 px-1.5"
-                onPointerDown={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => {
+                    event.stopPropagation();
+                    void api.focusOverlayWindow();
+                }}
+                onMouseDown={(event) => {
+                    event.stopPropagation();
+                    void api.focusOverlayWindow();
+                }}
             >
                 <Show when={isShapeTool()}>
                     <>
@@ -1296,6 +1518,57 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                     </>
                 </Show>
             </div>
+
+            <Show when={openDropdownMenu()}>
+                {(menu) => (
+                    <Portal>
+                        <div
+                            ref={(element) => {
+                                openDropdownMenuRef = element;
+                                syncOpenDropdownRect();
+                            }}
+                            data-top-strip-menu="true"
+                            data-top-strip-property-popup="true"
+                            class="pointer-events-auto fixed z-[1305] overflow-hidden border border-white/15 bg-[rgba(7,10,7,0.96)] shadow-[0_10px_30px_rgba(0,0,0,0.45)]"
+                            style={{
+                                left: `${menu().anchor.x}px`,
+                                top: `${menu().anchor.y + menu().anchor.height + 4}px`,
+                                width: `${menu().width}px`,
+                            }}
+                            onPointerDown={(event) => {
+                                event.stopPropagation();
+                                void api.focusOverlayWindow();
+                            }}
+                            onMouseDown={(event) => {
+                                event.stopPropagation();
+                                void api.focusOverlayWindow();
+                            }}
+                            onPointerMove={(event) => event.stopPropagation()}
+                            onWheel={(event) => event.stopPropagation()}
+                        >
+                            <div class="max-h-[220px] overflow-y-auto overflow-x-hidden py-1">
+                                <For each={menu().options}>
+                                    {(option) => (
+                                        <button
+                                            type="button"
+                                            class="flex h-7 w-full items-center px-2 text-left text-[11px] text-white transition-colors hover:bg-white/10"
+                                            classList={{
+                                                "bg-white/12 text-[#d9ff38]": menu().value === option.value,
+                                            }}
+                                            title={option.title ?? option.label}
+                                            onClick={() => {
+                                                menu().onSelect(option.value);
+                                            }}
+                                        >
+                                            <span class="truncate">{option.label}</span>
+                                        </button>
+                                    )}
+                                </For>
+                            </div>
+                        </div>
+                    </Portal>
+                )}
+            </Show>
 
             <Show when={colorPickerAnchor() && (activeColorSlot() || selectedExistingColorRole())}>
                 <Portal>

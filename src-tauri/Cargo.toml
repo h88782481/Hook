@@ -94,13 +94,14 @@ windows = { version = "0.60.0", features = [
     "Win32_Storage_Xps",
     "Win32_System_Memory",
     "Win32_Security",
+    "Win32_UI_Shell",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Controls_Dialogs",
 ] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 uiautomation = "0.24.0"
-drag = "2.1.1"
+drag = { path = "crates/drag" }
 
 [profile.release]
 codegen-units = 1

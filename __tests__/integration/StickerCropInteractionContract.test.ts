@@ -8,6 +8,14 @@ const topStripSource = readFileSync(resolve(process.cwd(), "src/components/Stick
 const propertyBarSource = readFileSync(resolve(process.cwd(), "src/components/StickerTopStripPropertyBar.tsx"), "utf8");
 const toolbarModelSource = readFileSync(resolve(process.cwd(), "src/components/stickerToolbarModel.ts"), "utf8");
 
+const sourceBetween = (source: string, start: string, end: string) => {
+    const startIndex = source.indexOf(start);
+    expect(startIndex).toBeGreaterThanOrEqual(0);
+    const endIndex = source.indexOf(end, startIndex + start.length);
+    expect(endIndex).toBeGreaterThan(startIndex);
+    return source.slice(startIndex, endIndex);
+};
+
 describe("Hook sticker crop interaction contract", () => {
     const cropCommitStart = annotationLayerSource.indexOf('if (shape.mode === "crop")');
     const cropCommitEnd = annotationLayerSource.indexOf('if (shape.mode === "mosaic" || shape.mode === "blur")');
@@ -45,6 +53,22 @@ describe("Hook sticker crop interaction contract", () => {
         expect(propertyBarSource).toContain('props.tool === "crop"');
         expect(propertyBarSource).not.toContain("清理改动");
         expect(propertyBarSource).toContain('title="重置裁剪"');
+    });
+
+    it("renders the crop drag preview as a solid outline with no fill so the selected crop area remains visually readable", () => {
+        const draftPreviewSource = sourceBetween(
+            annotationLayerSource,
+            "<Show when={draftShapeRect()}>",
+            "<Show when={draftShapeMeasurement()}>",
+        );
+
+        expect(annotationLayerSource).toContain("const getDraftShapePreviewFill =");
+        expect(annotationLayerSource).toContain('mode === "crop" ? "none"');
+        expect(annotationLayerSource).toContain("const getDraftShapePreviewDashArray =");
+        expect(annotationLayerSource).toContain('mode === "crop" ? undefined');
+        expect(draftPreviewSource).toContain("fill={getDraftShapePreviewFill(draftShapeMode())}");
+        expect(draftPreviewSource).toContain("stroke-dasharray={getDraftShapePreviewDashArray(draftShapeMode())}");
+        expect(draftPreviewSource).not.toContain('stroke-dasharray="4 2"');
     });
 
     it("mirrors editable annotations together with crop flip actions instead of flipping only the bitmap", () => {

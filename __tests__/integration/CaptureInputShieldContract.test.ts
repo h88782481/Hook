@@ -62,6 +62,8 @@ describe("capture input shield contract", () => {
     expect(captureMoveBranch).toContain("CaptureMouseHookEvent::Move");
     expect(captureMoveBranch).not.toContain("return LRESULT(1)");
     expect(moveBlock).toContain("CaptureMouseHookEvent::OverlayMove");
+    expect(hookProcBlock).toContain("let native_drag_preflight_active =");
+    expect(moveBlock).toContain("native_drag_preflight_active");
     expect(moveBlock).not.toContain("return LRESULT(1)");
     expect(hookProcBlock).toContain("unsafe { CallNextHookEx(None, code, wparam, lparam) }");
     expect(hookProcBlock).toContain("CaptureMouseHookEvent::Down");
@@ -115,7 +117,9 @@ describe("capture input shield contract", () => {
     expect(eventThreadBlock).toContain("receiver.try_recv()");
     expect(eventThreadBlock).toContain("CaptureMouseHookEvent::Move");
     expect(eventThreadBlock).toContain("deferred_event = Some(other_event)");
-    expect(eventThreadBlock).toContain('emit_capture_mouse_event(&emit_window, "capture/global_mouse_move", x, y)');
+    expect(eventThreadBlock).toContain("emit_capture_mouse_event(");
+    expect(eventThreadBlock).toContain('"capture/global_mouse_move"');
+    expect(eventThreadBlock).toContain("modifiers");
   });
 
   it("keeps the overlay no-activate so clicking stickers does not steal focus from video surfaces", () => {
@@ -188,32 +192,36 @@ describe("capture input shield contract", () => {
       "_ => {}",
     );
 
-    expect(rustSource).toContain("OverlayDown { x: f64, y: f64 }");
-    expect(rustSource).toContain("OverlayMove { x: f64, y: f64 }");
-    expect(rustSource).toContain("OverlayUp { x: f64, y: f64 }");
-    expect(rustSource).toContain("OverlayContextMenu { x: f64, y: f64 }");
+    expect(rustSource).toContain("OverlayDown {");
+    expect(rustSource).toContain("OverlayMove {");
+    expect(rustSource).toContain("OverlayUp {");
+    expect(rustSource).toContain("native_drag_preflight: bool");
+    expect(rustSource).toContain("OverlayContextMenu { x: f64, y: f64, modifiers: ModifierSnapshot }");
     expect(rustSource).toContain("OVERLAY_MOUSE_HOOK_DRAG_ACTIVE");
     expect(rustSource).toContain("OVERLAY_MOUSE_HOOK_HOVER_ACTIVE");
     expect(rustSource).toContain("OVERLAY_MOUSE_HIT_MAP");
     expect(rustSource).toContain("fn should_route_overlay_mouse_events");
-    expect(overlayRouteBlock).toContain(".any(|rect| rect.contains(x, y))");
-    expect(overlayRouteBlock).not.toContain('rect.name == "MINI" || rect.name == "FULL"');
+    expect(overlayRouteBlock).toContain("is_synthetic_overlay_rect(rect)");
+    expect(rustSource).toContain('rect.name == "MINI" || rect.name == "FULL"');
     expect(rustSource).toContain("queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown");
     expect(rustSource).toContain("queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove");
     expect(rustSource).toContain("queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayUp");
-    expect(rustSource).toContain('emit_capture_mouse_event(&emit_window, "overlay/global_mouse_down"');
-    expect(rustSource).toContain('emit_capture_mouse_event(&emit_window, "overlay/global_mouse_move"');
-    expect(rustSource).toContain('emit_capture_mouse_event(&emit_window, "overlay/global_mouse_up"');
-    expect(rustSource).toContain('emit_capture_mouse_event(&emit_window, "overlay/global_context_menu"');
-    expect(moveBlock).toContain("if !capture_active && should_route_overlay_mouse {");
+    expect(rustSource).toContain("emit_capture_mouse_event(");
+    expect(rustSource).toContain('"overlay/global_mouse_down"');
+    expect(rustSource).toContain('"overlay/global_mouse_move"');
+    expect(rustSource).toContain('"overlay/global_mouse_up"');
+    expect(rustSource).toContain('"overlay/global_context_menu"');
+    expect(moveBlock).toContain("if !capture_active && (should_route_overlay_mouse || native_drag_preflight_active) {");
     expect(moveBlock).toContain("CaptureMouseHookEvent::OverlayMove");
     expect(moveBlock).toContain("OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);");
     expect(refreshBlock).not.toContain("should_ignore_cursor_events(&rects, cursor_x, cursor_y)");
-    expect(refreshBlock).toContain("window.set_ignore_cursor_events(true)");
-    expect(refreshBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);");
+    expect(refreshBlock).toContain("should_overlay_window_ignore_cursor_events");
+    expect(refreshBlock).toContain("window.set_ignore_cursor_events(should_ignore)");
+    expect(refreshBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);");
     expect(rdevMouseMoveBlock).not.toContain("should_route_overlay_mouse_events(x, y)");
     expect(rdevMouseMoveBlock).not.toContain("should_route_overlay_mouse ||");
-    expect(rdevMouseMoveBlock).toContain("window.set_ignore_cursor_events(true)");
+    expect(rdevMouseMoveBlock).toContain("should_overlay_window_ignore_cursor_events");
+    expect(rdevMouseMoveBlock).toContain("window.set_ignore_cursor_events(should_ignore)");
 
     expect(appSource).toContain("const dispatchSyntheticOverlayMouseEvent =");
     expect(appSource).toContain("document.elementFromPoint");
@@ -274,7 +282,7 @@ describe("capture input shield contract", () => {
     expect(rustSource).toContain("let overlay_hover_active = OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.load(Ordering::SeqCst);");
     expect(moveBlock).toContain("if !capture_active && overlay_hover_active {");
     expect(moveBlock).toContain("OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(false, Ordering::SeqCst);");
-    expect(refreshBlock).toContain("window.set_ignore_cursor_events(true)");
-    expect(rdevMouseMoveBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);");
+    expect(refreshBlock).toContain("window.set_ignore_cursor_events(should_ignore)");
+    expect(rdevMouseMoveBlock).toContain("OVERLAY_CLICK_THROUGH_ACTIVE");
   });
 });
