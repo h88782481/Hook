@@ -28,6 +28,8 @@ Hook works well for quick capture and light editing.
 
 - [Why Hook](#why-hook)
 - [Core capabilities](#core-capabilities)
+- [Release packages](#release-packages)
+- [Trust and policies](#trust-and-policies)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -54,6 +56,27 @@ Hook focuses on the gap between a screenshot utility and a heavier design tool:
   - node graph, links, grouped parameters, sync entry points
   - editing-oriented top toolbar and context menu
   - local startup helpers and single-instance control
+
+## Release packages
+
+- **Installer (Recommended when provided on the release page)**
+  - best fit for long-running desktop use
+  - recommended when you need the most stable interaction under special Windows
+    foreground windows such as **Task Manager**
+  - uses the signed UIAccess-oriented installation path under `Program Files`
+- **Portable**
+  - unzip and run
+  - good for quick trials and ordinary daily capture
+  - may still hit Windows foreground/elevation limits in some scenarios; if you
+    must stay portable there, try launching Hook as **administrator** as a fallback
+
+See [`UIACCESS_DISTRIBUTION.md`](UIACCESS_DISTRIBUTION.md) for the full explanation.
+
+## Trust and policies
+
+- [Code Signing Policy](docs/CODE_SIGNING_POLICY.md)
+- [Privacy Policy](docs/PRIVACY_POLICY.md)
+- [UIAccess Distribution Notes](UIACCESS_DISTRIBUTION.md)
 
 ## Contributing
 

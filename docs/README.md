@@ -1,14 +1,37 @@
-# Hook Documentation Archive Guide
+# Hook Documentation Guide
 
-This `docs/` directory is primarily a **historical archive**, not the main operator guide for the current Hook codebase.
+This `docs/` directory is still primarily a **historical archive**, but it now
+also contains a small set of **current policy documents** used by the public
+release process.
 
 ## What to read first
 
 If you want to understand the current project, start with the repository root:
 
 - `README.md`
+- `UIACCESS_DISTRIBUTION.md`
 - `PROJECT_OVERVIEW.md`
 - `TECHNICAL_ARCHITECTURE.md`
+
+For current release trust/governance docs, also read:
+
+- `docs/CODE_SIGNING_POLICY.md`
+- `docs/PRIVACY_POLICY.md`
+- `docs/MAINTAINER_SIGNING_GUIDE.md`
+- `docs/SIGNPATH_APPLICATION_CHECKLIST.md`
+- `docs/SIGNPATH_APPLICATION_DRAFT.md`
+
+## What is current here
+
+### Policy docs
+
+These files are current and are not archival-only:
+
+- `CODE_SIGNING_POLICY.md`
+- `PRIVACY_POLICY.md`
+- `MAINTAINER_SIGNING_GUIDE.md`
+- `SIGNPATH_APPLICATION_CHECKLIST.md`
+- `SIGNPATH_APPLICATION_DRAFT.md`
 
 ## What is archived here
 
@@ -40,4 +63,6 @@ These placeholders preserve historical context without leaking a specific workst
 
 ## Interpretation rule
 
-If a file under `docs/` conflicts with the current code or the root docs, treat the `docs/` copy as historical context unless it is explicitly refreshed.
+If a file under `docs/` conflicts with the current code or the root docs, treat
+the `docs/` copy as historical context unless it is one of the current policy
+docs listed above or it is explicitly refreshed.
