@@ -12,6 +12,7 @@ If you want to understand the current project, start with the repository root:
 - `UIACCESS_DISTRIBUTION.md`
 - `PROJECT_OVERVIEW.md`
 - `TECHNICAL_ARCHITECTURE.md`
+- `docs/AI_HANDOFF_PROJECT_MAP.md`
 
 For current release trust/governance docs, also read:
 
@@ -28,6 +29,7 @@ For current release trust/governance docs, also read:
 
 These files are current and are not archival-only:
 
+- `AI_HANDOFF_PROJECT_MAP.md`
 - `RELEASE_STRATEGY.md`
 - `CODE_SIGNING_POLICY.md`
 - `PRIVACY_POLICY.md`
