@@ -39,7 +39,6 @@ import {
     stickerToolSettings,
     selectedStickerAnnotationId,
     longCaptureSession,
-    setInstalledStickerFonts,
     draggingStickerId,
 } from "./store/uiStore";
 
@@ -61,6 +60,7 @@ import {
     normalizeWorkflowSnapshotPayload,
     type WorkflowSnapshotPayload,
 } from "./services/workflowPayload";
+import { normalizeImageSourceForDisplay } from "./services/imageSource";
 import { buildUnitPortsFromCapability } from "./services/artNodeFactory";
 import { deriveUnitExecutionConfig } from "./services/nodeExecutionConfig";
 import { refreshArtLoomCapabilitiesOnStartup } from "./services/artLoomStartup";
@@ -636,17 +636,6 @@ export default function App() {
       });
   };
 
-  const loadInstalledFontsInBackground = () => {
-      void api
-          .getInstalledFonts()
-          .then((fonts) => {
-              setInstalledStickerFonts(fonts);
-          })
-          .catch((error) => {
-              console.warn("Failed to load installed fonts:", error);
-          });
-  };
-
   const buildPortsFromCapability = (type: "sticker" | "art", artId?: string) => {
       const capability = graphStore.capabilities.find((item) => item.id === artId);
       return buildUnitPortsFromCapability(type, capability);
@@ -825,7 +814,7 @@ export default function App() {
           case "file_path":
               filePath = delivery.delivery.path;
               if (filePath) {
-                  previewSrc = await api.readImageFromPath(filePath);
+                  previewSrc = normalizeImageSourceForDisplay(filePath);
               }
               break;
           case "shader":
@@ -1496,8 +1485,6 @@ export default function App() {
       } catch (error) {
           console.warn("Failed to load history; starting with empty history.", error);
       }
-
-      loadInstalledFontsInBackground();
 
       if (bootProfile?.autoStartCapture) {
           await api.debugLogEvent("boot-autostart-capture");

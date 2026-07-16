@@ -31,6 +31,7 @@ import {
     installedStickerFonts,
     selectedStickerAnnotationId,
     selectedStickerAnnotationIds,
+    setInstalledStickerFonts,
     stickerColorState,
     stickerToolSettings,
     uiActions,
@@ -341,6 +342,8 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         }
     });
     const availableFontFamilies = createMemo(() => mergeStickerFontFamilies(installedStickerFonts()));
+    const [isLoadingInstalledFonts, setIsLoadingInstalledFonts] = createSignal(false);
+    const [hasLoadedInstalledFonts, setHasLoadedInstalledFonts] = createSignal(false);
     const unit = createMemo(() => graphStore.units.find((item) => item.id === props.unitId));
     const selectedExistingTextAnnotation = createMemo(() => {
         const annotationId = selectedStickerAnnotationId();
@@ -754,6 +757,25 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         setOpenDropdownMenu(null);
     };
 
+    const loadInstalledFontsOnDemand = () => {
+        if (hasLoadedInstalledFonts() || isLoadingInstalledFonts()) {
+            return;
+        }
+
+        setIsLoadingInstalledFonts(true);
+        void api.getInstalledFonts()
+            .then((fonts) => {
+                setInstalledStickerFonts(fonts);
+                setHasLoadedInstalledFonts(true);
+            })
+            .catch((error) => {
+                console.warn("Failed to load installed fonts:", error);
+            })
+            .finally(() => {
+                setIsLoadingInstalledFonts(false);
+            });
+    };
+
     const toggleDropdownMenu = (
         id: string,
         anchor: AnchorRect,
@@ -1082,6 +1104,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         value: string;
         options: MiniDropdownOption[];
         onChange: (value: string) => void;
+        onOpen?: () => void;
         Icon?: Component<MiniIconProps>;
         triggerWidthClass: string;
         menuWidth: number;
@@ -1110,6 +1133,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 }}
                 onClick={() => {
                     if (!buttonRef) return;
+                    fieldProps.onOpen?.();
                     const rect = buttonRef.getBoundingClientRect();
                     toggleDropdownMenu(
                         fieldProps.id,
@@ -1184,6 +1208,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 fieldProps.onChange(value);
                 closeDropdownMenu();
             }}
+            onOpen={loadInstalledFontsOnDemand}
             Icon={TextIcon}
             triggerWidthClass="w-[110px]"
             menuWidth={196}

@@ -1,4 +1,5 @@
 import type { StickerPoint } from "../types/stickerEditing";
+import { normalizeImageSourceForDisplay } from "./imageSource";
 
 /**
  * Resolve a canvas line-dash array (in px) from the annotation dash pattern,
@@ -88,15 +89,16 @@ export const loadImage = (src: string) =>
             reject(new Error("Cannot load image from empty source"));
             return;
         }
+        const resolvedSrc = normalizeImageSourceForDisplay(src) || src;
         const image = new Image();
         // Non-data/blob sources (e.g. file:/asset: paths) taint the canvas unless
         // they are loaded as crossOrigin, which makes a later toDataURL throw a
         // SecurityError. Request anonymous CORS for those so the rasterized erase
         // and export pipelines can read the canvas back.
-        if (!src.startsWith("data:") && !src.startsWith("blob:")) {
+        if (!resolvedSrc.startsWith("data:") && !resolvedSrc.startsWith("blob:")) {
             image.crossOrigin = "anonymous";
         }
         image.onload = () => resolve(image);
         image.onerror = () => reject(new Error("Failed to load image"));
-        image.src = src;
+        image.src = resolvedSrc;
     });

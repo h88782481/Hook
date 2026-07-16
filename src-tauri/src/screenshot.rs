@@ -21,6 +21,12 @@ use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
     SelectObject, BITMAPINFO, BITMAPINFOHEADER, CAPTUREBLT, DIB_RGB_COLORS, HDC, SRCCOPY,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptureWorkloadProfile {
+    StandardRegion,
+    LongCapture,
+}
 #[cfg(target_os = "windows")]
 // use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
 #[cfg(target_os = "windows")]
@@ -468,6 +474,34 @@ fn capture_area_verbose_logging_enabled() -> bool {
     )
 }
 
+#[cfg(target_os = "windows")]
+fn wgc_fast_path_mode() -> String {
+    std::env::var("HOOK_WGC_FAST_PATH_MODE")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| matches!(value.as_str(), "auto" | "persistent" | "transient"))
+        .unwrap_or_else(|| "auto".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn should_use_persistent_wgc(profile: CaptureWorkloadProfile) -> bool {
+    match wgc_fast_path_mode().as_str() {
+        "transient" => false,
+        "persistent" => true,
+        // Default "auto" stays on transient WGC even for long capture. The
+        // persistent capturer lives in thread-local state inside tokio's
+        // blocking pool; repeated long-capture sampling can therefore strand
+        // multiple full-screen WGC sessions on different worker threads, which
+        // is exactly what drove post-capture idle memory/CPU far above the
+        // single transient path. Keep persistent mode as an explicit override
+        // only for future experiments.
+        _ => {
+            let _ = profile;
+            false
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Plan A: a persistent, full-screen Windows Graphics Capture (WGC) session that
 // is created ONCE and reused for every capture_area call, instead of building a
@@ -612,9 +646,63 @@ fn crop_rgb(full: &RgbImage, crop: &D3D11_BOX) -> RgbImage {
 }
 
 #[cfg(target_os = "windows")]
+fn try_fast_capture_transient(
+    display_id: scap_targets::DisplayId,
+    crop_rect: Option<D3D11_BOX>,
+) -> Option<RgbImage> {
+    use std::sync::mpsc::sync_channel;
+    use std::time::Duration;
+
+    let diag = capture_area_verbose_logging_enabled();
+
+    if !windows_fast_path_available() {
+        if diag {
+            crate::append_runtime_log_line(
+                "capture_area fast_fail :: reason=fast_path_unavailable",
+            );
+        }
+        return None;
+    }
+
+    let start = std::time::Instant::now();
+    let display = scap_targets::Display::from_id(&display_id)?;
+    let item = display.raw_handle().try_as_capture_item().ok()?;
+    let settings = windows_capture_settings(crop_rect);
+    let device = shared_d3d_device().ok().cloned();
+    let (tx, rx) = sync_channel(1);
+
+    let mut capturer = Capturer::new(
+        item,
+        settings,
+        move |frame| {
+            let res = frame_to_rgb(&frame);
+            let _ = tx.try_send(res);
+            Ok(())
+        },
+        || Ok(()),
+        device,
+    )
+    .ok()?;
+
+    capturer.start().ok()?;
+    let res = rx.recv_timeout(Duration::from_millis(500));
+    let _ = capturer.stop();
+
+    let image = res.ok()?.ok()?;
+    if diag {
+        crate::append_runtime_log_line(&format!(
+            "capture_area fast_elapsed :: mode=transient elapsed_ms={}",
+            start.elapsed().as_millis()
+        ));
+    }
+    Some(image)
+}
+
+#[cfg(target_os = "windows")]
 fn try_fast_capture(
     display_id: scap_targets::DisplayId,
     crop_rect: Option<D3D11_BOX>,
+    profile: CaptureWorkloadProfile,
 ) -> Option<RgbImage> {
     use std::time::Duration;
 
@@ -630,6 +718,10 @@ fn try_fast_capture(
     }
 
     let start = std::time::Instant::now();
+
+    if !should_use_persistent_wgc(profile) {
+        return try_fast_capture_transient(display_id, crop_rect);
+    }
 
     PERSISTENT_CAPTURER.with(|cell| {
         // Lazily create (or recreate after a prior failure) the persistent
@@ -761,7 +853,13 @@ fn try_fast_capture(
 
 // --- Public API ---
 
-pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> {
+pub fn capture_area_with_profile(
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+    profile: CaptureWorkloadProfile,
+) -> anyhow::Result<RgbImage> {
     #[cfg(target_os = "windows")]
     {
         let verbose_log = capture_area_verbose_logging_enabled();
@@ -843,12 +941,12 @@ pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> 
         let backend_mode = capture_backend_mode();
         if verbose_log {
             crate::append_runtime_log_line(&format!(
-                "capture_area dispatch :: mode={}",
-                backend_mode
+                "capture_area dispatch :: mode={} profile={:?}",
+                backend_mode, profile
             ));
         }
         if backend_mode == "auto" {
-            if let Some(image) = try_fast_capture(display_id.clone(), Some(d3d_box)) {
+            if let Some(image) = try_fast_capture(display_id.clone(), Some(d3d_box), profile) {
                 wgc_note_success();
                 if verbose_log {
                     crate::append_runtime_log_line(&format!(
@@ -890,9 +988,21 @@ pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> 
     Err(anyhow!("Only Windows is supported"))
 }
 
+#[allow(dead_code)]
+pub fn capture_area(x: i32, y: i32, w: u32, h: u32) -> anyhow::Result<RgbImage> {
+    capture_area_with_profile(x, y, w, h, CaptureWorkloadProfile::StandardRegion)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wgc_fast_path_mode_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .expect("wgc fast path env lock should not be poisoned")
+    }
 
     #[test]
     fn capture_area_verbose_logging_is_opt_in() {
@@ -911,6 +1021,40 @@ mod tests {
         std::env::remove_var("HOOK_CAPTURE_AREA_VERBOSE_LOG");
 
         assert!(!capture_area_verbose_logging_enabled());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn auto_wgc_mode_defaults_to_transient_for_both_standard_and_long_capture() {
+        let _lock = wgc_fast_path_mode_env_lock();
+        std::env::remove_var("HOOK_WGC_FAST_PATH_MODE");
+
+        assert!(!should_use_persistent_wgc(CaptureWorkloadProfile::StandardRegion));
+        assert!(!should_use_persistent_wgc(CaptureWorkloadProfile::LongCapture));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn explicit_persistent_override_enables_persistent_wgc_for_every_capture_profile() {
+        let _lock = wgc_fast_path_mode_env_lock();
+        std::env::set_var("HOOK_WGC_FAST_PATH_MODE", "persistent");
+
+        assert!(should_use_persistent_wgc(CaptureWorkloadProfile::StandardRegion));
+        assert!(should_use_persistent_wgc(CaptureWorkloadProfile::LongCapture));
+
+        std::env::remove_var("HOOK_WGC_FAST_PATH_MODE");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn explicit_transient_override_disables_persistent_wgc_for_every_capture_profile() {
+        let _lock = wgc_fast_path_mode_env_lock();
+        std::env::set_var("HOOK_WGC_FAST_PATH_MODE", "transient");
+
+        assert!(!should_use_persistent_wgc(CaptureWorkloadProfile::StandardRegion));
+        assert!(!should_use_persistent_wgc(CaptureWorkloadProfile::LongCapture));
+
+        std::env::remove_var("HOOK_WGC_FAST_PATH_MODE");
     }
 
     #[test]

@@ -4400,7 +4400,13 @@ pub fn capture_vertical_long_region(
     let (center_x_physical, center_y_physical) = logical_to_primary_physical(center_x, center_y);
 
     for index in 0..max_frames {
-        let frame = screenshot::capture_area(x, y, w, h)?;
+        let frame = screenshot::capture_area_with_profile(
+            x,
+            y,
+            w,
+            h,
+            screenshot::CaptureWorkloadProfile::LongCapture,
+        )?;
         crate::append_runtime_log_line(&format!(
             "long_capture frame_captured :: index={} width={} height={}",
             index,
@@ -4420,7 +4426,13 @@ pub fn capture_vertical_long_region(
                 ));
                 page_down_at_point(center_x_physical, center_y_physical);
                 thread::sleep(Duration::from_millis(settle_ms));
-                let retry_frame = screenshot::capture_area(x, y, w, h)?;
+                let retry_frame = screenshot::capture_area_with_profile(
+                    x,
+                    y,
+                    w,
+                    h,
+                    screenshot::CaptureWorkloadProfile::LongCapture,
+                )?;
                 let retry_duplicate = frames
                     .last()
                     .map(|previous: &RgbImage| previous.as_raw() == retry_frame.as_raw())

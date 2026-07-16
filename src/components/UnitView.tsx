@@ -27,6 +27,7 @@ import { StickerTopStrip } from "./StickerTopStrip";
 import { DISABLED_PREFIX } from "../constants";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
 import { resolveEffectiveNodeParams } from "../services/graphImageResolution";
+import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
 import { renderStickerComposite } from "../services/stickerExport";
@@ -298,6 +299,7 @@ export const UnitView: Component<Props> = (props) => {
   // 2. Manual File -> Use Params
   // 3. Screenshot (Default) -> Use Data Src
   const displaySrc = () => {
+      let resolvedSrc: string | undefined;
       // Check for Manual Override in Image Units
       if (!isArt()) {
           // Check if Image Input is explicitly disabled
@@ -312,23 +314,27 @@ export const UnitView: Component<Props> = (props) => {
                    const link = props.connectedLinks.find(l => l.toPortId === imageInput.name);
                    if (link && props.resolveUnitImage) {
                        const src = props.resolveUnitImage(link.fromUnitId);
-                       if (src) return src;
+                       if (src) {
+                           resolvedSrc = src;
+                       }
                    }
               }
 
               // If NOT connected, check Manual
               const path = props.params.image_path;
               if (path && path.startsWith("data:")) {
-                  return path;
+                  resolvedSrc = path;
               }
           }
       }
-      // Fallback
-      return liveUnit().data.previewSrc || liveUnit().data.src || "";
+      if (!resolvedSrc) {
+          resolvedSrc = liveUnit().data.previewSrc || liveUnit().data.src || "";
+      }
+      return normalizeImageSourceForDisplay(resolvedSrc) || "";
   };
   const baseImageSrc = () =>
       liveUnit().data.rasterizedAnnotationLayerSrc
-          ? liveUnit().data.src || displaySrc()
+          ? normalizeImageSourceForDisplay(liveUnit().data.src || displaySrc()) || ""
           : displaySrc();
   const fileBackedFallbacksInFlight = new Set<string>();
   const handleFileBackedImageLoadError = async () => {

@@ -100,7 +100,13 @@ pub async fn capture_region(
         // Capture Region with proper DPI Scaling via Scap.
         // Note: We pass logical coords (x,y,w,h) as received from frontend.
         // The backend `capture_area` handles conversion to physical pixels.
-        let mut rgb_image = match screenshot::capture_area(x, y, w, h) {
+        let mut rgb_image = match screenshot::capture_area_with_profile(
+            x,
+            y,
+            w,
+            h,
+            screenshot::CaptureWorkloadProfile::StandardRegion,
+        ) {
             Ok(image) => image,
             Err(error) => {
                 crate::append_runtime_log_line(&format!("capture_region failure :: {}", error));

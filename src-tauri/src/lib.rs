@@ -3490,6 +3490,22 @@ fn save_session(
     Ok(())
 }
 
+fn restore_loaded_session_stickers(stickers: &mut [StickerData]) {
+    for sticker in stickers {
+        if sticker.src.starts_with("data:image") {
+            continue;
+        }
+
+        let path = std::path::Path::new(&sticker.src);
+        if !path.exists() {
+            println!(
+                "Warning: Image file not found for sticker {}: {}",
+                sticker.id, sticker.src
+            );
+        }
+    }
+}
+
 #[tauri::command]
 fn load_session(app: tauri::AppHandle) -> Result<SessionData, String> {
     let app_dir = effective_app_data_dir(&app)?;
@@ -3524,21 +3540,7 @@ fn load_session(app: tauri::AppHandle) -> Result<SessionData, String> {
         }
     };
 
-    for sticker in &mut session_data.stickers {
-        if !sticker.src.starts_with("data:image") {
-            let path = std::path::Path::new(&sticker.src);
-            if path.exists() {
-                let bytes = fs::read(path).map_err(|e| e.to_string())?;
-                let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
-                sticker.src = format!("data:image/png;base64,{}", b64);
-            } else {
-                println!(
-                    "Warning: Image file not found for sticker {}: {}",
-                    sticker.id, sticker.src
-                );
-            }
-        }
-    }
+    restore_loaded_session_stickers(&mut session_data.stickers);
 
     println!(
         "Session loaded with {} stickers and {} links.",
@@ -4810,7 +4812,14 @@ fn capture_and_classify_long_capture_sample(
     work: LongCaptureSessionSampleWork,
 ) -> Result<LongCaptureSessionSampleResult, String> {
     let (x, y, w, h) = logical_rect_to_capture_bounds(work.rect)?;
-    let mut frame = screenshot::capture_area(x, y, w, h).map_err(|error| error.to_string())?;
+    let mut frame = screenshot::capture_area_with_profile(
+        x,
+        y,
+        w,
+        h,
+        screenshot::CaptureWorkloadProfile::LongCapture,
+    )
+    .map_err(|error| error.to_string())?;
     remove_long_capture_overlay_guide_edges(&mut frame);
     let fingerprint = long_capture_frame_fingerprint(&frame);
     let classification = classify_long_capture_recording_fingerprint(
@@ -5706,14 +5715,14 @@ fn set_native_drag_preflight_active(_active: bool) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn set_overlay_keyboard_capture_active(active: bool) -> Result<(), String> {
+fn set_overlay_keyboard_capture_active(_app: tauri::AppHandle, active: bool) -> Result<(), String> {
     OVERLAY_KEYBOARD_CAPTURE_ACTIVE.store(active, Ordering::SeqCst);
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn set_overlay_keyboard_capture_active(_active: bool) -> Result<(), String> {
+fn set_overlay_keyboard_capture_active(_app: tauri::AppHandle, _active: bool) -> Result<(), String> {
     Ok(())
 }
 
@@ -7264,6 +7273,50 @@ mod app_cli_tests {
 
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(resolved, older_legacy_dir);
+    }
+
+    #[test]
+    fn restore_loaded_session_stickers_keeps_file_backed_srcs_in_path_form() {
+        let root = std::env::temp_dir().join(format!(
+            "hook-session-restore-test-{}-{}",
+            std::process::id(),
+            file_timestamp_component()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp restore dir");
+        let image_path = root.join("capture.png");
+        std::fs::write(&image_path, [1u8, 2, 3, 4]).expect("write temp image");
+        let raw_path = image_path.to_string_lossy().to_string();
+
+        let mut stickers = vec![StickerData {
+            id: "restore-1".to_string(),
+            src: raw_path.clone(),
+            x: 0.0,
+            y: 0.0,
+            w: 100.0,
+            h: 100.0,
+            minified: None,
+            saved_rect: None,
+            crop_offset: None,
+            opacity_normal: None,
+            opacity_mini: None,
+            node_type: None,
+            art_id: None,
+            params: None,
+            file_path: None,
+            preview_src: None,
+            origin_workflow_id: None,
+            origin_node_id: None,
+            execution_config: None,
+            annotation_state: None,
+            image_edit_state: None,
+            group_id: None,
+            capture_meta: None,
+        }];
+
+        restore_loaded_session_stickers(&mut stickers);
+
+        assert_eq!(stickers[0].src, raw_path);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

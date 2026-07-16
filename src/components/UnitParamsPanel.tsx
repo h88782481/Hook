@@ -12,6 +12,7 @@ import {
     shouldGroupArtParams,
 } from "../services/artParamGrouping";
 import { getCapabilityInputsForPorts } from "../services/artPorts";
+import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { resolveEffectiveNodeParams } from "../services/graphImageResolution";
 import { syncService } from "../services/syncService";
 import {
@@ -119,6 +120,7 @@ export const UnitParamsPanel: Component<UnitParamsPanelProps> = (props) => {
   const paramGroups = createMemo(() => buildArtParamGroups(derivedParams()));
 
   const displaySrc = () => {
+      let resolvedSrc: string | undefined;
       if (!isArt()) {
           const isImageDisabled = props.unit.params["image"] === DISABLED_PREFIX;
           if (!isImageDisabled) {
@@ -127,16 +129,21 @@ export const UnitParamsPanel: Component<UnitParamsPanelProps> = (props) => {
                    const link = props.connectedLinks.find(l => l.toPortId === imageInput.name);
                    if (link && props.resolveUnitImage) {
                        const src = props.resolveUnitImage(link.fromUnitId);
-                       if (src) return src;
+                       if (src) {
+                           resolvedSrc = src;
+                       }
                    }
               }
               const path = props.params.image_path;
               if (path && path.startsWith("data:")) {
-                  return path;
+                  resolvedSrc = path;
               }
           }
       }
-      return props.unit.data.previewSrc || props.unit.data.src || "";
+      if (!resolvedSrc) {
+          resolvedSrc = props.unit.data.previewSrc || props.unit.data.src || "";
+      }
+      return normalizeImageSourceForDisplay(resolvedSrc) || "";
   };
 
   const isPortVisible = (portName: string) => {
