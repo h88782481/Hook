@@ -487,6 +487,7 @@ export function useSelection() {
     };
 
     const finishAutoLongCaptureSession = async () => {
+        await api.setCaptureInputActive(false);
         if (autoLongCaptureFinishing) return false;
         if (!autoLongCaptureRect || !autoLongCaptureOrigin || !autoLongCaptureOptions) {
             return false;
@@ -575,6 +576,7 @@ export function useSelection() {
     };
 
     const cancelAutoLongCaptureSession = async () => {
+        await api.setCaptureInputActive(false);
         if (!autoLongCaptureRect) return false;
         autoLongCaptureSessionId += 1;
         autoLongCaptureBusySessionId = null;

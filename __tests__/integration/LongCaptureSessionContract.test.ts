@@ -135,6 +135,18 @@ describe("Hook long capture session contract", () => {
         expect(cancelBody).toContain("await api.setOverlayCaptureExclusion(false)");
     });
 
+    it("explicitly disables capture input when long capture finishes or is canceled so Ctrl+3 exit cannot leave the crosshair active", () => {
+        const finishSessionStart = selectionSource.indexOf("const finishAutoLongCaptureSession");
+        const cancelSessionStart = selectionSource.indexOf("const cancelAutoLongCaptureSession");
+        expect(finishSessionStart).toBeGreaterThanOrEqual(0);
+        expect(cancelSessionStart).toBeGreaterThan(finishSessionStart);
+        const finishBody = selectionSource.slice(finishSessionStart, cancelSessionStart);
+        const cancelBody = selectionSource.slice(cancelSessionStart);
+
+        expect(finishBody).toContain("await api.setCaptureInputActive(false)");
+        expect(cancelBody).toContain("await api.setCaptureInputActive(false)");
+    });
+
     it("accelerates backend long-capture sampling from real wheel input without trusting wheel direction", () => {
         expect(selectionSource).toContain("notifyAutoLongCaptureWheel");
         expect(selectionSource).toContain("resolveAutoLongCaptureWheelPollInterval");
