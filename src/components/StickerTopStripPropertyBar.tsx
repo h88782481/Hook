@@ -40,7 +40,7 @@ import type { StickerTextAnnotation, StickerToolSettings } from "../types/sticke
 import { clamp } from "../utils/math";
 
 interface StickerTopStripPropertyBarProps {
-    unitId: string;
+    stickerId: string;
     tool: StickerTopStripPropertyTool;
 }
 
@@ -282,7 +282,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const [selectedTextSizeDraft, setSelectedTextSizeDraft] = createSignal<string | null>(null);
     const [selectedSerialRadiusDraft, setSelectedSerialRadiusDraft] = createSignal<string | null>(null);
     const [openDropdownMenu, setOpenDropdownMenu] = createSignal<OpenMiniDropdownMenu | null>(null);
-    const dropdownRectId = `sticker-top-strip-property-dropdown-${props.unitId}`;
+    const dropdownRectId = `sticker-top-strip-property-dropdown-${props.stickerId}`;
     let openDropdownMenuRef: HTMLDivElement | undefined;
     let dropdownRectSyncRafIds: number[] = [];
 
@@ -345,7 +345,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const availableFontFamilies = createMemo(() => mergeStickerFontFamilies(installedStickerFonts()));
     const [isLoadingInstalledFonts, setIsLoadingInstalledFonts] = createSignal(false);
     const [hasLoadedInstalledFonts, setHasLoadedInstalledFonts] = createSignal(false);
-    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
+    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
     const selectedExistingTextAnnotation = createMemo(() => {
         const annotationId = selectedStickerAnnotationId();
         if (!annotationId || selectedStickerAnnotationIds.length !== 1) return undefined;
@@ -410,7 +410,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         const currentSticker = unit();
         if (!currentSticker) return false;
         uiActions.pushStickerHistory(
-            props.unitId,
+            props.stickerId,
             captureStickerEditSnapshot(currentSticker, includeImageData ? { includeImageData: true } : undefined),
         );
         return true;
@@ -431,7 +431,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
               })
             : undefined;
 
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.stickerId, {
             ...flipped,
             previewSrc: undefined,
             rasterizedAnnotationLayerSrc,
@@ -453,8 +453,8 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             { x: currentSticker.x, y: currentSticker.y, w: currentSticker.w, h: currentSticker.h },
             currentSticker.data.imageEditState,
         );
-        stickerStore.actions.updateSticker(props.unitId, restored);
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateSticker(props.stickerId, restored);
+        stickerStore.actions.updateStickerData(props.stickerId, {
             imageEditState: {
                 ...(currentSticker.data.imageEditState || { contentEraseStrokes: [] }),
                 cropRect: undefined,
@@ -483,8 +483,8 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!pushCurrentStickerHistory()) return;
         const clamped = clamp(next, 0, 1);
         currentSticker.data.minified
-            ? stickerStore.actions.updateStickerData(props.unitId, { opacityMini: clamped })
-            : stickerStore.actions.updateStickerData(props.unitId, { opacityNormal: clamped });
+            ? stickerStore.actions.updateStickerData(props.stickerId, { opacityMini: clamped })
+            : stickerStore.actions.updateStickerData(props.stickerId, { opacityNormal: clamped });
         void syncService.scheduleSessionSync();
     };
 
@@ -492,7 +492,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         const currentSticker = unit();
         if (!currentSticker || !Number.isFinite(factor) || factor <= 0) return;
         if (!pushCurrentStickerHistory()) return;
-        stickerStore.actions.resizeStickerFrame(props.unitId, scaleStickerFrame({
+        stickerStore.actions.resizeStickerFrame(props.stickerId, scaleStickerFrame({
             x: currentSticker.x,
             y: currentSticker.y,
             w: currentSticker.w,
@@ -507,7 +507,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!pushCurrentStickerHistory()) return;
         const current = currentSticker.data.imageEditState || { contentEraseStrokes: [] };
         const clamped = clamp(Math.round(next), 0, 128);
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.stickerId, {
             imageEditState: {
                 ...current,
                 cornerRadius: clamped,
@@ -550,7 +550,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!currentSticker) return;
         if (!pushCurrentStickerHistory()) return;
         const current = currentSticker.data.imageEditState || { contentEraseStrokes: [] };
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.stickerId, {
             imageEditState: toggleStickerBorder(current, stickerColorState.activeColor),
         });
         void syncService.scheduleSessionSync();
@@ -566,7 +566,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (selectedAnnotation?.type !== annotationType || !currentState) return;
         if (!pushCurrentStickerHistory()) return;
 
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.stickerId, {
             annotationState: updateTextAnnotationFontFamilyById(currentState, selectedAnnotation.id, trimmed),
         });
         void syncService.scheduleSessionSync();
@@ -579,7 +579,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!selectedAnnotation || !currentState) return;
         if (!pushCurrentStickerHistory()) return;
 
-        stickerStore.actions.updateStickerData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.stickerId, {
             annotationState: {
                 ...currentState,
                 elements: currentState.elements.map((annotation) =>
@@ -1175,7 +1175,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const MiniDashField: Component<{ title: string }> = (fieldProps) => (
         <MiniDropdownField
-            id={`${props.unitId}-dash-pattern`}
+            id={`${props.stickerId}-dash-pattern`}
             title={fieldProps.title}
             value={stickerToolSettings.shapeStrokeDashPattern}
             options={dashOptions.map((option) => ({
@@ -1197,7 +1197,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const MiniFontField: Component<{ title: string; value: string; onChange: (value: string) => void }> = (fieldProps) => (
         <MiniDropdownField
-            id={`${props.unitId}-${fieldProps.title}-font`}
+            id={`${props.stickerId}-${fieldProps.title}-font`}
             title={fieldProps.title}
             value={fieldProps.value}
             options={availableFontFamilies().map((font) => ({

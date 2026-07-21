@@ -15,7 +15,7 @@ import {
 import { syncService } from "./syncService";
 
 export const rasterizeStickerAnnotations = async (params: {
-    unitId: string;
+    stickerId: string;
     currentSticker: Sticker;
     scope: StickerRasterizeScope;
     selectedAnnotationId: string | null;
@@ -43,11 +43,11 @@ export const rasterizeStickerAnnotations = async (params: {
             { w: currentSticker.w, h: currentSticker.h },
         );
         uiActions.pushStickerHistory(
-            params.unitId,
+            params.stickerId,
             captureStickerEditSnapshot(currentSticker, { includeImageData: true }),
         );
         stickerStore.actions.updateStickerData(
-            params.unitId,
+            params.stickerId,
             createRasterizedStickerData(
                 currentSticker,
                 {

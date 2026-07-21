@@ -398,6 +398,19 @@ export interface AnnotationScale {
     y: number;
 }
 
+export const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: number }>(
+    style: T,
+    scaleX: number,
+    scaleY: number,
+): T => ({
+    ...style,
+    width: scaleStrokeWidth(style.width, scaleX, scaleY),
+    cornerRadius:
+        style.cornerRadius === undefined
+            ? undefined
+            : scaleStrokeWidth(style.cornerRadius, scaleX, scaleY),
+});
+
 const DEFAULT_TEXT_FONT_SIZE = 18;
 const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;
 
@@ -535,18 +548,6 @@ const getRotatedRectBounds = (
     };
 };
 
-const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: number }>(
-    style: T,
-    scale: AnnotationScale,
-): T => ({
-    ...style,
-    width: scaleStrokeWidth(style.width, scale.x, scale.y),
-    cornerRadius:
-        style.cornerRadius === undefined
-            ? undefined
-            : scaleStrokeWidth(style.cornerRadius, scale.x, scale.y),
-});
-
 const rotateAnnotationAroundPivot = (
     annotation: StickerAnnotation,
     pivot: StickerPoint,
@@ -652,7 +653,7 @@ export const scaleAnnotationAroundPivot = (
             y: nextCenter.y - nextH / 2,
             w: nextW,
             h: nextH,
-            style: scaleAnnotationStyle(annotation.style, scale),
+            style: scaleAnnotationStyle(annotation.style, scale.x, scale.y),
         };
     }
 
@@ -674,7 +675,7 @@ export const scaleAnnotationAroundPivot = (
             y: bounds?.y ?? (nextCenter.y - nextH / 2),
             w: bounds?.w ?? nextW,
             h: bounds?.h ?? nextH,
-            style: scaleAnnotationStyle(annotation.style, scale),
+            style: scaleAnnotationStyle(annotation.style, scale.x, scale.y),
             points,
             brushWidth: nextBrushWidth,
             strength:
@@ -705,7 +706,8 @@ export const scaleAnnotationAroundPivot = (
                         ...annotation.style,
                         cornerRadius: serialMetrics.radius,
                     },
-                    scale,
+                    scale.x,
+                    scale.y,
                 ),
             };
         }
@@ -722,7 +724,7 @@ export const scaleAnnotationAroundPivot = (
             x: nextCenter.x - nextWidth / 2,
             y: nextCenter.y - fontSize / 2,
             fontSize,
-            style: scaleAnnotationStyle(annotation.style, scale),
+            style: scaleAnnotationStyle(annotation.style, scale.x, scale.y),
         };
     }
 
@@ -735,7 +737,7 @@ export const scaleAnnotationAroundPivot = (
         points: lineAnnotation.points.map((point: StickerPoint) =>
             scalePointAround(point, pivot, scale),
         ),
-        style: scaleAnnotationStyle(lineAnnotation.style, scale),
+        style: scaleAnnotationStyle(lineAnnotation.style, scale.x, scale.y),
     };
 };
 

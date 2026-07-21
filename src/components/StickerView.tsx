@@ -248,7 +248,7 @@ export const StickerView: Component<Props> = (props) => {
       if (!unitContainerRef) return false;
       const target = document.elementFromPoint(x, y);
       if (target instanceof Element) {
-          const unitRoot = target.closest(".unit-container");
+          const unitRoot = target.closest(".sticker-container");
           if (unitRoot) {
               return unitRoot === unitContainerRef;
           }
@@ -493,7 +493,7 @@ export const StickerView: Component<Props> = (props) => {
 
   return (
     <div
-      class={`unit-container ${props.isSelected ? "selected" : ""} "sticker-node" ${isMinified() ? "minified" : ""}`}
+      class={`sticker-container ${props.isSelected ? "selected" : ""} "sticker-node" ${isMinified() ? "minified" : ""}`}
       style={style()}
 
       ref={unitContainerRef}
@@ -869,7 +869,7 @@ export const StickerView: Component<Props> = (props) => {
                 })()}
             >
                 <StickerAnnotationLayer
-                    unitId={props.unit.id}
+                    stickerId={props.unit.id}
                     width={isMinified() ? getMinifiedAnnotationViewport().width : props.unit.w}
                     height={isMinified() ? getMinifiedAnnotationViewport().height : props.unit.h}
                     imageSrc={displaySrc()}
@@ -881,7 +881,7 @@ export const StickerView: Component<Props> = (props) => {
         <Show when={!isMinified() && !isCleanView()}>
             <Show when={props.isSelected && activeStickerEditTargetId() === props.unit.id}>
                 <StickerTopStrip
-                    unitId={props.unit.id}
+                    stickerId={props.unit.id}
                     x={currentPos().x}
                     y={currentPos().y}
                     stickerWidth={props.unit.w}

@@ -28,7 +28,7 @@ import {
 import type { StickerAnnotation, StickerCreateTool, StickerToolMode, StickerTransformMode } from "../types/stickerEditing";
 
 interface StickerTopStripProps {
-    unitId: string;
+    stickerId: string;
     x: number;
     y: number;
     stickerWidth: number;
@@ -377,7 +377,7 @@ const getViewportSize = () => {
     };
 };
 
-const buildStripInteractiveRect = (root: HTMLDivElement, unitId: string) => {
+const buildStripInteractiveRect = (root: HTMLDivElement, stickerId: string) => {
     const rootBounds = root.getBoundingClientRect();
     let left = rootBounds.left;
     let top = rootBounds.top;
@@ -393,7 +393,7 @@ const buildStripInteractiveRect = (root: HTMLDivElement, unitId: string) => {
     });
 
     return {
-        id: `sticker-top-strip-${unitId}`,
+        id: `sticker-top-strip-${stickerId}`,
         x: left,
         y: top,
         width: Math.max(0, right - left),
@@ -419,7 +419,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const [currentHistoryAction, setCurrentHistoryAction] = createSignal<HistoryActionMode>("undo");
     const [currentRasterizeScope, setCurrentRasterizeScope] = createSignal<StickerRasterizeScope>("selected");
     let stripRef: HTMLDivElement | undefined;
-    const openMenuRectId = `sticker-top-strip-menu-${props.unitId}`;
+    const openMenuRectId = `sticker-top-strip-menu-${props.stickerId}`;
     let openMenuRectSyncRafIds: number[] = [];
 
     const syncOpenToolbarMenuRect = () => {
@@ -558,14 +558,14 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const isCropSelected = createMemo(
         () => stickerToolSettings.domain === "sticker" && stickerToolSettings.activeCanvasTool === "crop",
     );
-    const historyState = createMemo(() => stickerEditHistories[props.unitId]);
+    const historyState = createMemo(() => stickerEditHistories[props.stickerId]);
     const canUndo = createMemo(() => (historyState()?.past?.length || 0) > 0);
     const canRedo = createMemo(() => (historyState()?.future?.length || 0) > 0);
     const currentHistoryOption = createMemo(
         () => historyActionOptions.find((item) => item.mode === currentHistoryAction()) ?? historyActionOptions[0],
     );
     const isHistoryEnabled = createMemo(() => (currentHistoryAction() === "undo" ? canUndo() : canRedo()));
-    const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
+    const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
     const selectedAnnotationIds = createMemo(() => {
         if (selectedStickerAnnotationIds.length > 0) {
             return [...selectedStickerAnnotationIds];
@@ -608,7 +608,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const currentRasterizeOption = createMemo(
         () => rasterizeScopeOptions.find((item) => item.mode === currentRasterizeScope()) ?? rasterizeScopeOptions[0],
     );
-    const draggingThisSticker = createMemo(() => draggingStickerId() === props.unitId);
+    const draggingThisSticker = createMemo(() => draggingStickerId() === props.stickerId);
     const canRasterizeSelected = createMemo(() => {
         const unit = currentSticker();
         if (!unit) return false;
@@ -652,8 +652,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
     const applySnapshot = async (snapshot: ReturnType<typeof captureStickerEditSnapshot> | undefined) => {
         if (!snapshot) return;
-        stickerStore.actions.restoreStickerEditSnapshot(props.unitId, snapshot);
-        stickerStore.actions.propagateStickerEditsFrom(props.unitId);
+        stickerStore.actions.restoreStickerEditSnapshot(props.stickerId, snapshot);
+        stickerStore.actions.propagateStickerEditsFrom(props.stickerId);
         await syncService.scheduleSessionSync();
     };
 
@@ -664,14 +664,14 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         if (mode === "undo") {
             if (!canUndo()) return;
             await applySnapshot(
-                uiActions.undoStickerHistory(props.unitId, captureStickerEditSnapshot(unit, { includeImageData: true })),
+                uiActions.undoStickerHistory(props.stickerId, captureStickerEditSnapshot(unit, { includeImageData: true })),
             );
             return;
         }
 
         if (!canRedo()) return;
         await applySnapshot(
-            uiActions.redoStickerHistory(props.unitId, captureStickerEditSnapshot(unit, { includeImageData: true })),
+            uiActions.redoStickerHistory(props.stickerId, captureStickerEditSnapshot(unit, { includeImageData: true })),
         );
     };
 
@@ -685,7 +685,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         // than relying solely on the global unhandledrejection net.
         try {
             const rasterized = await rasterizeStickerAnnotations({
-                unitId: props.unitId,
+                stickerId: props.stickerId,
                 currentSticker: unit,
                 scope,
                 selectedAnnotationId: selectedStickerAnnotationId(),
@@ -708,7 +708,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
         const rafId = window.requestAnimationFrame(() => {
             if (!stripRef) return;
-            addOrUpdateRect(buildStripInteractiveRect(stripRef, props.unitId));
+            addOrUpdateRect(buildStripInteractiveRect(stripRef, props.stickerId));
             void syncService.updateBackendRects();
         });
 
@@ -716,7 +716,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     });
 
     onCleanup(() => {
-        removeRect(`sticker-top-strip-${props.unitId}`);
+        removeRect(`sticker-top-strip-${props.stickerId}`);
         removeRect(openMenuRectId);
         void syncService.updateBackendRects();
     });
@@ -734,7 +734,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                 }}
             >
                 <Show when={propertyBarTool()}>
-                    {(tool) => <StickerTopStripPropertyBar unitId={props.unitId} tool={tool()} />}
+                    {(tool) => <StickerTopStripPropertyBar stickerId={props.stickerId} tool={tool()} />}
                 </Show>
 
                 <div

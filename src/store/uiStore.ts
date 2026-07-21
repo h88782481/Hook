@@ -369,11 +369,11 @@ export const uiActions = {
         setIsHistoryPanelOpen(open);
     },
 
-    setActiveStickerEditTarget: (unitId: string | null) => {
-        setActiveStickerEditTargetId(unitId);
+    setActiveStickerEditTarget: (stickerId: string | null) => {
+        setActiveStickerEditTargetId(stickerId);
     },
-    showStickerToolbar: (unitId: string) => {
-        setActiveStickerEditTargetId(unitId);
+    showStickerToolbar: (stickerId: string) => {
+        setActiveStickerEditTargetId(stickerId);
         setSelectedStickerAnnotationId(null);
         setSelectedStickerAnnotationIds([]);
         setStickerToolSettings((prev) =>
@@ -410,28 +410,28 @@ export const uiActions = {
     setActiveStickerGroup: (groupId: string | null) => {
         setActiveStickerGroupId(groupId);
     },
-    pushStickerHistory: (unitId: string, snapshot: StickerEditSnapshot) => {
-        setStickerEditHistories(unitId, (prev) =>
+    pushStickerHistory: (stickerId: string, snapshot: StickerEditSnapshot) => {
+        setStickerEditHistories(stickerId, (prev) =>
             pushStickerHistorySnapshot(prev || createEmptyStickerHistory(), snapshot),
         );
     },
-    undoStickerHistory: (unitId: string, current: StickerEditSnapshot) => {
+    undoStickerHistory: (stickerId: string, current: StickerEditSnapshot) => {
         const result = undoStickerHistorySnapshot(
-            stickerEditHistories[unitId] || createEmptyStickerHistory(),
+            stickerEditHistories[stickerId] || createEmptyStickerHistory(),
             current,
         );
-        setStickerEditHistories(unitId, result.history);
+        setStickerEditHistories(stickerId, result.history);
         return result.snapshot;
     },
-    redoStickerHistory: (unitId: string, current: StickerEditSnapshot) => {
+    redoStickerHistory: (stickerId: string, current: StickerEditSnapshot) => {
         const result = redoStickerHistorySnapshot(
-            stickerEditHistories[unitId] || createEmptyStickerHistory(),
+            stickerEditHistories[stickerId] || createEmptyStickerHistory(),
             current,
         );
-        setStickerEditHistories(unitId, result.history);
+        setStickerEditHistories(stickerId, result.history);
         return result.snapshot;
     },
-    clearStickerHistory: (unitId: string) => {
-        setStickerEditHistories(unitId, undefined!);
+    clearStickerHistory: (stickerId: string) => {
+        setStickerEditHistories(stickerId, undefined!);
     },
 };

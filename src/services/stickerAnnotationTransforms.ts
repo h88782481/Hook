@@ -8,26 +8,13 @@ import type {
 } from "../types/stickerEditing";
 import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
-import { scaleStrokeWidth } from "./stickerGeometry";
+import { scaleAnnotationStyle, scaleStrokeWidth } from "./stickerGeometry";
 
 export type StickerFrame = Pick<Sticker, "w" | "h">;
 export type FlipAxis = "x" | "y";
 
 const DEFAULT_TEXT_FONT_SIZE = 18;
 const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;
-
-export const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: number }>(
-    style: T,
-    scaleX: number,
-    scaleY: number,
-): T => ({
-    ...style,
-    width: scaleStrokeWidth(style.width, scaleX, scaleY),
-    cornerRadius:
-        style.cornerRadius === undefined
-            ? undefined
-            : scaleStrokeWidth(style.cornerRadius, scaleX, scaleY),
-});
 
 /** Scale an annotation in sticker-local coordinates, with optional translation. */
 export const scaleAnnotation = (

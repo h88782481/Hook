@@ -69,12 +69,12 @@ export function useDraggable() {
         let dx = e.clientX - dragOffset().x;
         let dy = e.clientY - dragOffset().y;
 
-        // Calculate Delta based on Primary Unit (ignoring snap for now to get raw delta)
+        // Calculate delta from the primary dragged sticker (ignore snap for raw delta).
         const primaryStart = dragStartPositions[primaryId];
         if (!primaryStart) return; // Should not happen
 
         // --- Snapping Logic (Applied to Primary Sticker) ---
-        // For simplicity, snapping calculates the *Final Position* of the Primary Unit.
+        // Snapping computes the final position of the primary sticker.
         // We then derive the Delta from that snapped position.
 
         if (checkDragModifier(e, 'alignment') || checkDragModifier(e, 'cascade')) {

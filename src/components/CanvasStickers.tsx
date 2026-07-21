@@ -16,10 +16,10 @@ interface CanvasStickersProps {
     onDelete: (id: string) => void;
 
     // Linking events
-    onLinkStart: (uId: string, portId: string, x: number, y: number) => void;
-    onLinkDrop: (uId: string, portId: string) => void;
-    onLinkMove: (uId: string, portId: string, e: MouseEvent) => void;
-    onLinkHover: (uId: string, targetId: string | null) => void;
+    onLinkStart: (stickerId: string, portId: string, x: number, y: number) => void;
+    onLinkDrop: (stickerId: string, portId: string) => void;
+    onLinkMove: (stickerId: string, portId: string, e: MouseEvent) => void;
+    onLinkHover: (stickerId: string, targetId: string | null) => void;
     onRendered: (id: string, dataUrl: string) => void;
 
     resolveLinkedImage: (id: string) => string | undefined;
@@ -32,14 +32,14 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
     let stickerResizeSyncTimer: number | null = null;
     let stickerAppearanceSyncTimer: number | null = null;
 
-    const scheduleStickerResizeSync = (unitId: string) => {
+    const scheduleStickerResizeSync = (stickerId: string) => {
         if (stickerResizeSyncTimer !== null) {
             window.clearTimeout(stickerResizeSyncTimer);
         }
 
         stickerResizeSyncTimer = window.setTimeout(() => {
             stickerResizeSyncTimer = null;
-            stickerStore.actions.propagateStickerEditsFrom(unitId);
+            stickerStore.actions.propagateStickerEditsFrom(stickerId);
             void syncService.scheduleSessionSync();
         }, STICKER_RESIZE_SYNC_DEBOUNCE_MS);
     };

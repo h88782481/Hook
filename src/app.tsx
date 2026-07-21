@@ -102,7 +102,7 @@ export default function App() {
           queueMicrotask(() => propagateFromSticker(sourceId));
       },
   });
-  const { handlePaste, handleCopy, handleSave, createImageSticker } = useClipboard(); // Assuming I implement Copy later if needed
+  const { handlePaste, handleCopy, handleSave, createImageSticker } = useClipboard();
   useFileDrop();
 
   const STICKER_GLOBAL_DELETE_ARM_WINDOW_MS = 2500;

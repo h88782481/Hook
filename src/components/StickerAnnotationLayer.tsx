@@ -107,7 +107,7 @@ import {
 import { getShapeStrokeColorKey, getShapeFillColorKey } from "./stickerToolbarModel";
 
 interface StickerAnnotationLayerProps {
-    unitId: string;
+    stickerId: string;
     width: number;
     height: number;
     imageSrc?: string;
@@ -183,10 +183,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const [altPressed, setAltPressed] = createSignal(false);
     const [transformInteraction, setTransformInteraction] = createSignal<ActiveTransformInteraction | null>(null);
     const logWheelEvent = (phase: string, detail: string) => {
-        void api.debugLogEvent("sticker-wheel-trace", `layer=annotation phase=${phase} unit=${props.unitId} ${detail}`);
+        void api.debugLogEvent("sticker-wheel-trace", `layer=annotation phase=${phase} sticker=${props.stickerId} ${detail}`);
     };
 
-    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
+    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
     const group = createMemo(() =>
         unit()?.data.groupId
             ? stickerStore.stickerGroups.find((item) => item.id === unit()!.data.groupId)
@@ -201,8 +201,8 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
 
     const interactionEnabled = createMemo(
         () =>
-            selectedStickerId() === props.unitId &&
-            activeStickerEditTargetId() === props.unitId &&
+            selectedStickerId() === props.stickerId &&
+            activeStickerEditTargetId() === props.stickerId &&
             !unit()?.data.minified &&
             !group()?.locked,
     );
@@ -334,11 +334,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     };
 
     const patchStickerDataLocally = (patch: Partial<Sticker["data"]>) => {
-        stickerStore.actions.updateStickerData(props.unitId, patch);
+        stickerStore.actions.updateStickerData(props.stickerId, patch);
     };
 
     const propagateStickerEditFromCurrent = () => {
-        stickerStore.actions.propagateStickerEditsFrom(props.unitId);
+        stickerStore.actions.propagateStickerEditsFrom(props.stickerId);
     };
 
     const patchStickerData = async (
@@ -346,7 +346,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         options: { propagateEdit?: boolean; markLocalEdit?: boolean } = {},
     ) => {
         if (options.propagateEdit) {
-            stickerStore.actions.updateStickerEditData(props.unitId, patch, {
+            stickerStore.actions.updateStickerEditData(props.stickerId, patch, {
                 markLocalEdit: options.markLocalEdit,
             });
             propagateStickerEditFromCurrent();
@@ -360,7 +360,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         const currentSticker = unit();
         if (!currentSticker) return;
         uiActions.pushStickerHistory(
-            props.unitId,
+            props.stickerId,
             captureStickerEditSnapshot(
                 currentSticker,
                 includeImageData ? { includeImageData: true } : undefined,
@@ -660,7 +660,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         liveRasterizedAnnotationEraseBaseLayerSrc = null;
         liveRasterizedAnnotationEraseHistoryCaptured = false;
         if (shouldSync) {
-            stickerStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
+            stickerStore.actions.updateStickerEditData(props.stickerId, {}, { markLocalEdit: true });
             propagateStickerEditFromCurrent();
             await syncService.scheduleSessionSync();
         }
@@ -1173,7 +1173,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                     imageEditState(),
                     rect,
                 );
-                stickerStore.actions.updateSticker(props.unitId, nextCrop.unitRect);
+                stickerStore.actions.updateSticker(props.stickerId, nextCrop.unitRect);
                 await patchStickerData({
                     imageEditState: {
                         ...imageEditState(),
