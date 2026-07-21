@@ -7,6 +7,7 @@ import type {
     StickerPoint,
     StickerToolSettings,
 } from "../types/stickerEditing";
+import { clamp } from "../utils/math";
 
 export const TRANSPARENT_STICKER_COLOR = "transparent";
 
@@ -177,8 +178,8 @@ const clampPointToStickerBounds = (
     point: StickerPoint,
     bounds: { w: number; h: number },
 ): StickerPoint => ({
-    x: Math.min(Math.max(point.x, 0), bounds.w),
-    y: Math.min(Math.max(point.y, 0), bounds.h),
+    x: clamp(point.x, 0, bounds.w),
+    y: clamp(point.y, 0, bounds.h),
 });
 
 export const clampCropRectToStickerBounds = (
@@ -413,7 +414,7 @@ export const removeStickerPaletteColor = (palette: string[], color: string) => {
 };
 
 export const buildSerialAnnotationMetrics = (radius: number) => {
-    const safeRadius = Math.min(96, Math.max(8, Math.round(radius)));
+    const safeRadius = clamp(Math.round(radius), 8, 96);
     return {
         radius: safeRadius,
         fontSize: Math.max(10, Math.round(safeRadius * 1.15)),

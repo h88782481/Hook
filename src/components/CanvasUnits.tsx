@@ -2,8 +2,7 @@ import { Component, For, onCleanup } from "solid-js";
 import { UnitView } from "./UnitView";
 import { graphStore } from "../store/graphStore";
 import {
-    selectedStickerId,
-    selectedUnitIds,
+    selectionActions,
     unitUiState,
     multiDragPositions,
     activeStickerGroupId,
@@ -83,7 +82,7 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               // State
               unit={u}
               multiDragPositions={multiDragPositions()}
-              isSelected={selectedUnitIds.includes(u.id) || selectedStickerId() === u.id}
+              isSelected={selectionActions.isSelected(u.id)}
 
               // UI State (Show/Hide panels)
               showActions={(unitUiState[u.id]?.showActions || false) && !u.data.minified}

@@ -30,6 +30,7 @@ import {
     traceRoundedPolygonPath,
 } from "./stickerGeometry";
 import { loadImage, drawStrokePath, applyLineDash } from "./stickerCanvas";
+import { clamp } from "../utils/math";
 
 // Render-order rank, mirrored from stickerAnnotationModel.annotationRenderRank
 // (kept inline to avoid a services→components dependency). Blur sits below
@@ -517,7 +518,7 @@ const applyBeautify = async (compositeSrc: string, unit: Unit): Promise<string> 
         layout.outerHeight,
     );
 
-    const radius = Math.max(0, Math.min(beautify.cornerRadius, layout.innerWidth / 2, layout.innerHeight / 2));
+    const radius = clamp(beautify.cornerRadius, 0, Math.min(layout.innerWidth / 2, layout.innerHeight / 2));
 
     context.save();
     if (beautify.shadow) {

@@ -1,6 +1,7 @@
 import { unwrap } from "solid-js/store";
 import type { StickerAnnotation, StickerPoint } from "../types/stickerEditing";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
+import { clamp } from "../utils/math";
 
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 export type LineEndpointHandle = "start" | "end";
@@ -74,14 +75,6 @@ const getArrowHeadAnchorSegmentInfo = (
     }
 
     return null;
-};
-
-export const getArrowHeadAnchorSegment = (
-    points: StickerPoint[],
-    minDistance = 6,
-): { from: StickerPoint; to: StickerPoint } | null => {
-    const segment = getArrowHeadAnchorSegmentInfo(points, minDistance);
-    return segment ? { from: segment.from, to: segment.to } : null;
 };
 
 const getArrowHeadGeometry = (
@@ -799,13 +792,13 @@ const buildRoundedCornerSpecs = (points: StickerPoint[], radius: number): Rounde
         const toNext = normalizeVector(next.x - corner.x, next.y - corner.y);
 
         const maxOffset = Math.min(toPrev.length, toNext.length) / 2;
-        const dot = Math.max(-1, Math.min(1, toPrev.x * toNext.x + toPrev.y * toNext.y));
+        const dot = clamp(toPrev.x * toNext.x + toPrev.y * toNext.y, -1, 1);
         const angle = Math.acos(dot);
         const tangentOffset =
             angle > 0.0001 && Math.tan(angle / 2) > 0.0001
                 ? radius / Math.tan(angle / 2)
                 : radius;
-        const offset = Math.max(0, Math.min(radius, tangentOffset, maxOffset));
+        const offset = clamp(radius, 0, Math.min(tangentOffset, maxOffset));
 
         return {
             corner,

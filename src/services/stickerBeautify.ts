@@ -5,8 +5,6 @@
 // first, then placed onto a larger "beautified" canvas. The layout math is
 // pure so it can be unit tested without a canvas.
 
-import type { StickerBeautifyState } from "../types/stickerEditing";
-
 export interface BeautifyBackground {
     id: string;
     label: string;
@@ -25,16 +23,6 @@ export const BEAUTIFY_BACKGROUNDS: BeautifyBackground[] = [
     { id: "white", label: "纯白", kind: "solid", colors: ["#ffffff"] },
     { id: "graphite", label: "石墨", kind: "solid", colors: ["#1f2933"] },
 ];
-
-export const DEFAULT_BEAUTIFY_BACKGROUND_ID = "sunset";
-
-export const createDefaultBeautifyState = (): StickerBeautifyState => ({
-    enabled: false,
-    backgroundId: DEFAULT_BEAUTIFY_BACKGROUND_ID,
-    padding: 48,
-    cornerRadius: 16,
-    shadow: true,
-});
 
 export const resolveBeautifyBackground = (id: string): BeautifyBackground =>
     BEAUTIFY_BACKGROUNDS.find((background) => background.id === id) ?? BEAUTIFY_BACKGROUNDS[0];

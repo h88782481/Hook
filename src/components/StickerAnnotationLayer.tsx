@@ -26,6 +26,7 @@ import type {
     StickerTransformMode,
 } from "../types/stickerEditing";
 import type { Unit } from "../types/unit";
+import { clamp } from "../utils/math";
 import {
     clampCropRectToStickerBounds,
     clampShapeRectToStickerBounds,
@@ -308,13 +309,13 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         };
         const safeRatio = (currentValue: number, startValue: number) => {
             if (Math.abs(startValue) < 0.0001) return 1;
-            return Math.max(0.1, Math.min(8, currentValue / startValue));
+            return clamp(currentValue / startValue, 0.1, 8);
         };
         const uniformScale = (() => {
             const currentDistance = Math.hypot(currentVector.x, currentVector.y);
             const startDistance = Math.hypot(startVector.x, startVector.y);
             if (startDistance < 0.0001) return 1;
-            return Math.max(0.1, Math.min(8, currentDistance / startDistance));
+            return clamp(currentDistance / startDistance, 0.1, 8);
         })();
         const keepUniform = shiftPressed();
         const scale = keepUniform
@@ -490,8 +491,8 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (!draft) return {};
         const width = Math.max(160, props.width - draft.x);
         const height = Math.max(24, draft.fontSize + 8);
-        const left = Math.min(Math.max(0, draft.x), Math.max(0, props.width - width));
-        const top = Math.min(Math.max(0, draft.y - draft.fontSize), Math.max(0, props.height - height));
+        const left = clamp(draft.x, 0, Math.max(0, props.width - width));
+        const top = clamp(draft.y - draft.fontSize, 0, Math.max(0, props.height - height));
         return {
             left: `${left}px`,
             top: `${top}px`,
@@ -1695,7 +1696,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             `ctrl=${event.ctrlKey} alt=${event.altKey} shift=${event.shiftKey} transformMode=${transformMode} annotationIds=${annotationIds.join(",")} targetCount=${targetAnnotations.length} deltaY=${deltaY}`,
         );
 
-        const scaleFactor = Math.max(0.5, Math.min(1.5, Math.exp(-deltaY * 0.001)));
+        const scaleFactor = clamp(Math.exp(-deltaY * 0.001), 0.5, 1.5);
         const scale = { x: scaleFactor, y: scaleFactor };
         const transformed =
             event.shiftKey && targetAnnotations.length > 1
@@ -1913,8 +1914,8 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const renderColorPickerPreview = (preview: ColorPickerPreview) => {
         const viewportWidth = typeof window === "undefined" ? 1920 : window.innerWidth;
         const viewportHeight = typeof window === "undefined" ? 1080 : window.innerHeight;
-        const left = Math.min(Math.max(8, preview.x + 16), Math.max(8, viewportWidth - 152));
-        const top = Math.min(Math.max(8, preview.y + 16), Math.max(8, viewportHeight - 56));
+        const left = clamp(preview.x + 16, 8, Math.max(8, viewportWidth - 152));
+        const top = clamp(preview.y + 16, 8, Math.max(8, viewportHeight - 56));
 
         return (
             <div

@@ -2,6 +2,7 @@ import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } 
 
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import { syncService } from "../services/syncService";
+import { clamp } from "../utils/math";
 
 const COLOR_PICKER_RECT_ID = "color-picker-popup";
 const COLOR_PICKER_RECT_NAME = "COLOR_PICKER";
@@ -179,8 +180,8 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
     const handleSvPick = (event: MouseEvent) => {
         if (!svPickerRef) return;
         const rect = svPickerRef.getBoundingClientRect();
-        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-        const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+        const x = clamp(event.clientX - rect.left, 0, rect.width);
+        const y = clamp(event.clientY - rect.top, 0, rect.height);
         setSaturation(x / rect.width);
         setValue(1 - y / rect.height);
     };
@@ -188,7 +189,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
     const handleHuePick = (event: MouseEvent) => {
         if (!hueSliderRef) return;
         const rect = hueSliderRef.getBoundingClientRect();
-        const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+        const x = clamp(event.clientX - rect.left, 0, rect.width);
         setHue((x / rect.width) * 360);
     };
 
@@ -352,8 +353,8 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
         }
 
         // 确保不超出视口
-        left = Math.max(8, Math.min(left, viewportWidth - PICKER_WIDTH - 8));
-        top = Math.max(8, Math.min(top, viewportHeight - PICKER_HEIGHT - 8));
+        left = clamp(left, 8, viewportWidth - PICKER_WIDTH - 8);
+        top = clamp(top, 8, viewportHeight - PICKER_HEIGHT - 8);
 
         return {
             position: "fixed" as const,

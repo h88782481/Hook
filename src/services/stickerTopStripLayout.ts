@@ -26,45 +26,6 @@ interface StickerTopStripLayout {
     propertyBar: StickerTopStripFrame | null;
 }
 
-export const computeStickerTopStripFrame = (
-    anchor: StickerTopStripAnchor,
-    viewportWidth: number,
-    viewportHeight: number,
-): StickerTopStripFrame => {
-    const safeViewportWidth = Math.max(0, Math.round(viewportWidth));
-    const safeViewportHeight = Math.max(0, Math.round(viewportHeight));
-    const width = Math.min(STICKER_TOP_STRIP_MIN_WIDTH, safeViewportWidth);
-    const maxLeft = Math.max(0, safeViewportWidth - width);
-    const left = clamp(Math.round(anchor.x), 0, maxLeft);
-
-    const preferredAboveTop = Math.round(anchor.y - STICKER_TOP_STRIP_HEIGHT);
-    const preferredBelowTop = Math.round(anchor.y + anchor.h);
-    const maxTop = Math.max(0, safeViewportHeight - STICKER_TOP_STRIP_HEIGHT);
-    const canFitAbove = preferredAboveTop >= 0;
-    const canFitBelow = preferredBelowTop + STICKER_TOP_STRIP_HEIGHT <= safeViewportHeight;
-
-    let top: number;
-    if (canFitAbove) {
-        top = preferredAboveTop;
-    } else if (canFitBelow) {
-        top = preferredBelowTop;
-    } else {
-        const availableAbove = Math.max(0, Math.min(Math.round(anchor.y), safeViewportHeight));
-        const availableBelow = Math.max(
-            0,
-            safeViewportHeight - Math.round(anchor.y + anchor.h),
-        );
-        top = availableAbove >= availableBelow ? 0 : maxTop;
-    }
-
-    return {
-        left,
-        top: clamp(top, 0, maxTop),
-        width,
-        height: STICKER_TOP_STRIP_HEIGHT,
-    };
-};
-
 export const computeStickerTopStripLayout = (
     anchor: StickerTopStripAnchor,
     viewportWidth: number,
@@ -91,7 +52,7 @@ export const computeStickerTopStripLayout = (
     } else if (canFitBelow) {
         containerTop = preferredBelowTop;
     } else {
-        const availableAbove = Math.max(0, Math.min(Math.round(anchor.y), safeViewportHeight));
+        const availableAbove = clamp(Math.round(anchor.y), 0, safeViewportHeight);
         const availableBelow = Math.max(
             0,
             safeViewportHeight - Math.round(anchor.y + anchor.h),

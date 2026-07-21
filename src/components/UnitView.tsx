@@ -25,6 +25,7 @@ import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
 import { renderStickerComposite } from "../services/stickerExport";
+import { clamp } from "../utils/math";
 
 // GLOBAL STATE: Persist scroll positions across re-renders
 const globalScrollRegistry: Record<string, number> = {};
@@ -537,7 +538,7 @@ export const UnitView: Component<Props> = (props) => {
             const relY = (e.clientY - rect.top) / viewScale;
 
             // Browser wheel direction: deltaY < 0 means wheel-up. Wheel-up should zoom in.
-            const scaleFactor = Math.max(0.5, Math.min(1.5, Math.exp(-e.deltaY * 0.001)));
+            const scaleFactor = clamp(Math.exp(-e.deltaY * 0.001), 0.5, 1.5);
 
             const newW = Math.max(24, currentUnit.w * scaleFactor);
             const newH = Math.max(24, currentUnit.h * scaleFactor);
@@ -571,7 +572,7 @@ export const UnitView: Component<Props> = (props) => {
 
             // Step 0.05 per scroll click
             const delta = -e.deltaY * 0.001;
-            const newOp = Math.max(0, Math.min(1, currentOp + delta));
+            const newOp = clamp(currentOp + delta, 0, 1);
 
             logWheelEvent(
                 "alt-opacity",

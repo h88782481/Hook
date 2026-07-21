@@ -1,57 +1,13 @@
 import { api } from "./api";
 import { graphStore } from "../store/graphStore";
-import { STICKER_DEFAULT_PORTS, type Unit, type Link } from "../types/unit";
+import type { Link } from "../types/unit";
 import { extraRects } from "./uiRegistry";
 import type { BootProfile } from "./bootProfile";
 import type { StickerGroup } from "../types/stickerEditing";
-import { normalizePreviewSrc } from "./syncedImagePayload";
-
-const mapSessionStickerToUnit = (sticker: any): Unit => ({
-    id: sticker.id,
-    type: "sticker",
-    x: sticker.x,
-    y: sticker.y,
-    w: sticker.w,
-    h: sticker.h,
-    inputs: STICKER_DEFAULT_PORTS.inputs,
-    outputs: STICKER_DEFAULT_PORTS.outputs,
-    data: {
-        src: sticker.src,
-        minified: sticker.minified ?? false,
-        savedRect: sticker.savedRect || undefined,
-        cropOffset: sticker.cropOffset || undefined,
-        opacityNormal: sticker.opacityNormal ?? 1,
-        opacityMini: sticker.opacityMini ?? 0.9,
-        previewSrc: sticker.previewSrc && sticker.previewSrc !== sticker.src ? sticker.previewSrc : undefined,
-        filePath: sticker.filePath || undefined,
-        rasterizedAnnotationLayerSrc: sticker.rasterizedAnnotationLayerSrc || undefined,
-        annotationState: sticker.annotationState || undefined,
-        imageEditState: sticker.imageEditState || undefined,
-        groupId: sticker.groupId || undefined,
-        captureMeta: sticker.captureMeta || undefined,
-    },
-});
-
-const mapUnitToSessionSticker = (unit: Unit) => ({
-    id: unit.id,
-    src: unit.data.src || "",
-    x: unit.x,
-    y: unit.y,
-    w: unit.w,
-    h: unit.h,
-    minified: unit.data.minified ?? false,
-    savedRect: unit.data.savedRect || null,
-    cropOffset: unit.data.cropOffset || null,
-    opacityNormal: unit.data.opacityNormal ?? 1,
-    opacityMini: unit.data.opacityMini ?? 0.9,
-    filePath: unit.data.filePath || null,
-    previewSrc: normalizePreviewSrc(unit) || null,
-    rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
-    annotationState: unit.data.annotationState || null,
-    imageEditState: unit.data.imageEditState || null,
-    groupId: unit.data.groupId || null,
-    captureMeta: unit.data.captureMeta || null,
-});
+import {
+    sessionStickerToUnit,
+    unitToSessionSticker,
+} from "./stickerSnapshot";
 
 const mapLinkToSessionLink = (link: Link) => ({
     id: link.id,
@@ -120,7 +76,7 @@ class SyncScheduler {
 
 const executeSyncCycle = async () => {
     await api.saveSession(
-        graphStore.units.map(mapUnitToSessionSticker),
+        graphStore.units.map((unit) => unitToSessionSticker(unit, { normalizePreview: true })),
         graphStore.links.map(mapLinkToSessionLink),
         graphStore.stickerGroups.map(mapGroupToSessionGroup),
         graphStore.recycleBin.map((entry) => entry),
@@ -166,7 +122,7 @@ export const syncService = {
         try {
             const sessionData = await api.loadSession();
             if (sessionData) {
-                const loadedUnits = sessionData.stickers.map(mapSessionStickerToUnit);
+                const loadedUnits = sessionData.stickers.map(sessionStickerToUnit);
                 const loadedUnitIds = new Set(loadedUnits.map((unit) => unit.id));
                 const loadedLinks = sessionData.links
                     .filter((link) => loadedUnitIds.has(link.fromUnitId) && loadedUnitIds.has(link.toUnitId))

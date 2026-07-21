@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { BootProfile, defaultBootProfile, normalizeBootProfile } from "./bootProfile";
 import type { FrozenStickerEntry } from "./stickerSnapshot";
+import type { PinRect } from "../types/pinRect";
 import type { SessionSticker, SessionLink, SessionGroup } from "../types/unit";
 import type {
     LongCaptureAxis,
@@ -8,15 +9,7 @@ import type {
     LongCaptureOverlapAnalysis,
 } from "./captureState";
 
-// Arguments Types
-export interface PinRect {
-    id: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    name: string;
-}
+export type { PinRect };
 
 export interface CaptureResponse {
     base64: string;

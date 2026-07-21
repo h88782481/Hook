@@ -26,7 +26,6 @@ import {
     setMousePos,
     isSelecting,
     selectedStickerId,
-    setSelectedStickerId,
     uiActions,
     setIsSelecting,
     isCleanView,
@@ -1049,7 +1048,7 @@ export default function App() {
 
            // Clear Selection if not holding Shift/Ctrl?
            if (!e.shiftKey && !e.ctrlKey) {
-               setSelectedStickerId(null);
+               selectionActions.clear();
                resetSelection();
                uiActions.hideStickerToolbar();
            }

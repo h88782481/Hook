@@ -1,7 +1,7 @@
 import { unwrap } from "solid-js/store";
 import { api } from "../services/api";
 import { STICKER_DEFAULT_PORTS, Unit } from "../types/unit";
-import { mousePos, selectedStickerId, selectedStickerAnnotationId, setSelectedStickerId, clipboard, setClipboard, ClipboardData, uiActions } from "../store/uiStore";
+import { mousePos, selectedStickerId, selectedStickerAnnotationId, clipboard, setClipboard, ClipboardData, selectionActions, uiActions } from "../store/uiStore";
 import { logger } from "../services/logger";
 import { graphStore } from "../store/graphStore";
 import { syncService } from "../services/syncService";
@@ -279,7 +279,7 @@ export function useClipboard() {
         };
 
         graphStore.actions.addUnit(newUnit);
-        setSelectedStickerId(newUnit.id); // Validates "Higher Level" (Z-Index/Active)
+        selectionActions.set([newUnit.id]);
         syncService.updateBackendRects();
 
         // Debug Logs

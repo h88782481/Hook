@@ -1,25 +1,13 @@
 import { unwrap } from "solid-js/store";
-import { STICKER_DEFAULT_PORTS, type Unit } from "../types/unit";
+import {
+    STICKER_DEFAULT_PORTS,
+    type SessionSticker,
+    type Unit,
+} from "../types/unit";
+import { normalizePreviewSrc } from "./syncedImagePayload";
 
-export interface FrozenStickerSessionSnapshot {
-    id: string;
-    src: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    minified: boolean;
-    savedRect: Unit["data"]["savedRect"] | null;
-    cropOffset: Unit["data"]["cropOffset"] | null;
-    opacityNormal: number;
-    opacityMini: number;
-    previewSrc: string | null;
-    filePath: string | null;
-    rasterizedAnnotationLayerSrc: string | null;
-    annotationState: Unit["data"]["annotationState"] | null;
-    imageEditState: Unit["data"]["imageEditState"] | null;
-    captureMeta: Unit["data"]["captureMeta"] | null;
-}
+/** Recycle/reference snapshots share the session sticker wire format. */
+export type FrozenStickerSessionSnapshot = SessionSticker;
 
 export interface FrozenStickerEntry {
     entryId: string;
@@ -28,55 +16,79 @@ export interface FrozenStickerEntry {
     snapshot: FrozenStickerSessionSnapshot;
 }
 
+export const unitToSessionSticker = (
+    unit: Unit,
+    options?: { normalizePreview?: boolean },
+): SessionSticker => ({
+    id: unit.id,
+    src: unit.data.src || "",
+    x: unit.x,
+    y: unit.y,
+    w: unit.w,
+    h: unit.h,
+    minified: unit.data.minified ?? false,
+    savedRect: unit.data.savedRect || null,
+    cropOffset: unit.data.cropOffset || null,
+    opacityNormal: unit.data.opacityNormal ?? 1,
+    opacityMini: unit.data.opacityMini ?? 0.9,
+    filePath: unit.data.filePath || null,
+    previewSrc: options?.normalizePreview
+        ? normalizePreviewSrc(unit) || null
+        : unit.data.previewSrc || null,
+    rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
+    annotationState: unit.data.annotationState || null,
+    imageEditState: unit.data.imageEditState || null,
+    groupId: unit.data.groupId || null,
+    captureMeta: unit.data.captureMeta || null,
+});
+
+export const sessionStickerToUnit = (sticker: SessionSticker): Unit => ({
+    id: sticker.id,
+    type: "sticker",
+    x: sticker.x,
+    y: sticker.y,
+    w: sticker.w,
+    h: sticker.h,
+    inputs: [...STICKER_DEFAULT_PORTS.inputs],
+    outputs: [...STICKER_DEFAULT_PORTS.outputs],
+    data: {
+        src: sticker.src || undefined,
+        minified: sticker.minified ?? false,
+        savedRect: sticker.savedRect || undefined,
+        cropOffset: sticker.cropOffset || undefined,
+        opacityNormal: sticker.opacityNormal ?? 1,
+        opacityMini: sticker.opacityMini ?? 0.9,
+        previewSrc:
+            sticker.previewSrc && sticker.previewSrc !== sticker.src
+                ? sticker.previewSrc
+                : undefined,
+        filePath: sticker.filePath || undefined,
+        rasterizedAnnotationLayerSrc: sticker.rasterizedAnnotationLayerSrc || undefined,
+        annotationState: sticker.annotationState || undefined,
+        imageEditState: sticker.imageEditState || undefined,
+        groupId: sticker.groupId || undefined,
+        captureMeta: sticker.captureMeta || undefined,
+    },
+});
+
 export const captureFrozenStickerSnapshot = (unit: Unit): FrozenStickerEntry => ({
     entryId: crypto.randomUUID(),
     sourceStickerId: unit.id,
     createdAt: new Date().toISOString(),
-    snapshot: structuredClone(unwrap({
-        id: unit.id,
-        src: unit.data.src || "",
-        x: unit.x,
-        y: unit.y,
-        w: unit.w,
-        h: unit.h,
-        minified: unit.data.minified ?? false,
-        savedRect: unit.data.savedRect || null,
-        cropOffset: unit.data.cropOffset || null,
-        opacityNormal: unit.data.opacityNormal ?? 1,
-        opacityMini: unit.data.opacityMini ?? 0.9,
-        previewSrc: unit.data.previewSrc || null,
-        filePath: unit.data.filePath || null,
-        rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
-        annotationState: unit.data.annotationState || null,
-        imageEditState: unit.data.imageEditState || null,
-        captureMeta: unit.data.captureMeta || null,
-    })),
+    snapshot: structuredClone(unwrap(unitToSessionSticker(unit))),
 });
 
 export const instantiateStickerFromFrozenSnapshot = (
     entry: FrozenStickerEntry,
     mouse: { x: number; y: number },
-): Unit => ({
-    id: crypto.randomUUID(),
-    type: "sticker",
-    x: mouse.x + 50,
-    y: mouse.y + 50,
-    w: entry.snapshot.w,
-    h: entry.snapshot.h,
-    inputs: [...STICKER_DEFAULT_PORTS.inputs],
-    outputs: [...STICKER_DEFAULT_PORTS.outputs],
-    data: {
-        src: entry.snapshot.src,
-        minified: entry.snapshot.minified,
-        savedRect: entry.snapshot.savedRect || undefined,
-        cropOffset: entry.snapshot.cropOffset || undefined,
-        opacityNormal: entry.snapshot.opacityNormal,
-        opacityMini: entry.snapshot.opacityMini,
-        previewSrc: entry.snapshot.previewSrc || undefined,
-        filePath: entry.snapshot.filePath || undefined,
-        rasterizedAnnotationLayerSrc: entry.snapshot.rasterizedAnnotationLayerSrc || undefined,
-        annotationState: entry.snapshot.annotationState || undefined,
-        imageEditState: entry.snapshot.imageEditState || undefined,
-        captureMeta: entry.snapshot.captureMeta || undefined,
-    },
-});
+): Unit => {
+    const unit = sessionStickerToUnit(entry.snapshot);
+    return {
+        ...unit,
+        id: crypto.randomUUID(),
+        x: mouse.x + 50,
+        y: mouse.y + 50,
+        inputs: [...STICKER_DEFAULT_PORTS.inputs],
+        outputs: [...STICKER_DEFAULT_PORTS.outputs],
+    };
+};

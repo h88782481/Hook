@@ -37,6 +37,7 @@ import {
     uiActions,
 } from "../store/uiStore";
 import type { StickerTextAnnotation, StickerToolSettings } from "../types/stickerEditing";
+import { clamp } from "../utils/math";
 
 interface StickerTopStripPropertyBarProps {
     unitId: string;
@@ -473,14 +474,14 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!trimmed) return fallback;
         const parsed = Number.parseInt(trimmed, 10);
         if (Number.isNaN(parsed)) return fallback;
-        return Math.min(max, Math.max(min, parsed));
+        return clamp(parsed, min, max);
     };
 
     const updateStickerOpacityValue = (next: number) => {
         const currentUnit = unit();
         if (!currentUnit) return;
         if (!pushCurrentStickerHistory()) return;
-        const clamped = Math.min(1, Math.max(0, next));
+        const clamped = clamp(next, 0, 1);
         currentUnit.data.minified
             ? graphStore.actions.updateUnitData(props.unitId, { opacityMini: clamped })
             : graphStore.actions.updateUnitData(props.unitId, { opacityNormal: clamped });
@@ -505,7 +506,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!currentUnit) return;
         if (!pushCurrentStickerHistory()) return;
         const current = currentUnit.data.imageEditState || { contentEraseStrokes: [] };
-        const clamped = Math.min(128, Math.max(0, Math.round(next)));
+        const clamped = clamp(Math.round(next), 0, 128);
         graphStore.actions.updateUnitData(props.unitId, {
             imageEditState: {
                 ...current,
@@ -592,7 +593,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const patchSelectedTextAnnotationFontSize = (next: number) => {
-        const clamped = Math.min(96, Math.max(8, Math.round(next)));
+        const clamped = clamp(Math.round(next), 8, 96);
         updateSelectedTextAnnotationStyle((annotation) =>
             annotation.type !== "text"
                 ? annotation
@@ -604,7 +605,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const patchSelectedSerialAnnotationRadius = (next: number) => {
-        const clamped = Math.min(96, Math.max(8, Math.round(next)));
+        const clamped = clamp(Math.round(next), 8, 96);
         updateSelectedTextAnnotationStyle((annotation) =>
             annotation.type !== "serial"
                 ? annotation
@@ -711,7 +712,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             return;
         }
 
-        patchNumericSetting(key, Math.min(max, Math.max(min, parsed)));
+        patchNumericSetting(key, clamp(parsed, min, max));
     };
 
     const openColorPicker = (slot: ShapeColorSettingKey, button: HTMLButtonElement) => {

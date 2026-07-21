@@ -39,22 +39,21 @@ import {
 import { api } from "../services/api";
 import { applyStickerToolSettingsPatch, normalizeStickerToolSettings } from "../services/toolSettings";
 
-// Global Selection State
-export const [selectedStickerId, setSelectedStickerId] = createSignal<string | null>(null);
-
-// Multi-Select State (Phase 3)
+// Selection: selectedUnitIds is the single source of truth.
+// selectedStickerId is the focused/active unit (last entry), derived from it.
 export const [selectedUnitIds, setSelectedUnitIds] = createStore<string[]>([]);
+
+export const selectedStickerId = (): string | null => {
+    const length = selectedUnitIds.length;
+    return length > 0 ? selectedUnitIds[length - 1] : null;
+};
 
 export const selectionActions = {
     add: (id: string) => {
-        setSelectedUnitIds(prev => prev.includes(id) ? prev : [...prev, id]);
-        setSelectedStickerId(id);
+        setSelectedUnitIds((prev) => (prev.includes(id) ? prev.filter((uid) => uid !== id).concat(id) : [...prev, id]));
     },
     remove: (id: string) => {
-        setSelectedUnitIds(prev => prev.filter(uid => uid !== id));
-        if (selectedStickerId() === id) {
-             setSelectedStickerId(null);
-        }
+        setSelectedUnitIds((prev) => prev.filter((uid) => uid !== id));
     },
     toggle: (id: string) => {
         if (selectedUnitIds.includes(id)) {
@@ -65,16 +64,11 @@ export const selectionActions = {
     },
     clear: () => {
         setSelectedUnitIds([]);
-        setSelectedStickerId(null);
     },
     set: (ids: string[]) => {
         setSelectedUnitIds(ids);
-        if (ids.length === 1) setSelectedStickerId(ids[0]);
-        else if (ids.length === 0) setSelectedStickerId(null);
-        // If multiple, keep the last one as the focused/active sticker.
-        if (ids.length > 0) setSelectedStickerId(ids[ids.length - 1]);
     },
-    isSelected: (id: string) => selectedUnitIds.includes(id)
+    isSelected: (id: string) => selectedUnitIds.includes(id),
 };
 
 // Global Dragging State
