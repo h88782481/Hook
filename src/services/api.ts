@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { BootProfile, defaultBootProfile, normalizeBootProfile } from "./bootProfile";
+import type { AppSettings } from "./appSettings";
+import { defaultAppSettings, normalizeAppSettings } from "./appSettings";
 import type { FrozenStickerEntry } from "./stickerSnapshot";
 import type { PinRect } from "../types/pinRect";
 import type { SessionSticker, SessionLink, SessionGroup } from "../types/stickerModel";
@@ -116,6 +118,19 @@ export const api = {
 
     saveToolSettings: (stickerToolSettings: Record<string, unknown>): Promise<void> =>
         safeInvoke("save_tool_settings", { stickerToolSettings }, () => undefined, false),
+
+    loadAppSettings: (): Promise<AppSettings> =>
+        safeInvoke("load_app_settings", undefined, () => defaultAppSettings(), false).then(
+            normalizeAppSettings,
+        ),
+
+    saveAppSettings: (settings: AppSettings): Promise<AppSettings> =>
+        safeInvoke("save_app_settings", { settings }, () => settings, false).then(
+            normalizeAppSettings,
+        ),
+
+    openSettingsWindow: (): Promise<void> =>
+        safeInvoke("open_settings_window_command", undefined, () => undefined, false),
 
     getInstalledFonts: (): Promise<string[]> =>
         safeInvoke("get_installed_fonts", undefined, () => [], false),

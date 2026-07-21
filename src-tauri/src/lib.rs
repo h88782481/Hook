@@ -1,7 +1,9 @@
+mod app_settings;
 mod capture;
 mod capture_coords;
 mod long_capture;
 mod mouse_monitor;
+mod portable_paths;
 mod screenshot;
 mod single_instance;
 
@@ -22,8 +24,8 @@ use std::sync::{mpsc, Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, Size, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, Size, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 // Windows Imports
 #[cfg(target_os = "windows")]
 use uiautomation::UIAutomation;
@@ -188,31 +190,11 @@ pub fn write_optional_cli_output(env_name: &str, text: &str) -> std::io::Result<
 }
 
 fn runtime_log_dir() -> PathBuf {
-    std::env::var("HOOK_LOG_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(default_runtime_log_dir)
+    portable_paths::portable_runtime_log_dir()
 }
 
-fn default_runtime_log_dir() -> PathBuf {
-    std::env::var("LOCALAPPDATA")
-        .ok()
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(std::env::temp_dir)
-        .join("Hook")
-        .join("logs")
-}
-
-fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    if let Some(override_dir) = std::env::var_os("HOOK_APPDATA_DIR")
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-    {
-        return Ok(override_dir);
-    }
-    app.path().app_data_dir().map_err(|e| e.to_string())
+fn effective_app_data_dir(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    portable_paths::ensure_portable_app_data_dir()
 }
 
 const RUNTIME_LOG_QUEUE_CAPACITY: usize = 512;
@@ -334,18 +316,7 @@ fn validate_image_data_limits(image_data: &[u8]) -> Result<(), String> {
 }
 
 fn clipboard_cache_dir() -> PathBuf {
-    std::env::var("HOOK_CLIPBOARD_CACHE_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-        .or_else(|| {
-            std::env::var("LOCALAPPDATA")
-                .ok()
-                .map(PathBuf::from)
-                .filter(|path| !path.as_os_str().is_empty())
-                .map(|path| path.join("Hook").join("clipboard_cache"))
-        })
-        .unwrap_or_else(|| std::env::temp_dir().join("Hook").join("clipboard_cache"))
+    portable_paths::portable_clipboard_cache_dir()
 }
 
 fn cleanup_clipboard_cache() -> Result<(), String> {
@@ -4887,6 +4858,195 @@ fn should_accept_tauri_shortcut_trigger(
     true
 }
 
+fn allow_portable_asset_scopes(app: &tauri::AppHandle) {
+    if let Ok(data_dir) = effective_app_data_dir(app) {
+        if let Err(error) = app.asset_protocol_scope().allow_directory(&data_dir, true) {
+            append_runtime_log_line(&format!(
+                "asset_scope_allow_data_failed :: {}",
+                error
+            ));
+        }
+    }
+    let screenshots_dir = clipboard_cache_dir();
+    if let Err(error) = app
+        .asset_protocol_scope()
+        .allow_directory(&screenshots_dir, true)
+    {
+        append_runtime_log_line(&format!(
+            "asset_scope_allow_screenshots_failed :: {}",
+            error
+        ));
+    }
+}
+
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    settings: &app_settings::AppSettings,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let capture_label = format!("截图 ({})", settings.shortcuts.capture.display_label());
+    let long_capture_label = format!(
+        "长截图 ({})",
+        settings.shortcuts.long_capture.display_label()
+    );
+    let open_image_label = format!(
+        "编辑已有图片… ({})",
+        settings.shortcuts.open_image.display_label()
+    );
+
+    let capture_item = MenuItem::with_id(app, "capture", capture_label, true, None::<&str>)?;
+    let long_capture_item =
+        MenuItem::with_id(app, "long_capture", long_capture_label, true, None::<&str>)?;
+    let open_image_item =
+        MenuItem::with_id(app, "open_image", open_image_label, true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    Menu::with_items(
+        app,
+        &[
+            &capture_item,
+            &long_capture_item,
+            &open_image_item,
+            &settings_item,
+            &quit_item,
+        ],
+    )
+}
+
+fn open_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html".into()))
+        .title("Hook 设置")
+        .inner_size(560.0, 720.0)
+        .min_inner_size(480.0, 560.0)
+        .resizable(true)
+        .decorations(true)
+        .transparent(false)
+        .always_on_top(false)
+        .center()
+        .build()
+        .map_err(|error| format!("Failed to open settings window: {error}"))?;
+    Ok(())
+}
+
+fn register_configured_global_shortcuts(
+    app: &tauri::AppHandle,
+    settings: &app_settings::AppSettings,
+    capture_registered: &Arc<AtomicBool>,
+    long_capture_registered: &Arc<AtomicBool>,
+) {
+    let _ = app.global_shortcut().unregister_all();
+    capture_registered.store(false, Ordering::Relaxed);
+    long_capture_registered.store(false, Ordering::Relaxed);
+
+    let bindings = [
+        ("capture", &settings.shortcuts.capture, Some(capture_registered)),
+        (
+            "long_capture",
+            &settings.shortcuts.long_capture,
+            Some(long_capture_registered),
+        ),
+        ("toggle_toolbar", &settings.shortcuts.toggle_toolbar, None),
+        ("open_image", &settings.shortcuts.open_image, None),
+    ];
+
+    for (name, binding, flag) in bindings {
+        match binding.to_shortcut() {
+            Ok(shortcut) => {
+                if let Err(error) = app.global_shortcut().register(shortcut) {
+                    append_runtime_log_line(&format!(
+                        "register_shortcut_failed :: name={} error={}",
+                        name, error
+                    ));
+                } else {
+                    append_runtime_log_line(&format!("register_shortcut_success :: name={}", name));
+                    if let Some(flag) = flag {
+                        flag.store(true, Ordering::Relaxed);
+                    }
+                }
+            }
+            Err(error) => {
+                append_runtime_log_line(&format!(
+                    "register_shortcut_invalid :: name={} error={}",
+                    name, error
+                ));
+            }
+        }
+    }
+}
+
+fn refresh_tray_menu(app: &tauri::AppHandle, settings: &app_settings::AppSettings) {
+    match build_tray_menu(app, settings) {
+        Ok(menu) => {
+            if let Some(tray) = app.try_state::<tauri::tray::TrayIcon>() {
+                if let Err(error) = tray.set_menu(Some(menu)) {
+                    append_runtime_log_line(&format!("tray_set_menu_failed :: {}", error));
+                }
+            }
+        }
+        Err(error) => {
+            append_runtime_log_line(&format!("tray_rebuild_failed :: {}", error));
+        }
+    }
+}
+
+#[tauri::command]
+fn load_app_settings(app: tauri::AppHandle) -> Result<app_settings::AppSettings, String> {
+    let mut settings = if let Some(shared) = app.try_state::<app_settings::SharedAppSettings>() {
+        shared.get()
+    } else {
+        app_settings::load_app_settings_from_disk()
+    };
+    settings.auto_start = app_settings::is_auto_start_enabled();
+    Ok(settings)
+}
+
+#[tauri::command]
+fn save_app_settings(
+    app: tauri::AppHandle,
+    settings: app_settings::AppSettings,
+) -> Result<app_settings::AppSettings, String> {
+    app_settings::save_app_settings_to_disk(&settings)?;
+    app_settings::set_auto_start_enabled(settings.auto_start)?;
+
+    if let Some(shared) = app.try_state::<app_settings::SharedAppSettings>() {
+        shared.set(settings.clone());
+    }
+
+    let capture_flag = app
+        .try_state::<CaptureShortcutFlags>()
+        .map(|flags| flags.capture.clone());
+    let long_flag = app
+        .try_state::<CaptureShortcutFlags>()
+        .map(|flags| flags.long_capture.clone());
+
+    if let (Some(capture_flag), Some(long_flag)) = (capture_flag, long_flag) {
+        register_configured_global_shortcuts(&app, &settings, &capture_flag, &long_flag);
+    }
+
+    refresh_tray_menu(&app, &settings);
+
+    let mut persisted = settings.clone();
+    persisted.auto_start = app_settings::is_auto_start_enabled();
+    let _ = app.emit("app-settings-updated", &persisted);
+    Ok(persisted)
+}
+
+#[tauri::command]
+fn open_settings_window_command(app: tauri::AppHandle) -> Result<(), String> {
+    open_settings_window(&app)
+}
+
+#[derive(Clone)]
+struct CaptureShortcutFlags {
+    capture: Arc<AtomicBool>,
+    long_capture: Arc<AtomicBool>,
+}
 
 fn configure_webview2_video_safe_composition() {
     const ENV_NAME: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
@@ -4921,70 +5081,94 @@ fn configure_webview2_video_safe_composition() {}
 pub fn run() {
     configure_webview2_video_safe_composition();
 
-    let tauri_ctrl_1_last_trigger = Arc::new(std::sync::Mutex::new(
+    let shared_app_settings =
+        app_settings::SharedAppSettings::new(app_settings::load_app_settings_from_disk());
+    let capture_shortcut_flags = CaptureShortcutFlags {
+        capture: Arc::new(AtomicBool::new(false)),
+        long_capture: Arc::new(AtomicBool::new(false)),
+    };
+    let tauri_capture_last_trigger = Arc::new(std::sync::Mutex::new(
         std::time::Instant::now() - std::time::Duration::from_secs(2),
     ));
-    let tauri_ctrl_3_last_trigger = Arc::new(std::sync::Mutex::new(
+    let tauri_long_capture_last_trigger = Arc::new(std::sync::Mutex::new(
         std::time::Instant::now() - std::time::Duration::from_secs(2),
     ));
 
     tauri::Builder::default()
         .plugin(
-            tauri_plugin_global_shortcut::Builder::new().with_handler({
-                let tauri_ctrl_1_last_trigger = tauri_ctrl_1_last_trigger.clone();
-                let tauri_ctrl_3_last_trigger = tauri_ctrl_3_last_trigger.clone();
-                move |app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        if shortcut.matches(Modifiers::CONTROL, Code::Digit1) {
-                            if !should_accept_tauri_shortcut_trigger(
-                                &tauri_ctrl_1_last_trigger,
-                                "tauri_ctrl1_duplicate_ignored",
-                            ) {
-                                return;
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler({
+                    let shared_app_settings = shared_app_settings.clone();
+                    let tauri_capture_last_trigger = tauri_capture_last_trigger.clone();
+                    let tauri_long_capture_last_trigger = tauri_long_capture_last_trigger.clone();
+                    move |app, shortcut, event| {
+                        if event.state != ShortcutState::Pressed {
+                            return;
+                        }
+                        let settings = shared_app_settings.get();
+                        let Some(action) = app_settings::shortcut_action_for(&shortcut, &settings)
+                        else {
+                            return;
+                        };
+                        match action {
+                            "capture" => {
+                                if !should_accept_tauri_shortcut_trigger(
+                                    &tauri_capture_last_trigger,
+                                    "tauri_capture_duplicate_ignored",
+                                ) {
+                                    return;
+                                }
+                                if let Some(window) = app.get_webview_window("main") {
+                                    enter_capture_mode(&window);
+                                }
                             }
-                            println!("Global Shortcut Ctrl+1 Triggered");
-                            if let Some(window) = app.get_webview_window("main") {
-                                println!("Window found. Processing shortcut...");
-                                enter_capture_mode(&window);
+                            "long_capture" => {
+                                if !should_accept_tauri_shortcut_trigger(
+                                    &tauri_long_capture_last_trigger,
+                                    "tauri_long_capture_duplicate_ignored",
+                                ) {
+                                    return;
+                                }
+                                if let Some(window) = app.get_webview_window("main") {
+                                    enter_long_capture_mode(&window);
+                                }
                             }
-                        } else if shortcut.matches(Modifiers::CONTROL, Code::Digit3) {
-                            if !should_accept_tauri_shortcut_trigger(
-                                &tauri_ctrl_3_last_trigger,
-                                "tauri_ctrl3_duplicate_ignored",
-                            ) {
-                                return;
+                            "toggle_toolbar" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    trigger_toggle_sticker_toolbar(&window);
+                                }
                             }
-                            println!("Global Shortcut Ctrl+3 Triggered");
-                            if let Some(window) = app.get_webview_window("main") {
-                                println!("Window found. Processing long screenshot shortcut...");
-                                enter_long_capture_mode(&window);
+                            "open_image" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    show_overlay_host_impl(&window, false);
+                                    let _ = window.emit("trigger-open-image", ());
+                                }
                             }
-                        } else if shortcut.matches(Modifiers::CONTROL, Code::KeyE) {
-                            println!("Global Shortcut Ctrl+E Triggered");
-                            if let Some(window) = app.get_webview_window("main") {
-                                println!("Window found. Processing sticker toolbar shortcut...");
-                                trigger_toggle_sticker_toolbar(&window);
-                            }
+                            _ => {}
                         }
                     }
-                }
-            })
-            .build(),
+                })
+                .build(),
         )
+        .manage(shared_app_settings.clone())
+        .manage(capture_shortcut_flags.clone())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "settings" {
+                    return;
+                }
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
         .invoke_handler(tauri::generate_handler![
-             capture::capture_region,
-             update_pin_rects,
-             set_mouse_monitor_active,
-             save_sticker_image_as,
-             save_sticker_drag_export,
-             save_sticker_drag_export_from_path,
-             get_cursor_position,
+            capture::capture_region,
+            update_pin_rects,
+            set_mouse_monitor_active,
+            save_sticker_image_as,
+            save_sticker_drag_export,
+            save_sticker_drag_export_from_path,
+            get_cursor_position,
             copy_sticker_image_to_smart_clipboard,
             set_capture_input_active,
             save_session,
@@ -4993,6 +5177,9 @@ pub fn run() {
             load_history,
             save_tool_settings,
             load_tool_settings,
+            load_app_settings,
+            save_app_settings,
+            open_settings_window_command,
             get_installed_fonts,
             get_boot_profile,
             show_canvas_window,
@@ -5014,309 +5201,348 @@ pub fn run() {
             open_image_for_edit,
             read_clipboard_image
         ])
-        .setup(|app| {
-            let single_instance_guard =
-                match try_acquire_single_instance(&single_instance_name()) {
-                    Ok(Some(guard)) => guard,
-                    Ok(None) => {
-                        append_runtime_log_line("single_instance_already_running");
-                        std::process::exit(0);
-                    }
-                    Err(error) => {
-                        append_runtime_log_line(&format!(
-                            "single_instance_acquire_failed :: {}",
-                            error
-                        ));
-                        return Err(error.into());
-                    }
-                };
-            // Intentionally leak the guard so the OS mutex stays held for the
-            // entire process lifetime; it is released when the process exits.
-            std::mem::forget(single_instance_guard);
-
-            // Initialize Shared State
-            let hit_map = SharedHitMap::new();
-            app.manage(hit_map.clone());
-            let capture_input_state = SharedCaptureInputState::new();
-            app.manage(capture_input_state.clone());
-            let long_capture_sessions = SharedLongCaptureSessions::new();
-            app.manage(long_capture_sessions.clone());
-
-            if let Err(error) = cleanup_clipboard_cache() {
-                append_runtime_log_line(&format!("clipboard_cache_cleanup_failed :: {}", error));
-            }
-
-            #[cfg(desktop)]
-            {
-                // Register Ctrl+1, Ctrl+3, Ctrl+E.
-                let ctrl_1 = Shortcut::new(Some(Modifiers::CONTROL), Code::Digit1);
-                let ctrl_3 = Shortcut::new(Some(Modifiers::CONTROL), Code::Digit3);
-                let ctrl_e = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyE);
-                let ctrl_1_global_registered = Arc::new(AtomicBool::new(false));
-                let ctrl_3_global_registered = Arc::new(AtomicBool::new(false));
-
-                if let Err(e) = app.global_shortcut().register(ctrl_1) {
-                    println!("Warning: Failed to register Ctrl+1: {}", e);
-                    append_runtime_log_line(&format!("register_ctrl1_failed :: {}", e));
-                } else {
-                    append_runtime_log_line("register_ctrl1_success");
-                    ctrl_1_global_registered.store(true, Ordering::Relaxed);
-                }
-                if let Err(e) = app.global_shortcut().register(ctrl_3) {
-                     println!("Warning: Failed to register Ctrl+3: {}", e);
-                     append_runtime_log_line(&format!("register_ctrl3_failed :: {}", e));
-                } else {
-                     append_runtime_log_line("register_ctrl3_success");
-                     ctrl_3_global_registered.store(true, Ordering::Relaxed);
-                }
-                if let Err(e) = app.global_shortcut().register(ctrl_e) {
-                     println!("Warning: Failed to register Ctrl+E: {}", e);
-                     append_runtime_log_line(&format!("register_ctrle_failed :: {}", e));
-                } else {
-                      append_runtime_log_line("register_ctrle_success");
-                }
-
-                let capture_item = MenuItem::with_id(app, "capture", "截图 (Ctrl+1)", true, None::<&str>)?;
-                let long_capture_item = MenuItem::with_id(app, "long_capture", "长截图 (Ctrl+3)", true, None::<&str>)?;
-                let open_image_item =
-                    MenuItem::with_id(app, "open_image", "编辑已有图片… (Ctrl+O)", true, None::<&str>)?;
-                let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-                let tray_menu = Menu::with_items(
-                    app,
-                    &[&capture_item, &long_capture_item, &open_image_item, &quit_item],
-                )?;
-
-                let mut tray_builder = TrayIconBuilder::with_id("hook")
-                    .menu(&tray_menu)
-                    .tooltip("Hook")
-                    .show_menu_on_left_click(true)
-                    .on_menu_event(|app, event| match event.id().as_ref() {
-                        "capture" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                enter_capture_mode(&window);
-                            }
+        .setup({
+            let shared_app_settings = shared_app_settings.clone();
+            let capture_shortcut_flags = capture_shortcut_flags.clone();
+            move |app| {
+                let single_instance_guard =
+                    match try_acquire_single_instance(&single_instance_name()) {
+                        Ok(Some(guard)) => guard,
+                        Ok(None) => {
+                            append_runtime_log_line("single_instance_already_running");
+                            std::process::exit(0);
                         }
-                        "long_capture" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                enter_long_capture_mode(&window);
-                            }
+                        Err(error) => {
+                            append_runtime_log_line(&format!(
+                                "single_instance_acquire_failed :: {}",
+                                error
+                            ));
+                            return Err(error.into());
                         }
-                        "open_image" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                show_overlay_host_impl(&window, false);
-                                if let Err(e) = window.emit("trigger-open-image", ()) {
-                                    append_runtime_log_line(&format!(
-                                        "tray_open_image emit_failed :: {}",
-                                        e
-                                    ));
-                                }
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    });
+                    };
+                // Intentionally leak the guard so the OS mutex stays held for the
+                // entire process lifetime; it is released when the process exits.
+                std::mem::forget(single_instance_guard);
 
-                if let Some(icon) = app.default_window_icon().cloned() {
-                    tray_builder = tray_builder.icon(icon);
+                allow_portable_asset_scopes(app.handle());
+
+                // Initialize Shared State
+                let hit_map = SharedHitMap::new();
+                app.manage(hit_map.clone());
+                let capture_input_state = SharedCaptureInputState::new();
+                app.manage(capture_input_state.clone());
+                let long_capture_sessions = SharedLongCaptureSessions::new();
+                app.manage(long_capture_sessions.clone());
+
+                if let Err(error) = cleanup_clipboard_cache() {
+                    append_runtime_log_line(&format!(
+                        "clipboard_cache_cleanup_failed :: {}",
+                        error
+                    ));
                 }
 
-                let tray = tray_builder.build(app)?;
-                app.manage(tray);
+                #[cfg(desktop)]
+                {
+                    let settings = shared_app_settings.get();
+                    register_configured_global_shortcuts(
+                        app.handle(),
+                        &settings,
+                        &capture_shortcut_flags.capture,
+                        &capture_shortcut_flags.long_capture,
+                    );
 
-                let Some(window) = app.get_webview_window("main") else {
-                    append_runtime_log_line("app_setup_main_window_missing");
-                    return Err("main window missing during setup".into());
-                };
-                let boot_profile = boot_profile_from_env();
-                append_runtime_log_line(&format!(
-                    "app_setup :: startup_mode={} initial_ui_mode={} auto_start_capture={}",
-                    boot_profile.startup_mode,
-                    boot_profile.initial_ui_mode,
-                    boot_profile.auto_start_capture
-                ));
-                install_capture_mouse_hook_thread(window.clone());
-                install_overlay_keyboard_hook_thread(window.clone());
-                if boot_profile.initial_ui_mode == "tray" {
-                    hide_to_tray_impl(&window);
-                } else if boot_profile.initial_ui_mode == "canvas" {
-                    show_canvas_window_impl(&window);
-                } else {
-                    show_overlay_host_impl(&window, true);
-                }
-                let hit_map_clone = hit_map.clone();
-                let capture_input_state_clone = capture_input_state.clone();
-                let long_capture_sessions_clone = long_capture_sessions.clone();
-                let ctrl_1_global_registered_for_rdev = ctrl_1_global_registered.clone();
-                let ctrl_3_global_registered_for_rdev = ctrl_3_global_registered.clone();
+                    let tray_menu = build_tray_menu(app.handle(), &settings)?;
 
-                // Start Global Event Listener (Inputs)
-                std::thread::spawn(move || {
-                    struct RdevInputRuntimeState {
-                        last_esc: std::time::Instant,
-                        is_ignoring_events: bool,
-                        ctrl_pressed: bool,
-                        last_capture_trigger: std::time::Instant,
-                    }
-
-                    let input_runtime_state = std::sync::Mutex::new(RdevInputRuntimeState {
-                        last_esc: std::time::Instant::now()
-                            - std::time::Duration::from_secs(1),
-                        is_ignoring_events: false,
-                        ctrl_pressed: false,
-                        last_capture_trigger: std::time::Instant::now()
-                            - std::time::Duration::from_secs(2),
-                    });
-
-                    if let Err(error) = rdev::listen(move |event| {
-                        let mut input_state = match input_runtime_state.lock() {
-                            Ok(guard) => guard,
-                            Err(_) => return,
-                        };
-
-                        match &event.event_type {
-                            rdev::EventType::KeyPress(rdev::Key::ControlLeft)
-                            | rdev::EventType::KeyPress(rdev::Key::ControlRight) => {
-                                input_state.ctrl_pressed = true;
-                            }
-                            rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
-                            | rdev::EventType::KeyRelease(rdev::Key::ControlRight) => {
-                                input_state.ctrl_pressed = false;
-                            }
-                            rdev::EventType::KeyPress(rdev::Key::Num1) => {
-                                if input_state.ctrl_pressed
-                                    && !ctrl_1_global_registered_for_rdev.load(Ordering::Relaxed)
-                                    && input_state.last_capture_trigger.elapsed()
-                                        > std::time::Duration::from_millis(500)
-                                {
-                                    input_state.last_capture_trigger = std::time::Instant::now();
-                                    append_runtime_log_line("rdev_ctrl1_triggered");
+                    let mut tray_builder = TrayIconBuilder::with_id("hook")
+                        .menu(&tray_menu)
+                        .tooltip("Hook")
+                        .show_menu_on_left_click(true)
+                        .on_menu_event(|app, event| match event.id().as_ref() {
+                            "capture" => {
+                                if let Some(window) = app.get_webview_window("main") {
                                     enter_capture_mode(&window);
                                 }
                             }
-                            rdev::EventType::KeyPress(rdev::Key::Num3) => {
-                                if input_state.ctrl_pressed
-                                    && !ctrl_3_global_registered_for_rdev.load(Ordering::Relaxed)
-                                    && input_state.last_capture_trigger.elapsed()
-                                        > std::time::Duration::from_millis(500)
-                                {
-                                    input_state.last_capture_trigger = std::time::Instant::now();
-                                    append_runtime_log_line("rdev_ctrl3_triggered");
+                            "long_capture" => {
+                                if let Some(window) = app.get_webview_window("main") {
                                     enter_long_capture_mode(&window);
                                 }
                             }
-                            rdev::EventType::KeyPress(rdev::Key::Escape) => {
-                                if overlay_keyboard_capture_should_handle_current_cursor() {
-                                    append_runtime_log_line(
-                                        "rdev_escape_skipped_overlay_keyboard_capture",
-                                    );
-                                    return;
-                                }
-                                if input_state.last_esc.elapsed()
-                                    < std::time::Duration::from_millis(400)
-                                {
-                                    println!("Double ESC detected - Emergency Exit.");
-                                    set_capture_input_runtime_active(false);
-                                    std::process::exit(0);
-                                }
-                                input_state.last_esc = std::time::Instant::now();
-                                append_runtime_log_line("rdev_escape_triggered");
-                                set_capture_input_runtime_active(false);
-                                let _ = window.emit("trigger-escape", ());
-                            }
-                            rdev::EventType::KeyPress(rdev::Key::Delete)
-                            | rdev::EventType::KeyPress(rdev::Key::Backspace) => {
-                                if overlay_keyboard_capture_should_handle_current_cursor() {
-                                    append_runtime_log_line(
-                                        "rdev_delete_skipped_overlay_keyboard_capture",
-                                    );
-                                    return;
-                                }
-                                append_runtime_log_line("rdev_delete_triggered");
-                                let _ = window.emit("trigger-delete", ());
-                            }
-                            rdev::EventType::KeyPress(rdev::Key::Return) => {
-                                append_runtime_log_line("rdev_enter_triggered");
-                                let _ = window.emit("trigger-long-capture-finish", ());
-                            }
-                            rdev::EventType::Wheel { delta_x, delta_y } => {
-                                let capture_active = capture_input_state_clone
-                                    .active
-                                    .lock()
-                                    .map(|guard| *guard)
-                                    .unwrap_or(false);
-                                if capture_active {
-                                    return;
-                                }
-
-                                let has_long_capture_sessions = long_capture_sessions_clone
-                                    .sessions
-                                    .lock()
-                                    .ok()
-                                    .map(|sessions| !sessions.is_empty())
-                                    .unwrap_or(false);
-                                if has_long_capture_sessions {
-                                    append_runtime_log_line(&format!(
-                                        "rdev_long_capture_wheel :: delta_x={} delta_y={}",
-                                        delta_x, delta_y
-                                    ));
-                                    let _ = window.emit("trigger-long-capture-wheel", LongCaptureWheelEvent {
-                                        delta_x: *delta_x,
-                                        delta_y: *delta_y,
-                                    });
-                                }
-                            }
-                            rdev::EventType::MouseMove { x, y } => {
-                                let _ = (x, y);
-                                let capture_active = capture_input_state_clone
-                                    .active
-                                    .lock()
-                                    .map(|guard| *guard)
-                                    .unwrap_or(false);
-                                if capture_active {
-                                    return;
-                                }
-
-                                // Hit Testing Logic
-                                let active = hit_map_clone
-                                    .active
-                                    .lock()
-                                    .map(|guard| *guard)
-                                    .unwrap_or(false);
-                                if active {
-                                    let should_ignore = hit_map_clone
-                                        .rectangles
-                                        .lock()
-                                        .map(|rects| {
-                                            should_overlay_window_ignore_cursor_events(
-                                                &rects,
-                                                *x,
-                                                *y,
-                                            )
-                                        })
-                                        .unwrap_or(true);
-                                    if should_ignore != input_state.is_ignoring_events {
-                                        let _ = window.set_ignore_cursor_events(should_ignore);
-                                        set_overlay_transparent_style(&window, should_ignore);
-                                        OVERLAY_CLICK_THROUGH_ACTIVE
-                                            .store(should_ignore, Ordering::SeqCst);
-                                        apply_overlay_no_activate(&window);
-                                        input_state.is_ignoring_events = should_ignore;
+                            "open_image" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    show_overlay_host_impl(&window, false);
+                                    if let Err(e) = window.emit("trigger-open-image", ()) {
+                                        append_runtime_log_line(&format!(
+                                            "tray_open_image emit_failed :: {}",
+                                            e
+                                        ));
                                     }
-                                } else {
-                                    input_state.is_ignoring_events = false;
                                 }
+                            }
+                            "settings" => {
+                                if let Err(error) = open_settings_window(app) {
+                                    append_runtime_log_line(&format!(
+                                        "tray_open_settings_failed :: {}",
+                                        error
+                                    ));
+                                }
+                            }
+                            "quit" => {
+                                app.exit(0);
                             }
                             _ => {}
-                        }
-                    }) {
-                        println!("Error: {:?}", error);
-                        append_runtime_log_line(&format!("rdev_listen_failed :: {:?}", error));
+                        });
+
+                    if let Some(icon) = app.default_window_icon().cloned() {
+                        tray_builder = tray_builder.icon(icon);
                     }
-                });
+
+                    let tray = tray_builder.build(app)?;
+                    app.manage(tray);
+
+                    let Some(window) = app.get_webview_window("main") else {
+                        append_runtime_log_line("app_setup_main_window_missing");
+                        return Err("main window missing during setup".into());
+                    };
+                    let boot_profile = boot_profile_from_env();
+                    append_runtime_log_line(&format!(
+                        "app_setup :: startup_mode={} initial_ui_mode={} auto_start_capture={}",
+                        boot_profile.startup_mode,
+                        boot_profile.initial_ui_mode,
+                        boot_profile.auto_start_capture
+                    ));
+                    install_capture_mouse_hook_thread(window.clone());
+                    install_overlay_keyboard_hook_thread(window.clone());
+                    if boot_profile.initial_ui_mode == "tray" {
+                        hide_to_tray_impl(&window);
+                    } else if boot_profile.initial_ui_mode == "canvas" {
+                        show_canvas_window_impl(&window);
+                    } else {
+                        show_overlay_host_impl(&window, true);
+                    }
+                    let hit_map_clone = hit_map.clone();
+                    let capture_input_state_clone = capture_input_state.clone();
+                    let long_capture_sessions_clone = long_capture_sessions.clone();
+                    let capture_global_registered_for_rdev = capture_shortcut_flags.capture.clone();
+                    let long_capture_global_registered_for_rdev =
+                        capture_shortcut_flags.long_capture.clone();
+                    let shared_app_settings_for_rdev = shared_app_settings.clone();
+
+                    // Start Global Event Listener (Inputs)
+                    std::thread::spawn(move || {
+                        struct RdevInputRuntimeState {
+                            last_esc: std::time::Instant,
+                            is_ignoring_events: bool,
+                            ctrl_pressed: bool,
+                            last_capture_trigger: std::time::Instant,
+                        }
+
+                        let input_runtime_state = std::sync::Mutex::new(RdevInputRuntimeState {
+                            last_esc: std::time::Instant::now()
+                                - std::time::Duration::from_secs(1),
+                            is_ignoring_events: false,
+                            ctrl_pressed: false,
+                            last_capture_trigger: std::time::Instant::now()
+                                - std::time::Duration::from_secs(2),
+                        });
+
+                        if let Err(error) = rdev::listen(move |event| {
+                            let mut input_state = match input_runtime_state.lock() {
+                                Ok(guard) => guard,
+                                Err(_) => return,
+                            };
+
+                            match &event.event_type {
+                                rdev::EventType::KeyPress(rdev::Key::ControlLeft)
+                                | rdev::EventType::KeyPress(rdev::Key::ControlRight) => {
+                                    input_state.ctrl_pressed = true;
+                                }
+                                rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
+                                | rdev::EventType::KeyRelease(rdev::Key::ControlRight) => {
+                                    input_state.ctrl_pressed = false;
+                                }
+                                rdev::EventType::KeyPress(key) => {
+                                    let settings = shared_app_settings_for_rdev.get();
+                                    let digit = match key {
+                                        rdev::Key::Num0 => Some(0),
+                                        rdev::Key::Num1 => Some(1),
+                                        rdev::Key::Num2 => Some(2),
+                                        rdev::Key::Num3 => Some(3),
+                                        rdev::Key::Num4 => Some(4),
+                                        rdev::Key::Num5 => Some(5),
+                                        rdev::Key::Num6 => Some(6),
+                                        rdev::Key::Num7 => Some(7),
+                                        rdev::Key::Num8 => Some(8),
+                                        rdev::Key::Num9 => Some(9),
+                                        _ => None,
+                                    };
+
+                                    if let Some(digit) = digit {
+                                        if input_state.ctrl_pressed
+                                            && input_state.last_capture_trigger.elapsed()
+                                                > std::time::Duration::from_millis(500)
+                                        {
+                                            let capture_digit = app_settings::binding_digit(
+                                                &settings.shortcuts.capture,
+                                            );
+                                            let long_digit = app_settings::binding_digit(
+                                                &settings.shortcuts.long_capture,
+                                            );
+                                            let capture_ctrl = app_settings::binding_uses_ctrl(
+                                                &settings.shortcuts.capture,
+                                            );
+                                            let long_ctrl = app_settings::binding_uses_ctrl(
+                                                &settings.shortcuts.long_capture,
+                                            );
+
+                                            if capture_ctrl
+                                                && capture_digit == Some(digit)
+                                                && !capture_global_registered_for_rdev
+                                                    .load(Ordering::Relaxed)
+                                            {
+                                                input_state.last_capture_trigger =
+                                                    std::time::Instant::now();
+                                                append_runtime_log_line("rdev_capture_triggered");
+                                                enter_capture_mode(&window);
+                                                return;
+                                            }
+                                            if long_ctrl
+                                                && long_digit == Some(digit)
+                                                && !long_capture_global_registered_for_rdev
+                                                    .load(Ordering::Relaxed)
+                                            {
+                                                input_state.last_capture_trigger =
+                                                    std::time::Instant::now();
+                                                append_runtime_log_line(
+                                                    "rdev_long_capture_triggered",
+                                                );
+                                                enter_long_capture_mode(&window);
+                                                return;
+                                            }
+                                        }
+                                    }
+
+                                    match key {
+                                        rdev::Key::Escape => {
+                                            if overlay_keyboard_capture_should_handle_current_cursor()
+                                            {
+                                                append_runtime_log_line(
+                                                    "rdev_escape_skipped_overlay_keyboard_capture",
+                                                );
+                                                return;
+                                            }
+                                            if input_state.last_esc.elapsed()
+                                                < std::time::Duration::from_millis(400)
+                                            {
+                                                println!("Double ESC detected - Emergency Exit.");
+                                                set_capture_input_runtime_active(false);
+                                                std::process::exit(0);
+                                            }
+                                            input_state.last_esc = std::time::Instant::now();
+                                            append_runtime_log_line("rdev_escape_triggered");
+                                            set_capture_input_runtime_active(false);
+                                            let _ = window.emit("trigger-escape", ());
+                                        }
+                                        rdev::Key::Delete | rdev::Key::Backspace => {
+                                            if overlay_keyboard_capture_should_handle_current_cursor()
+                                            {
+                                                append_runtime_log_line(
+                                                    "rdev_delete_skipped_overlay_keyboard_capture",
+                                                );
+                                                return;
+                                            }
+                                            append_runtime_log_line("rdev_delete_triggered");
+                                            let _ = window.emit("trigger-delete", ());
+                                        }
+                                        rdev::Key::Return => {
+                                            append_runtime_log_line("rdev_enter_triggered");
+                                            let _ = window.emit("trigger-long-capture-finish", ());
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                rdev::EventType::Wheel { delta_x, delta_y } => {
+                                    let capture_active = capture_input_state_clone
+                                        .active
+                                        .lock()
+                                        .map(|guard| *guard)
+                                        .unwrap_or(false);
+                                    if capture_active {
+                                        return;
+                                    }
+
+                                    let has_long_capture_sessions = long_capture_sessions_clone
+                                        .sessions
+                                        .lock()
+                                        .ok()
+                                        .map(|sessions| !sessions.is_empty())
+                                        .unwrap_or(false);
+                                    if has_long_capture_sessions {
+                                        append_runtime_log_line(&format!(
+                                            "rdev_long_capture_wheel :: delta_x={} delta_y={}",
+                                            delta_x, delta_y
+                                        ));
+                                        let _ = window.emit(
+                                            "trigger-long-capture-wheel",
+                                            LongCaptureWheelEvent {
+                                                delta_x: *delta_x,
+                                                delta_y: *delta_y,
+                                            },
+                                        );
+                                    }
+                                }
+                                rdev::EventType::MouseMove { x, y } => {
+                                    let _ = (x, y);
+                                    let capture_active = capture_input_state_clone
+                                        .active
+                                        .lock()
+                                        .map(|guard| *guard)
+                                        .unwrap_or(false);
+                                    if capture_active {
+                                        return;
+                                    }
+
+                                    // Hit Testing Logic
+                                    let active = hit_map_clone
+                                        .active
+                                        .lock()
+                                        .map(|guard| *guard)
+                                        .unwrap_or(false);
+                                    if active {
+                                        let should_ignore = hit_map_clone
+                                            .rectangles
+                                            .lock()
+                                            .map(|rects| {
+                                                should_overlay_window_ignore_cursor_events(
+                                                    &rects, *x, *y,
+                                                )
+                                            })
+                                            .unwrap_or(true);
+                                        if should_ignore != input_state.is_ignoring_events {
+                                            let _ = window.set_ignore_cursor_events(should_ignore);
+                                            set_overlay_transparent_style(&window, should_ignore);
+                                            OVERLAY_CLICK_THROUGH_ACTIVE
+                                                .store(should_ignore, Ordering::SeqCst);
+                                            apply_overlay_no_activate(&window);
+                                            input_state.is_ignoring_events = should_ignore;
+                                        }
+                                    } else {
+                                        input_state.is_ignoring_events = false;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }) {
+                            println!("Error: {:?}", error);
+                            append_runtime_log_line(&format!(
+                                "rdev_listen_failed :: {:?}",
+                                error
+                            ));
+                        }
+                    });
+                }
+                Ok(())
             }
-            Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -19,6 +19,7 @@ import { resolveCaptureDisplaySrc } from "../services/imageSource";
 import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 import { createSticker } from "../types/stickerModel";
+import { stickerToolbarDefaultVisible } from "../store/appSettingsStore";
 import {
     CaptureRect,
     CaptureResponse,
@@ -116,6 +117,9 @@ export function useSelection() {
 
         stickerStore.actions.addSticker(newSticker);
         selectionActions.set([newSticker.id]);
+        if (stickerToolbarDefaultVisible()) {
+            uiActions.showStickerToolbar(newSticker.id);
+        }
         await syncService.updateBackendRects();
         void syncService.scheduleSessionSync();
         await api.debugLogEvent("selection-capture-success", `cssW=${cssW} cssH=${cssH}`);

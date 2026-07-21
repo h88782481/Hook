@@ -15,6 +15,8 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { StickerContextMenuLayer } from "./components/StickerContextMenuLayer";
 import { sanitizeHistoryState } from "./services/historyModel";
 import { normalizeStickerToolSettings } from "./services/toolSettings";
+import { setAppSettings } from "./store/appSettingsStore";
+import { normalizeAppSettings } from "./services/appSettings";
 import { addRecycleBinEntry } from "./services/stickerLibraryModel";
 import { captureFrozenStickerSnapshot } from "./services/stickerSnapshot";
 
@@ -747,7 +749,19 @@ export default function App() {
           console.warn("Failed to load sticker tool settings:", error);
       }
 
+      try {
+          const loadedAppSettings = await api.loadAppSettings();
+          setAppSettings(normalizeAppSettings(loadedAppSettings));
+      } catch (error) {
+          console.warn("Failed to load app settings:", error);
+      }
+
       if (tauriRuntimeAvailable) {
+          const unlistenAppSettings = await listen("app-settings-updated", (event) => {
+              setAppSettings(normalizeAppSettings(event.payload as Parameters<typeof normalizeAppSettings>[0]));
+          });
+          cleanups.push(unlistenAppSettings);
+
           const unlistenCapture = await listen("trigger-capture", () => {
               logger.debug("Backend Triggered Capture Mode");
               void api.debugLogEvent("trigger-capture-listener");

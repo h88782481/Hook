@@ -34,7 +34,8 @@
         "enable": true,
         "scope": [
           "$LOCALDATA/Hook/clipboard_cache/**",
-          "$TEMP/Hook/clipboard_cache/**"
+          "$TEMP/Hook/clipboard_cache/**",
+          "**"
         ]
       }
     }

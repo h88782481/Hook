@@ -393,3 +393,158 @@ main {
 /* Group Hover Utilities */
 .group:hover .group-hover\:text-white { color: white !important; }
 .group:hover .group-hover\:text-gray-200 { color: #e5e7eb !important; }
+
+/* Settings window */
+html.hook-settings-root,
+body.hook-settings-body {
+  background: #0b0e12 !important;
+  overflow: auto !important;
+  color: var(--theme-text);
+}
+
+.hook-settings-page {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 24px 28px 32px;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgba(217, 255, 56, 0.12), transparent 55%),
+    linear-gradient(180deg, #10151c 0%, #0b0e12 100%);
+  color: var(--theme-text);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.hook-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.hook-settings-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.hook-settings-header p {
+  margin: 6px 0 0;
+  color: var(--theme-text-muted);
+  font-size: 13px;
+}
+
+.hook-settings-section {
+  border: 1px solid var(--theme-border);
+  background: rgba(15, 19, 24, 0.88);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.hook-settings-section h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hook-settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.hook-settings-section-head h2 {
+  margin: 0;
+}
+
+.hook-settings-hint {
+  margin: 0 0 12px;
+  color: var(--theme-text-muted);
+  font-size: 12px;
+}
+
+.hook-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hook-settings-row:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.hook-settings-row-title {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.hook-settings-row-desc {
+  margin-top: 4px;
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 320px;
+}
+
+.hook-settings-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--theme-signal);
+}
+
+.hook-settings-shortcut-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.hook-settings-shortcut {
+  min-width: 118px;
+  text-align: center;
+  padding: 6px 10px;
+  border: 1px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  color: var(--theme-signal);
+}
+
+.hook-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.hook-settings-save {
+  border-color: var(--theme-border-strong) !important;
+  color: #111 !important;
+  background: var(--theme-signal) !important;
+}
+
+.hook-settings-save:hover {
+  filter: brightness(1.05);
+}
+
+.hook-settings-message {
+  color: var(--theme-success);
+  font-size: 12px;
+}
+
+.hook-settings-error {
+  color: var(--theme-danger);
+  font-size: 12px;
+}
+
+.hook-settings-loading {
+  color: var(--theme-text-muted);
+  padding: 40px 0;
+  text-align: center;
+}

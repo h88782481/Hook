@@ -52,7 +52,6 @@ export function useShortcuts(options: UseShortcutsOptions) {
 
     if (handlers.onCopy) ShortcutManager.register('copy', handlers.onCopy);
     if (handlers.onPaste) ShortcutManager.register('paste', handlers.onPaste);
-    if (handlers.onOpenImage) ShortcutManager.register('open-image', handlers.onOpenImage);
     if (handlers.onToggleHistory) ShortcutManager.register('toggle-history', handlers.onToggleHistory);
     if (handlers.onSave) ShortcutManager.register('save', handlers.onSave);
     if (handlers.onUndoEdit) ShortcutManager.register('undo-edit', handlers.onUndoEdit);
@@ -68,7 +67,7 @@ export function useShortcuts(options: UseShortcutsOptions) {
 
     if (handlers.onToggleActions) ShortcutManager.register('toggle-actions', handlers.onToggleActions);
     if (handlers.onToggleSidePanel) ShortcutManager.register('toggle-side-panel', handlers.onToggleSidePanel);
-    if (handlers.onToggleStickerToolbar) ShortcutManager.register('toggle-sticker-toolbar', handlers.onToggleStickerToolbar);
+    // toggle-sticker-toolbar is handled by Rust global shortcuts (avoids double-fire).
     if (handlers.onToggleCleanView) ShortcutManager.register('toggle-clean-view', handlers.onToggleCleanView);
     if (handlers.onTransformSelect) ShortcutManager.register('transform-select', handlers.onTransformSelect);
     if (handlers.onTransformMove) ShortcutManager.register('transform-move', handlers.onTransformMove);
