@@ -673,38 +673,6 @@ export const api = {
             compositionOverlayAlpha: options?.compositionOverlayAlpha,
         });
     },
-    captureVerticalLongRegion: (
-        x: number,
-        y: number,
-        w: number,
-        h: number,
-        options?: {
-            maxFrames?: number;
-            scrollDelta?: number;
-            settleMs?: number;
-            overlapScan?: number;
-        },
-    ): Promise<CaptureResponse> =>
-        safeInvoke("capture_vertical_long_region", {
-            x,
-            y,
-            w,
-            h,
-            maxFrames: options?.maxFrames,
-            scrollDelta: options?.scrollDelta,
-            settleMs: options?.settleMs,
-            overlapScan: options?.overlapScan,
-        }),
-    stitchVerticalLongCaptureFrames: (
-        frames: string[],
-        options?: {
-            overlapScan?: number;
-        },
-    ): Promise<CaptureResponse> =>
-        safeInvoke("stitch_vertical_long_capture_frames", {
-            frames,
-            overlapScan: options?.overlapScan,
-        }),
     analyzeLongCapturePair: (
         previous: string,
         current: string,
@@ -784,26 +752,6 @@ export const api = {
     // --- File IO ---
     readImageFromPath: (path: string): Promise<string> =>
         safeInvoke("read_image_from_path", { path }),
-
-    beginStickerNativeFileDrag: (base64: string, filenameHint?: string): Promise<string> =>
-        safeInvoke(
-            "begin_sticker_native_file_drag",
-            { base64Image: base64, filenameHint },
-            () => {
-                throw new Error("Native sticker file drag requires the Tauri desktop runtime");
-            },
-            false,
-        ),
-
-    beginStickerNativeFileDragFromPath: (path: string): Promise<string> =>
-        safeInvoke(
-            "begin_sticker_native_file_drag_from_path",
-            { path },
-            () => {
-                throw new Error("Native sticker file drag from path requires the Tauri desktop runtime");
-            },
-            false,
-        ),
 
     saveStickerDragExport: (
         base64: string,

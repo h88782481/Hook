@@ -567,49 +567,6 @@ fn ensure_clipboard_cache_dir() -> Result<PathBuf, String> {
     Ok(cache_dir)
 }
 
-// Confirm `candidate` resolves to a location inside `root`. Both are canonicalized
-// so `..` traversal and symlinks cannot escape the allowed root. Used to constrain
-// native file-drag to app-owned directories instead of trusting an arbitrary
-// frontend-supplied path.
-fn path_is_within(candidate: &Path, root: &Path) -> bool {
-    let candidate = match candidate.canonicalize() {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let root = match root.canonicalize() {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    candidate.starts_with(&root)
-}
-
-#[cfg(target_os = "windows")]
-fn stage_drag_out_file_copy(source_path: &Path) -> Result<PathBuf, String> {
-    let cache_dir = ensure_clipboard_cache_dir()?;
-    let staged_extension = source_path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .filter(|extension| !extension.trim().is_empty())
-        .unwrap_or("png");
-    let staged_stem =
-        sanitize_drag_filename_hint(source_path.file_stem().and_then(|stem| stem.to_str()));
-    let staged_path = cache_dir.join(format!(
-        "dragout_{}_{}.{}",
-        staged_stem,
-        file_timestamp_component(),
-        staged_extension
-    ));
-
-    fs::copy(source_path, &staged_path)
-        .map_err(|e| format!("Failed to stage drag file copy: {}", e))?;
-    append_runtime_log_line(&format!(
-        "native_drag_stage_created :: source={} staged={}",
-        cache_file_name_for_log(source_path),
-        cache_file_name_for_log(&staged_path)
-    ));
-    Ok(staged_path)
-}
-
 fn cache_file_name_for_log(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().to_string())
@@ -1094,10 +1051,6 @@ static OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE: AtomicBool = AtomicBool:
 #[cfg(target_os = "windows")]
 static OVERLAY_MOUSE_HOOK_HOVER_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
-static NATIVE_FILE_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "windows")]
-static MAIN_UI_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
-#[cfg(target_os = "windows")]
 static OVERLAY_CLICK_THROUGH_ACTIVE: AtomicBool = AtomicBool::new(true);
 #[cfg(target_os = "windows")]
 static OVERLAY_MOUSE_ACTIVATE_WNDPROC_INSTALLED: AtomicBool = AtomicBool::new(false);
@@ -1121,13 +1074,6 @@ static OVERLAY_HWND_RETRY_THREAD_STARTED: AtomicBool = AtomicBool::new(false);
 const OVERLAY_HWND_RETRY_INTERVAL_MS: u64 = 250;
 #[cfg(target_os = "windows")]
 const OVERLAY_HWND_RETRY_ATTEMPTS: usize = 80;
-static UIACCESS_OVERLAY_STARTUP_STAGED: AtomicBool = AtomicBool::new(false);
-static UIACCESS_FRONTEND_MOUNTED: AtomicBool = AtomicBool::new(false);
-static UIACCESS_PENDING_OVERLAY_CLICK_THROUGH: AtomicBool = AtomicBool::new(true);
-
-fn uiaccess_build_enabled() -> bool {
-    cfg!(target_os = "windows") && option_env!("HOOK_WINDOWS_UIACCESS_BUILD").is_some()
-}
 
 #[cfg(target_os = "windows")]
 fn queue_capture_mouse_hook_event(event: CaptureMouseHookEvent) {
@@ -1141,14 +1087,6 @@ fn queue_overlay_keyboard_hook_event(event: OverlayKeyboardHookEvent) {
     if let Some(sender) = OVERLAY_KEYBOARD_EVENT_SENDER.get() {
         let _ = sender.try_send(event);
     }
-}
-
-#[cfg(target_os = "windows")]
-fn is_main_ui_thread() -> bool {
-    MAIN_UI_THREAD_ID
-        .get()
-        .map(|thread_id| *thread_id == std::thread::current().id())
-        .unwrap_or(false)
 }
 
 #[cfg(target_os = "windows")]
@@ -1239,10 +1177,6 @@ unsafe extern "system" fn capture_mouse_hook_proc(
     }
 
     if lparam.0 == 0 {
-        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
-    }
-
-    if NATIVE_FILE_DRAG_ACTIVE.load(Ordering::SeqCst) {
         return unsafe { CallNextHookEx(None, code, wparam, lparam) };
     }
 
@@ -2374,174 +2308,6 @@ fn save_sticker_drag_export_from_path(
 }
 
 #[cfg(target_os = "windows")]
-fn start_native_file_drag_on_ui_thread(
-    window: tauri::WebviewWindow,
-    file_path: PathBuf,
-    hit_map: SharedHitMap,
-) -> Result<(), String> {
-    OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
-    OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
-    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(false, Ordering::SeqCst);
-    OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(false, Ordering::SeqCst);
-    OVERLAY_INPUT_SHIELD_DIRECT_DRAG_ACTIVE.store(false, Ordering::SeqCst);
-    NATIVE_FILE_DRAG_ACTIVE.store(true, Ordering::SeqCst);
-    hide_overlay_input_shield_window();
-    let _ = window.set_ignore_cursor_events(true);
-    set_overlay_transparent_style(&window, true);
-    OVERLAY_CLICK_THROUGH_ACTIVE.store(true, Ordering::SeqCst);
-    apply_overlay_no_activate(&window);
-    append_runtime_log_line("native_drag_overlay_clickthrough :: true");
-    append_runtime_log_line(&format!(
-        "native_drag_start :: path={}",
-        cache_file_name_for_log(&file_path)
-    ));
-    let drag_outcome = Arc::new(std::sync::Mutex::new(None));
-    let drag_outcome_slot = Arc::clone(&drag_outcome);
-    let drag_result = drag::start_drag(
-        &window,
-        drag::DragItem::Files(vec![file_path.clone()]),
-        drag::Image::File(file_path),
-        move |outcome| {
-            if let Ok(mut guard) = drag_outcome_slot.lock() {
-                *guard = Some(outcome);
-            }
-        },
-        drag::Options {
-            mode: drag::DragMode::Copy,
-            ..Default::default()
-        },
-    )
-    .map_err(|error| format!("Failed to start native drag: {}", error));
-    NATIVE_FILE_DRAG_ACTIVE.store(false, Ordering::SeqCst);
-    refresh_overlay_interactivity_for_current_cursor(&window, &hit_map);
-    sync_overlay_input_shield_from_runtime_state(&window);
-    append_runtime_log_line("native_drag_overlay_restored");
-    drag_result?;
-    if let Ok(guard) = drag_outcome.lock() {
-        if let Some(drag_outcome) = *guard {
-            append_runtime_log_line(&format!(
-                "native_drag_result :: result={:?} effect={} hresult={} cursor_x={} cursor_y={}",
-                drag_outcome.result,
-                drag_outcome.performed_effect.unwrap_or(0),
-                drag_outcome.platform_status.unwrap_or(0),
-                drag_outcome.cursor_position.x,
-                drag_outcome.cursor_position.y
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn start_native_file_drag(
-    window: tauri::WebviewWindow,
-    file_path: PathBuf,
-    hit_map: &SharedHitMap,
-) -> Result<(), String> {
-    if is_main_ui_thread() {
-        return start_native_file_drag_on_ui_thread(window, file_path, hit_map.clone());
-    }
-
-    append_runtime_log_line(&format!(
-        "native_drag_main_thread_dispatch :: current={:?} main={:?}",
-        std::thread::current().id(),
-        MAIN_UI_THREAD_ID.get()
-    ));
-
-    let (drag_completion_sender, drag_completion_receiver) = mpsc::sync_channel::<Result<(), String>>(1);
-    let window_for_main = window.clone();
-    let file_path_for_main = file_path.clone();
-    let hit_map_for_main = hit_map.clone();
-
-    window
-        .run_on_main_thread(move || {
-            let result =
-                start_native_file_drag_on_ui_thread(window_for_main, file_path_for_main, hit_map_for_main);
-            let _ = drag_completion_sender.send(result);
-        })
-        .map_err(|error| format!("Failed to dispatch native drag to main thread: {}", error))?;
-
-    drag_completion_receiver
-        .recv()
-        .map_err(|_| "Main-thread native drag completion channel closed".to_string())?
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
-fn begin_sticker_native_file_drag(
-    window: tauri::WebviewWindow,
-    hit_map: tauri::State<'_, SharedHitMap>,
-    base64_image: String,
-    filename_hint: Option<String>,
-) -> Result<String, String> {
-    let image_data = decode_base64_image_data(&base64_image)?;
-    let cache_dir = ensure_clipboard_cache_dir()?;
-    let filename = format!(
-        "{}_{}.png",
-        sanitize_drag_filename_hint(filename_hint.as_deref()),
-        file_timestamp_component()
-    );
-    let file_path = cache_dir.join(filename);
-
-    let mut file =
-        File::create(&file_path).map_err(|e| format!("Failed to create drag file: {}", e))?;
-    file.write_all(&image_data)
-        .map_err(|e| format!("Failed to write drag file: {}", e))?;
-    drop(file);
-
-    let staged_drag_file = stage_drag_out_file_copy(&file_path)?;
-    start_native_file_drag(window, staged_drag_file, hit_map.inner())?;
-    Ok(file_path.to_string_lossy().to_string())
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
-fn begin_sticker_native_file_drag_from_path(
-    window: tauri::WebviewWindow,
-    hit_map: tauri::State<'_, SharedHitMap>,
-    path: String,
-) -> Result<String, String> {
-    let file_path = PathBuf::from(path.clone());
-    let metadata =
-        fs::metadata(&file_path).map_err(|e| format!("Failed to stat drag source file: {}", e))?;
-    if !metadata.is_file() {
-        return Err("Drag source path is not a regular file".to_string());
-    }
-    // Restrict drag-out to files Hook itself staged in the clipboard cache. Without
-    // this, the frontend could hand any absolute path here and drag an arbitrary
-    // readable file off disk. The legitimate flow always writes to the cache first
-    // (save_sticker_image_to_cache_for_drag), so a source outside it is rejected.
-    if !path_is_within(&file_path, &clipboard_cache_dir()) {
-        return Err("Drag source must be inside Hook's clipboard cache".to_string());
-    }
-    let staged_drag_file = stage_drag_out_file_copy(&file_path)?;
-    start_native_file_drag(window, staged_drag_file, hit_map.inner())?;
-    Ok(path)
-}
-
-#[cfg(not(target_os = "windows"))]
-#[tauri::command]
-fn begin_sticker_native_file_drag(
-    _window: tauri::WebviewWindow,
-    _hit_map: tauri::State<'_, SharedHitMap>,
-    _base64_image: String,
-    _filename_hint: Option<String>,
-) -> Result<String, String> {
-    Err("Native sticker file drag is only supported on Windows".to_string())
-}
-
-#[cfg(not(target_os = "windows"))]
-#[tauri::command]
-fn begin_sticker_native_file_drag_from_path(
-    _window: tauri::WebviewWindow,
-    _hit_map: tauri::State<'_, SharedHitMap>,
-    _path: String,
-) -> Result<String, String> {
-    Err("Native sticker file drag from path is only supported on Windows".to_string())
-}
-
-#[cfg(target_os = "windows")]
 #[tauri::command]
 fn copy_node_image_to_clipboard(base64_image: String) -> Result<String, String> {
     use clipboard_win::{formats, Clipboard, Setter};
@@ -3158,108 +2924,6 @@ fn pick_screen_color_at(x: f64, y: f64) -> Result<ScreenColorSample, String> {
 }
 
 #[tauri::command]
-async fn capture_vertical_long_region(
-    x: i32,
-    y: i32,
-    w: u32,
-    h: u32,
-    max_frames: Option<u32>,
-    scroll_delta: Option<i32>,
-    settle_ms: Option<u64>,
-    overlap_scan: Option<u32>,
-) -> Result<CaptureResponse, String> {
-    let started_at = std::time::Instant::now();
-    let stitched = long_capture::capture_vertical_long_region(
-        x,
-        y,
-        w,
-        h,
-        max_frames.unwrap_or(8),
-        scroll_delta.unwrap_or(-480),
-        settle_ms.unwrap_or(180),
-        overlap_scan.unwrap_or((h / 3).clamp(32, 240)),
-    )
-    .map_err(|error| error.to_string())?;
-
-    let width = stitched.width();
-    let height = stitched.height();
-    let mut bytes = Vec::new();
-    let dynamic_image = image::DynamicImage::ImageRgb8(stitched);
-    dynamic_image
-        .write_to(
-            &mut std::io::Cursor::new(&mut bytes),
-            image::ImageFormat::Png,
-        )
-        .map_err(|error| error.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    append_runtime_log_line(&format!(
-        "capture_vertical_long_region_metrics :: elapsed_ms={} png_bytes={} encoded_bytes={} width={} height={}",
-        started_at.elapsed().as_millis(),
-        bytes.len(),
-        b64.len(),
-        width,
-        height
-    ));
-
-    Ok(CaptureResponse {
-        base64: format!("data:image/png;base64,{}", b64),
-        width,
-        height,
-        file_path: None,
-        file_url: None,
-    })
-}
-
-#[tauri::command]
-async fn stitch_vertical_long_capture_frames(
-    frames: Vec<String>,
-    overlap_scan: Option<u32>,
-) -> Result<CaptureResponse, String> {
-    let started_at = std::time::Instant::now();
-    let input_frame_count = frames.len();
-    if input_frame_count > MAX_STITCH_FRAME_COUNT {
-        return Err(format!(
-            "Too many frames to stitch: {} exceeds limit of {}",
-            input_frame_count, MAX_STITCH_FRAME_COUNT
-        ));
-    }
-    let stitched = long_capture::stitch_vertical_frame_data_urls(
-        &frames,
-        overlap_scan.unwrap_or(160).clamp(32, 480),
-    )
-    .map_err(|error| error.to_string())?;
-
-    let width = stitched.width();
-    let height = stitched.height();
-    let mut bytes = Vec::new();
-    let dynamic_image = image::DynamicImage::ImageRgb8(stitched);
-    dynamic_image
-        .write_to(
-            &mut std::io::Cursor::new(&mut bytes),
-            image::ImageFormat::Png,
-        )
-        .map_err(|error| error.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    append_runtime_log_line(&format!(
-        "stitch_vertical_long_capture_frames_metrics :: elapsed_ms={} frames={} png_bytes={} encoded_bytes={} width={} height={}",
-        started_at.elapsed().as_millis(),
-        input_frame_count,
-        bytes.len(),
-        b64.len(),
-        width,
-        height
-    ));
-
-    Ok(CaptureResponse {
-        base64: format!("data:image/png;base64,{}", b64),
-        width,
-        height,
-        file_path: None,
-        file_url: None,
-    })
-}
-
-#[tauri::command]
 async fn analyze_long_capture_pair(
     previous: String,
     current: String,
@@ -3872,10 +3536,6 @@ fn promote_overlay_input_shield_to_fullscreen() {}
 
 #[cfg(target_os = "windows")]
 fn route_overlay_input_shield_mouse_message(message: u32, wparam: WPARAM) -> Option<LRESULT> {
-    if NATIVE_FILE_DRAG_ACTIVE.load(Ordering::SeqCst) {
-        return None;
-    }
-
     let (x, y) = current_cursor_position_physical()?;
     let modifiers = current_modifier_snapshot();
     let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
@@ -4335,22 +3995,6 @@ fn setup_overlay_window(window: &tauri::WebviewWindow) {
     apply_overlay_no_activate(window);
     install_overlay_mouse_activate_no_activate(window);
     install_overlay_topmost_maintenance_thread(window);
-}
-
-fn stage_uiaccess_overlay_startup(window: &tauri::WebviewWindow, click_through: bool) {
-    UIACCESS_PENDING_OVERLAY_CLICK_THROUGH.store(click_through, Ordering::SeqCst);
-    UIACCESS_OVERLAY_STARTUP_STAGED.store(true, Ordering::SeqCst);
-    install_overlay_hwnd_retry_thread(window);
-    let _ = window.set_content_protected(false);
-    let _ = window.set_decorations(false);
-    let _ = window.set_title("");
-    let _ = window.set_skip_taskbar(true);
-    let _ = window.set_resizable(false);
-    let _ = window.set_shadow(false);
-    let _ = window.set_ignore_cursor_events(false);
-    OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
-    apply_overlay_window_bounds(window);
-    append_runtime_log_line("uiaccess_overlay_startup_staged");
 }
 
 #[derive(Clone)]
@@ -5087,17 +4731,10 @@ fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
 }
 
 fn show_overlay_host_impl(window: &tauri::WebviewWindow, click_through: bool) {
-    if uiaccess_build_enabled() && !UIACCESS_FRONTEND_MOUNTED.load(Ordering::SeqCst) {
-        stage_uiaccess_overlay_startup(window, click_through);
-        return;
-    }
-
     setup_overlay_window(window);
     let _ = window.set_ignore_cursor_events(click_through);
     set_overlay_transparent_style(window, click_through);
     OVERLAY_CLICK_THROUGH_ACTIVE.store(click_through, Ordering::SeqCst);
-    UIACCESS_PENDING_OVERLAY_CLICK_THROUGH.store(click_through, Ordering::SeqCst);
-    UIACCESS_OVERLAY_STARTUP_STAGED.store(false, Ordering::SeqCst);
 }
 
 fn set_overlay_click_through_impl(window: &tauri::WebviewWindow, click_through: bool) {
@@ -5652,7 +5289,7 @@ fn trigger_long_capture_mode(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn append_runtime_log(app: tauri::AppHandle, event: String, detail: Option<String>) {
+fn append_runtime_log(_app: tauri::AppHandle, event: String, detail: Option<String>) {
     let suffix = detail
         .as_deref()
         .map(str::trim)
@@ -5660,20 +5297,6 @@ fn append_runtime_log(app: tauri::AppHandle, event: String, detail: Option<Strin
         .map(|value| format!(" :: {}", value))
         .unwrap_or_default();
     append_runtime_log_line(&format!("{}{}", event, suffix));
-
-    if uiaccess_build_enabled() && event == "frontend-mounted" {
-        UIACCESS_FRONTEND_MOUNTED.store(true, Ordering::SeqCst);
-        if UIACCESS_OVERLAY_STARTUP_STAGED.swap(false, Ordering::SeqCst) {
-            let pending_click_through =
-                UIACCESS_PENDING_OVERLAY_CLICK_THROUGH.load(Ordering::SeqCst);
-            append_runtime_log_line("uiaccess_overlay_startup_finalize_requested");
-            if let Some(window) = app.get_webview_window("main") {
-                show_overlay_host_impl(&window, pending_click_through);
-            } else {
-                append_runtime_log_line("uiaccess_overlay_startup_finalize_window_missing");
-            }
-        }
-    }
 }
 
 fn should_accept_tauri_shortcut_trigger(
@@ -6059,8 +5682,6 @@ pub fn run() {
              capture::capture_region,
              update_pin_rects,
              set_mouse_monitor_active,
-             begin_sticker_native_file_drag,
-             begin_sticker_native_file_drag_from_path,
              save_sticker_image,
              save_sticker_image_as,
              save_sticker_drag_export,
@@ -6096,8 +5717,6 @@ pub fn run() {
             get_precise_selection,
             pick_screen_color_at,
             pick_screen_color_at_cursor,
-            capture_vertical_long_region,
-            stitch_vertical_long_capture_frames,
             analyze_long_capture_pair,
             stitch_long_capture_frames,
             start_long_capture_session,
@@ -6116,8 +5735,6 @@ pub fn run() {
             cli_engine::native_cli_execute
         ])
         .setup(|app| {
-            #[cfg(target_os = "windows")]
-            let _ = MAIN_UI_THREAD_ID.set(std::thread::current().id());
             let single_instance_guard =
                 match try_acquire_single_instance(&single_instance_name()) {
                     Ok(Some(guard)) => guard,
@@ -6391,10 +6008,6 @@ pub fn run() {
                             }
                             rdev::EventType::MouseMove { x, y } => {
                                 let _ = (x, y);
-                                if NATIVE_FILE_DRAG_ACTIVE.load(Ordering::SeqCst) {
-                                    input_state.is_ignoring_events = true;
-                                    return;
-                                }
                                 let capture_active = capture_input_state_clone
                                     .active
                                     .lock()

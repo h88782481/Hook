@@ -28,7 +28,7 @@ Hook works well for quick capture and light editing.
 
 - [Why Hook](#why-hook)
 - [Core capabilities](#core-capabilities)
-- [Release packages](#release-packages)
+- [Release package](#release-package)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -56,18 +56,12 @@ Hook focuses on the gap between a screenshot utility and a heavier design tool:
   - editing-oriented top toolbar and context menu
   - local startup helpers and single-instance control
 
-## Release packages
+## Release package
 
-- **Portable (Current recommended package)**
-  - unzip and run
-  - current public release package for quick trials and ordinary daily capture
-  - if you hit Windows foreground/elevation limits in scenarios involving
-    special windows such as **Task Manager**, try launching Hook as
-    **administrator** as the current workaround
-- **Installer (Planned for future signed releases)**
-  - Hook keeps the signed UIAccess-oriented installer path in development
-  - it will become a public release package again after the project has real
-    signing material wired into the release pipeline
+The only public release is the **portable** zip (unzip and run).
+
+If you hit Windows foreground/elevation limits with special windows such as
+**Task Manager**, try launching Hook as **administrator**.
 
 ## Contributing
 

@@ -1094,25 +1094,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "drag"
-version = "2.1.1"
-dependencies = [
- "core-graphics 0.24.0",
- "dunce",
- "gdk",
- "gdkx11",
- "gtk",
- "log",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "raw-window-handle",
- "thiserror 2.0.18",
- "windows 0.52.0",
- "windows-core 0.58.0",
-]
-
-[[package]]
 name = "dtoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1852,7 +1833,6 @@ dependencies = [
  "clipboard-win",
  "cpal",
  "dirs 5.0.1",
- "drag",
  "filetime",
  "hound",
  "image 0.25.10",
