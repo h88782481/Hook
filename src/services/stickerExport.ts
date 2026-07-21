@@ -16,8 +16,12 @@ import {
 import {
     buildSerialAnnotationMetrics,
     HIGHLIGHTER_LAYER_OPACITY,
-    isTransparentStickerColor,
 } from "./stickerEditing";
+import {
+    getAnnotationCornerRadius,
+    hasVisibleFill,
+    hasVisibleStroke,
+} from "./stickerAnnotationStyle";
 import {
     buildPolygonPoints,
     buildTrianglePoints,
@@ -68,13 +72,10 @@ const drawArrowHead = (context: CanvasRenderingContext2D, line: StickerLineAnnot
 };
 
 const shouldDrawShapeStroke = (shape: StickerShapeAnnotation) =>
-    shape.style.width > 0 && !isTransparentStickerColor(shape.style.color);
+    hasVisibleStroke(shape.style.color, shape.style.width);
 
 const shouldDrawShapeFill = (shape: StickerShapeAnnotation) =>
-    !!shape.style.fill && !isTransparentStickerColor(shape.style.fill);
-
-const getShapeCornerRadius = (shape: StickerShapeAnnotation) =>
-    shape.style.cornerRadius ?? (shape.type === "round-rect" ? 12 : 0);
+    hasVisibleFill(shape.style.fill);
 
 const applyAnnotationRotation = (
     context: CanvasRenderingContext2D,
@@ -122,9 +123,9 @@ const drawAnnotation = (
                 if (shouldDrawShapeStroke(shape)) {
                     context.stroke();
                 }
-            } else if (shape.type === "round-rect" || getShapeCornerRadius(shape) > 0) {
+            } else if (shape.type === "round-rect" || getAnnotationCornerRadius(shape) > 0) {
                 context.beginPath();
-                const radius = getShapeCornerRadius(shape);
+                const radius = getAnnotationCornerRadius(shape);
                 context.roundRect(shape.x, shape.y, shape.w, shape.h, radius);
                 if (shouldDrawShapeFill(shape)) {
                     context.fillStyle = shape.style.fill!;
@@ -160,7 +161,7 @@ const drawAnnotation = (
                 shape.type === "triangle"
                     ? buildTrianglePoints(shape)
                     : buildPolygonPoints(shape, shape.sides ?? 6);
-            traceRoundedPolygonPath(context, polygonPoints, getShapeCornerRadius(shape));
+            traceRoundedPolygonPath(context, polygonPoints, getAnnotationCornerRadius(shape));
             if (shouldDrawShapeFill(shape)) {
                 context.fillStyle = shape.style.fill!;
                 context.fill();
@@ -194,13 +195,15 @@ const drawAnnotation = (
             applyAnnotationRotation(context, text);
             if (annotation.type === "serial") {
                 const serialCenterY = text.y - fontSize / 2;
-                if (!isTransparentStickerColor(text.style.fill)) {
+                if (hasVisibleFill(text.style.fill)) {
                     context.fillStyle = text.style.fill || "#000000";
                     context.beginPath();
                     context.arc(text.x + serialMetrics.radius, serialCenterY, serialMetrics.radius, 0, Math.PI * 2);
                     context.fill();
                 }
-                if (!isTransparentStickerColor(text.style.color) && (text.style.width || serialMetrics.borderWidth) > 0) {
+                if (
+                    hasVisibleStroke(text.style.color, text.style.width || serialMetrics.borderWidth)
+                ) {
                     context.strokeStyle = text.style.color;
                     context.lineWidth = text.style.width || serialMetrics.borderWidth;
                     context.beginPath();

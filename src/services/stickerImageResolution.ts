@@ -1,10 +1,12 @@
 import type { Link, Sticker } from "../types/stickerModel";
+import { toDisplayImageSrc } from "./imageSource";
 
 const STICKER_IMAGE_INPUT = "image";
 
 const findConnectedImageInput = (sticker: Sticker, links: readonly Link[]) =>
     links.find((link) => link.toStickerId === sticker.id && link.toPortId === STICKER_IMAGE_INPUT);
 
+/** Resolve the image a sticker should show, following upstream link inputs when present. */
 export const resolveStickerImage = (input: {
     stickers: readonly Sticker[];
     links: readonly Link[];
@@ -28,5 +30,5 @@ export const resolveStickerImage = (input: {
         if (upstream) return upstream;
     }
 
-    return sticker.data.previewSrc || sticker.data.src;
+    return toDisplayImageSrc(sticker.data.previewSrc || sticker.data.src);
 };

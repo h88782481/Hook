@@ -16,10 +16,10 @@ import { updateTextAnnotationFontFamilyById } from "../services/stickerAnnotatio
 import {
     computeRestoredCropFrame,
     DEFAULT_STICKER_PALETTE,
-    normalizeStickerPaletteColor,
     scaleStickerFrame,
     toggleStickerBorder,
 } from "../services/stickerEditing";
+import { normalizePaletteColor } from "../utils/colorUtils";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import { flipRasterizedAnnotationLayer } from "../services/stickerBitmapLayers";
 import { flipStickerEditDataForFrame } from "../services/stickerEditTransforms";
@@ -620,7 +620,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const patchSelectedExistingColor = (role: SelectedExistingColorRole, color: string) => {
-        const normalized = normalizeStickerPaletteColor(color);
+        const normalized = normalizePaletteColor(color);
         if (!normalized) return;
 
         switch (role) {
@@ -738,7 +738,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const patchShapeColor = (key: ShapeColorSettingKey, color: string) => {
-        const normalized = normalizeStickerPaletteColor(color);
+        const normalized = normalizePaletteColor(color);
         if (!normalized) return;
         uiActions.patchStickerToolSettings({ [key]: normalized } as Partial<StickerToolSettings>);
     };

@@ -1,5 +1,5 @@
 import type { StickerPoint } from "../types/stickerEditing";
-import { normalizeImageSourceForDisplay } from "./imageSource";
+import { toDisplayImageSrc } from "./imageSource";
 
 export type StickerDashPattern = "solid" | "dash-1" | "dash-2";
 
@@ -107,7 +107,7 @@ export const loadImage = (src: string) =>
             reject(new Error("Cannot load image from empty source"));
             return;
         }
-        const resolvedSrc = normalizeImageSourceForDisplay(src) || src;
+        const resolvedSrc = toDisplayImageSrc(src) || src;
         const image = new Image();
         // Non-data/blob sources (e.g. file:/asset: paths) taint the canvas unless
         // they are loaded as crossOrigin, which makes a later toDataURL throw a

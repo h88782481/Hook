@@ -4401,27 +4401,6 @@ fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
         append_runtime_log_line("enter_long_capture_mode emitted_trigger_long_capture");
     }
 }
-fn file_url_from_path(path: &Path) -> String {
-    let raw_path = path.to_string_lossy().replace('\\', "/");
-    let mut url = String::from("file:///");
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-
-    for &byte in raw_path.as_bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
-                url.push(byte as char)
-            }
-            _ => {
-                url.push('%');
-                url.push(HEX[(byte >> 4) as usize] as char);
-                url.push(HEX[(byte & 0x0f) as usize] as char);
-            }
-        }
-    }
-
-    url
-}
-
 pub(crate) fn encode_rgb_image_as_file_capture_response(
     rgb_image: image::RgbImage,
 ) -> Result<CaptureResponse, String> {
@@ -4455,7 +4434,6 @@ pub(crate) fn encode_rgb_image_as_file_capture_response(
     let png_bytes = fs::metadata(&file_path)
         .map(|metadata| metadata.len())
         .unwrap_or(0);
-    let file_url = file_url_from_path(&file_path);
     let file_path_string = file_path.to_string_lossy().to_string();
     append_runtime_log_line(&format!(
         "encode_rgb_image_as_file_capture_response :: width={} height={} png_bytes={} file_write_ms={} total_ms={} path={}",
@@ -4468,11 +4446,9 @@ pub(crate) fn encode_rgb_image_as_file_capture_response(
     ));
 
     Ok(CaptureResponse {
-        base64: String::new(),
         width,
         height,
-        file_path: Some(file_path_string),
-        file_url: Some(file_url),
+        file_path: file_path_string,
     })
 }
 

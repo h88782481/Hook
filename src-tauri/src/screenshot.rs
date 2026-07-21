@@ -354,8 +354,6 @@ fn capture_area_verbose_logging_enabled() -> bool {
 }
 
 /// One-shot WGC capture: create a Capturer, grab a single cropped frame, stop.
-/// Persistent full-screen WGC was removed — it stranded sessions across tokio
-/// blocking-pool threads and inflated idle memory/CPU after long capture.
 #[cfg(target_os = "windows")]
 fn try_fast_capture(
     display_id: scap_targets::DisplayId,

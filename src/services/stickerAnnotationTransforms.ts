@@ -1,93 +1,17 @@
 import type {
     ContentEraserStroke,
     StickerAnnotation,
-    StickerEffectAnnotation,
-    StickerLineAnnotation,
-    StickerShapeAnnotation,
     StickerTextAnnotation,
 } from "../types/stickerEditing";
 import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
-import { scaleAnnotationStyle, scaleStrokeWidth } from "./stickerGeometry";
+import { scaleAnnotation, scaleStrokeWidth } from "./stickerGeometry";
 import { DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_WIDTH_FACTOR } from "./stickerTextDefaults";
 
 export type StickerFrame = Pick<Sticker, "w" | "h">;
 export type FlipAxis = "x" | "y";
 
-/** Scale an annotation in sticker-local coordinates, with optional translation. */
-export const scaleAnnotation = (
-    annotation: StickerAnnotation,
-    scaleX: number,
-    scaleY: number,
-    offsetX = 0,
-    offsetY = 0,
-): StickerAnnotation => {
-    if (
-        annotation.type === "rect" ||
-        annotation.type === "round-rect" ||
-        annotation.type === "ellipse" ||
-        annotation.type === "triangle" ||
-        annotation.type === "polygon"
-    ) {
-        const shape = annotation as StickerShapeAnnotation;
-        return {
-            ...shape,
-            x: shape.x * scaleX + offsetX,
-            y: shape.y * scaleY + offsetY,
-            w: shape.w * scaleX,
-            h: shape.h * scaleY,
-            style: scaleAnnotationStyle(shape.style, scaleX, scaleY),
-        };
-    }
-
-    if (annotation.type === "mosaic" || annotation.type === "blur") {
-        const effect = annotation as StickerEffectAnnotation;
-        return {
-            ...effect,
-            x: effect.x * scaleX + offsetX,
-            y: effect.y * scaleY + offsetY,
-            w: effect.w * scaleX,
-            h: effect.h * scaleY,
-            style: scaleAnnotationStyle(effect.style, scaleX, scaleY),
-            points: effect.points?.map((point) => ({
-                x: point.x * scaleX + offsetX,
-                y: point.y * scaleY + offsetY,
-            })),
-            brushWidth:
-                effect.brushWidth === undefined
-                    ? undefined
-                    : scaleStrokeWidth(effect.brushWidth, scaleX, scaleY),
-            strength:
-                effect.strength === undefined
-                    ? undefined
-                    : scaleStrokeWidth(effect.strength, scaleX, scaleY),
-        };
-    }
-
-    if (annotation.type === "text" || annotation.type === "serial") {
-        const text = annotation as StickerTextAnnotation;
-        return {
-            ...text,
-            x: text.x * scaleX + offsetX,
-            y: text.y * scaleY + offsetY,
-            fontSize:
-                text.fontSize === undefined
-                    ? undefined
-                    : scaleStrokeWidth(text.fontSize, scaleX, scaleY),
-            style: scaleAnnotationStyle(text.style, scaleX, scaleY),
-        };
-    }
-
-    const line = annotation as StickerLineAnnotation;
-    return {
-        ...line,
-        points: line.points.map((point) => ({
-            x: point.x * scaleX + offsetX,
-            y: point.y * scaleY + offsetY,
-        })),
-        style: scaleAnnotationStyle(line.style, scaleX, scaleY),
-    };
-};
+export { scaleAnnotation };
 
 export const scaleContentEraserStroke = (
     stroke: ContentEraserStroke,

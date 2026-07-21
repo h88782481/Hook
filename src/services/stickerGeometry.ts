@@ -739,6 +739,24 @@ export const scaleAnnotationAroundPivot = (
     };
 };
 
+/**
+ * Scale annotation geometry from the origin (then optional translation).
+ * Implemented via pivot scaling so style/type branches stay in one place.
+ */
+export const scaleAnnotation = (
+    annotation: StickerAnnotation,
+    scaleX: number,
+    scaleY: number,
+    offsetX = 0,
+    offsetY = 0,
+): StickerAnnotation => {
+    const scaled = scaleAnnotationAroundPivot(annotation, { x: 0, y: 0 }, { x: scaleX, y: scaleY });
+    if (offsetX === 0 && offsetY === 0) {
+        return scaled;
+    }
+    return translateAnnotation(scaled, offsetX, offsetY);
+};
+
 // Minimum sides for a polygon; fewer would render a degenerate shape.
 const MIN_POLYGON_SIDES = 3;
 

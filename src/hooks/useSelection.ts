@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { api } from "../services/api";
 import { logger } from "../services/logger";
 
@@ -15,12 +14,14 @@ import {
     uiActions,
 } from "../store/uiStore";
 import { createThumbnailDataUrl } from "../services/historyModel";
+import { resolveCaptureDisplaySrc } from "../services/imageSource";
 
 import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 import { createSticker } from "../types/stickerModel";
 import {
     CaptureRect,
+    CaptureResponse,
     createCaptureMeta,
     createAutoLongCaptureOptions,
     shouldDrainAutoLongCaptureBeforeFinish,
@@ -34,20 +35,12 @@ import {
     AutoLongCaptureOptions,
     LongCaptureAxis,
     LongCaptureDirection,
-    ManualLongCaptureFrame,
     isLongCaptureMode,
 } from "../services/captureState";
 
 let lastPreciseRequestTime = 0;
 let isPreciseRequestPending = false;
 let cachedStickerRects: {id: string, x: number, y: number, w: number, h: number}[] = [];
-
-const resolveCaptureResponseSrc = (response: ManualLongCaptureFrame) => {
-    if (response.filePath) {
-        return convertFileSrc(response.filePath);
-    }
-    return response.fileUrl ?? response.base64;
-};
 
 export function useSelection() {
     let autoLongCaptureRect: CaptureRect | null = null;
@@ -96,7 +89,7 @@ export function useSelection() {
     };
 
     const addCaptureSticker = async (
-        response: ManualLongCaptureFrame,
+        response: CaptureResponse,
         rect: CaptureRect,
         origin: { x: number; y: number },
         mode = captureMode(),
@@ -112,8 +105,8 @@ export function useSelection() {
             w: cssW,
             h: cssH,
             data: {
-                src: resolveCaptureResponseSrc(response),
-                filePath: response.filePath ?? undefined,
+                src: resolveCaptureDisplaySrc(response),
+                filePath: response.filePath,
                 opacityNormal: 1.0,
                 opacityMini: 0.9,
                 minified: false,

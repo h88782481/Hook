@@ -1,7 +1,6 @@
 import type { ScreenColorSample } from "../services/api";
-import { isTransparentStickerColor } from "../services/stickerEditing";
 import { pointToSegmentDistance } from "../services/stickerGeometry";
-import type { StickerPoint, StickerShapeAnnotation } from "../types/stickerEditing";
+import type { StickerPoint } from "../types/stickerEditing";
 
 export type TransformAxisMode = "xy" | "x" | "y";
 
@@ -192,14 +191,11 @@ export {
     getStrokeDashArray,
 } from "../services/stickerCanvas";
 
-export const getVisibleStroke = (color: string, width: number) =>
-    width > 0 && !isTransparentStickerColor(color) ? color : "none";
-
-export const getVisibleFill = (color: string | undefined) =>
-    isTransparentStickerColor(color) ? "transparent" : color!;
-
-export const getAnnotationCornerRadius = (shape: StickerShapeAnnotation) =>
-    shape.style.cornerRadius ?? (shape.type === "round-rect" ? 12 : 0);
+export {
+    getAnnotationCornerRadius,
+    getVisibleFill,
+    getVisibleStroke,
+} from "../services/stickerAnnotationStyle";
 
 export const normalizeRect = (start: StickerPoint, end: StickerPoint) => ({
     x: Math.min(start.x, end.x),

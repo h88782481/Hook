@@ -21,7 +21,7 @@ import { StickerPorts } from "./StickerPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
-import { normalizeImageSourceForDisplay } from "../services/imageSource";
+import { toDisplayImageSrc } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
 import { renderStickerComposite } from "../services/stickerExport";
@@ -188,11 +188,11 @@ export const StickerView: Component<Props> = (props) => {
       if (!resolvedSrc) {
           resolvedSrc = liveSticker().data.previewSrc || liveSticker().data.src || "";
       }
-      return normalizeImageSourceForDisplay(resolvedSrc) || "";
+      return toDisplayImageSrc(resolvedSrc) || "";
   };
   const baseImageSrc = () =>
       liveSticker().data.rasterizedAnnotationLayerSrc
-          ? normalizeImageSourceForDisplay(liveSticker().data.src || displaySrc()) || ""
+          ? toDisplayImageSrc(liveSticker().data.src || displaySrc()) || ""
           : displaySrc();
   const fileBackedFallbacksInFlight = new Set<string>();
   const handleFileBackedImageLoadError = async () => {

@@ -4,9 +4,9 @@ import {
     addStickerPaletteColor,
     createDefaultStickerColorState,
     createDefaultStickerToolSettings,
-    normalizeStickerPaletteColor,
     removeStickerPaletteColor,
 } from "../services/stickerEditing";
+import { normalizePaletteColor } from "../utils/colorUtils";
 import {
     createEmptyStickerHistory,
     pushStickerHistorySnapshot,
@@ -328,12 +328,12 @@ export const uiActions = {
         setStickerColorState("activeColor", color);
     },
     addStickerPaletteColor: (color: string) => {
-        const normalized = normalizeStickerPaletteColor(color);
+        const normalized = normalizePaletteColor(color);
         if (!normalized) return;
         setStickerColorState("palette", (palette) => addStickerPaletteColor(palette, normalized));
     },
     removeStickerPaletteColor: (color: string) => {
-        const normalized = normalizeStickerPaletteColor(color);
+        const normalized = normalizePaletteColor(color);
         if (!normalized) return;
         setStickerColorState("palette", (palette) => removeStickerPaletteColor(palette, normalized));
     },

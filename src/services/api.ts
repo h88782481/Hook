@@ -4,17 +4,12 @@ import type { FrozenStickerEntry } from "./stickerSnapshot";
 import type { PinRect } from "../types/pinRect";
 import type { SessionSticker, SessionLink, SessionGroup } from "../types/stickerModel";
 import type {
+    CaptureResponse,
     LongCaptureAxis,
     LongCaptureDirection,
 } from "./captureState";
 
-export interface CaptureResponse {
-    base64: string;
-    width: number;
-    height: number;
-    filePath?: string | null;
-    fileUrl?: string | null;
-}
+export type { CaptureResponse };
 
 export interface SessionData {
     stickers: SessionSticker[];
@@ -171,15 +166,13 @@ export const api = {
         y: number,
         w: number,
         h: number,
-    ): Promise<CaptureResponse> => {
-        console.log("[API] captureRegion called with:", { x, y, w, h });
-        return safeInvoke("capture_region", {
+    ): Promise<CaptureResponse> =>
+        safeInvoke("capture_region", {
             x,
             y,
             w,
             h,
-        });
-    },
+        }),
     startLongCaptureSession: (
         rect: { x: number; y: number; w: number; h: number },
         axis?: LongCaptureAxis,

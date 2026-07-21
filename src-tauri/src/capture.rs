@@ -19,13 +19,9 @@ impl Drop for RegionCaptureInFlightGuard {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureResponse {
-    pub base64: String,
     pub width: u32,
     pub height: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_url: Option<String>,
+    pub file_path: String,
 }
 
 #[tauri::command]

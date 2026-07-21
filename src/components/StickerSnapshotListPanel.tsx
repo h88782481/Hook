@@ -1,6 +1,6 @@
 import { For } from "solid-js";
 import type { FrozenStickerEntry } from "../services/stickerSnapshot";
-import { normalizeImageSourceForDisplay } from "../services/imageSource";
+import { toDisplayImageSrc } from "../services/imageSource";
 
 interface StickerSnapshotListPanelProps {
     entries: FrozenStickerEntry[];
@@ -33,7 +33,7 @@ export const StickerSnapshotListPanel = (props: StickerSnapshotListPanelProps) =
                 >
                     <img
                         class="h-full w-full object-cover"
-                        src={normalizeImageSourceForDisplay(
+                        src={toDisplayImageSrc(
                             entry.snapshot.previewSrc || entry.snapshot.src,
                         )}
                         alt=""

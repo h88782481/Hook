@@ -24,12 +24,11 @@ export interface CaptureRect {
     h: number;
 }
 
-export interface ManualLongCaptureFrame {
-    base64: string;
+/** File-backed capture result from the Tauri capture commands. */
+export interface CaptureResponse {
     width: number;
     height: number;
-    filePath?: string | null;
-    fileUrl?: string | null;
+    filePath: string;
 }
 
 export type LongCaptureAxis = "vertical" | "horizontal";

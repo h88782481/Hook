@@ -10,11 +10,8 @@ import type {
 import { clamp } from "../utils/math";
 import {
     TRANSPARENT_COLOR,
-    isTransparentColor,
     normalizePaletteColor,
 } from "../utils/colorUtils";
-
-export const TRANSPARENT_STICKER_COLOR = TRANSPARENT_COLOR;
 
 // Highlighter strokes render as a single translucent wash. The opacity is
 // applied once at the layer level (one <g>/offscreen composite) rather than
@@ -27,7 +24,7 @@ export const HIGHLIGHTER_LAYER_OPACITY = 0.35;
 
 
 export const DEFAULT_STICKER_PALETTE = [
-    TRANSPARENT_STICKER_COLOR,
+    TRANSPARENT_COLOR,
     "#ffffff",
     "#000000",
     "#ef4444",
@@ -136,13 +133,13 @@ export const createDefaultStickerToolSettings = (): StickerToolSettings => ({
     textSize: 16,
     textColor: "#ef4444",
     rectStrokeColor: "#ef4444",
-    rectFillColor: TRANSPARENT_STICKER_COLOR,
+    rectFillColor: TRANSPARENT_COLOR,
     ellipseStrokeColor: "#ef4444",
-    ellipseFillColor: TRANSPARENT_STICKER_COLOR,
+    ellipseFillColor: TRANSPARENT_COLOR,
     triangleStrokeColor: "#ef4444",
-    triangleFillColor: TRANSPARENT_STICKER_COLOR,
+    triangleFillColor: TRANSPARENT_COLOR,
     polygonStrokeColor: "#ef4444",
-    polygonFillColor: TRANSPARENT_STICKER_COLOR,
+    polygonFillColor: TRANSPARENT_COLOR,
     lineStrokeColor: "#ef4444",
     shapeCornerRadius: 0,
     shapeConstrainSquare: false,
@@ -353,12 +350,8 @@ export const computeRestoredCropFrame = (
 export const getEffectiveStickerColor = (colors: StickerColorState, preferSampled = false) =>
     preferSampled && colors.sampledColor ? colors.sampledColor : colors.activeColor;
 
-export const isTransparentStickerColor = isTransparentColor;
-
-export const normalizeStickerPaletteColor = normalizePaletteColor;
-
 export const addStickerPaletteColor = (palette: string[], color: string) => {
-    const normalized = normalizeStickerPaletteColor(color);
+    const normalized = normalizePaletteColor(color);
     if (!normalized || palette.includes(normalized)) {
         return palette;
     }
@@ -366,7 +359,7 @@ export const addStickerPaletteColor = (palette: string[], color: string) => {
 };
 
 export const removeStickerPaletteColor = (palette: string[], color: string) => {
-    const normalized = normalizeStickerPaletteColor(color);
+    const normalized = normalizePaletteColor(color);
     if (!normalized) {
         return palette;
     }
