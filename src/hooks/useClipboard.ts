@@ -1,6 +1,6 @@
 import { unwrap } from "solid-js/store";
 import { api } from "../services/api";
-import { createSticker } from "../types/stickerModel";
+import { createSticker, stickerContentPayloadFromSticker, type ClipboardStickerPayload } from "../types/stickerModel";
 import { mousePos, selectedStickerId, selectedStickerAnnotationId, clipboard, setClipboard, ClipboardData, selectionActions, uiActions } from "../store/uiStore";
 import { logger } from "../services/logger";
 import { stickerStore } from "../store/stickerStore";
@@ -37,34 +37,21 @@ export function useClipboard() {
                 }
 
                 const s = unwrap(unit);
+                const content = stickerContentPayloadFromSticker(s);
 
-                const nextClipState: ClipboardData = {
-                    src: s.data.src || "",
+                const nextClipState: ClipboardStickerPayload = {
+                    ...content,
+                    src: content.src || "",
+                    dragOutFilePath: content.dragOutFilePath || content.filePath,
                     w: s.w,
                     h: s.h,
-                    minified: s.data.minified,
-                    savedRect: s.data.savedRect,
-                    cropOffset: s.data.cropOffset,
-                    opacityNormal: s.data.opacityNormal,
-                    opacityMini: s.data.opacityMini,
-                    rasterizedAnnotationLayerSrc: s.data.rasterizedAnnotationLayerSrc,
-                    annotationState: s.data.annotationState,
-                    imageEditState: s.data.imageEditState,
-                    previewSrc: s.data.previewSrc,
-                    filePath: s.data.filePath,
-                    dragOutFilePath: s.data.dragOutFilePath || s.data.filePath,
-                    groupId: s.data.groupId,
-                    captureMeta: s.data.captureMeta,
-
                     offsetX: mp.x - s.x,
                     offsetY: mp.y - s.y,
-
-                    // Cascade Init
                     originalId: s.id,
                     originalX: s.x,
                     originalY: s.y,
-                    nextCascadeX: s.x + 20, // Initial cascade step
-                    nextCascadeY: s.y + 20
+                    nextCascadeX: s.x + 20,
+                    nextCascadeY: s.y + 20,
                 };
 
                 setClipboard(nextClipState);
@@ -153,7 +140,7 @@ export function useClipboard() {
                      const reader = new FileReader();
                      reader.onload = async () => {
                           const base64 = reader.result as string;
-                          createImageUnit(base64, mp); // Pass MP explicitly
+                          createImageSticker(base64, mp); // Pass MP explicitly
                      };
                      reader.readAsDataURL(blob);
                      return;
@@ -250,7 +237,7 @@ export function useClipboard() {
             });
         }
 
-        // Create Unit
+        // Create sticker from clipboard payload
         const newSticker = createSticker({
             x: newX,
             y: newY,
@@ -281,26 +268,20 @@ export function useClipboard() {
         // Debug Logs
         logger.debug("Paste:", { isCascade, newX, newY, nextCascadeX: clip.nextCascadeX });
 
-        // CHAINING / CASCADE UPDATE
-        // Update the clipboard state so the *next* paste considers this new unit as the "original" (Anchor).
-        // This allows:
-        // 1. "Spamming Paste" -> Cascades nicely (A -> B -> C -> D)
-        // 2. moving mouse away -> Pastes at new location (Relative)
+        // Update clipboard so the next paste uses this sticker as the cascade anchor.
         const nextClip: ClipboardData = {
             ...clip,
-            // Update Anchor to the new unit
             originalId: newSticker.id,
             originalX: newX,
             originalY: newY,
-            // Prepare next cascade step relative to THIS unit
             nextCascadeX: newX + 20,
-            nextCascadeY: newY + 20
+            nextCascadeY: newY + 20,
         };
         setClipboard(nextClip);
         logger.debug("Updated Clipboard Anchor:", { id: nextClip.originalId, nextCascade: { x: nextClip.nextCascadeX, y: nextClip.nextCascadeY } });
     };
 
-    const createImageUnit = (base64: string, mpOverride?: {x: number, y: number}) => {
+    const createImageSticker = (base64: string, mpOverride?: {x: number, y: number}) => {
         const mp = mpOverride || mousePos();
         const newSticker = createSticker({
             x: mp.x,
@@ -317,5 +298,5 @@ export function useClipboard() {
         return newSticker.id;
     };
 
-    return { handlePaste, handleCopy, handleSave, createImageUnit };
+    return { handlePaste, handleCopy, handleSave, createImageSticker };
 }

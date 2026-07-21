@@ -32,7 +32,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'undo-edit', key: 'z', modifiers: ['ctrl'], description: 'Undo sticker edit', enabled: true, context: 'unit-selected' },
   { id: 'redo-edit', key: 'y', modifiers: ['ctrl'], description: 'Redo sticker edit', enabled: true, context: 'unit-selected' },
 
-  // Unit Operations
+  // Sticker Operations
   { id: 'delete', key: 'Delete', modifiers: [], description: 'Delete selected unit', enabled: true, context: 'unit-selected' },
   { id: 'delete-backspace', key: 'Backspace', modifiers: [], description: 'Delete selected unit', enabled: true, context: 'unit-selected' },
   { id: 'delete-escape', key: 'Escape', modifiers: [], description: 'Delete/Deselect unit', enabled: true, context: 'unit-selected' },

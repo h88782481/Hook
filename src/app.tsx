@@ -8,7 +8,7 @@ import "./app.css";
 
 // Components
 import { CanvasLinks } from "./components/CanvasLinks";
-import { CanvasUnits } from "./components/CanvasUnits";
+import { CanvasStickers } from "./components/CanvasStickers";
 import { CanvasSelection } from "./components/CanvasSelection";
 import { StickerGroupBar } from "./components/StickerGroupBar";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -30,7 +30,7 @@ import {
     setIsSelecting,
     isCleanView,
     setIsCleanView,
-    selectedUnitIds,
+    selectedStickerIds,
     selectionActions,
     activeStickerEditTargetId,
     setActiveStickerEditTargetId,
@@ -102,7 +102,7 @@ export default function App() {
           queueMicrotask(() => propagateFromSticker(sourceId));
       },
   });
-  const { handlePaste, handleCopy, handleSave, createImageUnit } = useClipboard(); // Assuming I implement Copy later if needed
+  const { handlePaste, handleCopy, handleSave, createImageSticker } = useClipboard(); // Assuming I implement Copy later if needed
   useFileDrop();
 
   const STICKER_GLOBAL_DELETE_ARM_WINDOW_MS = 2500;
@@ -492,7 +492,7 @@ export default function App() {
       await syncService.scheduleSessionSync();
   };
 
-  const deleteSelectedUnitOrAnnotation = () => {
+  const deleteSelectedStickerOrAnnotation = () => {
       const annotationId = selectedStickerAnnotationId();
       const stickerId = selectedStickerId();
       if (annotationId && stickerId) {
@@ -510,8 +510,8 @@ export default function App() {
       }
 
       const selectedSticker = selectedStickerId();
-      const ids = selectedUnitIds.length > 0
-          ? [...selectedUnitIds]
+      const ids = selectedStickerIds.length > 0
+          ? [...selectedStickerIds]
           : selectedSticker
               ? [selectedSticker]
               : [];
@@ -536,7 +536,7 @@ export default function App() {
               // Clear all per-unit UI state keyed by unit id so deleting a unit
               // does not leak history/panel/notice entries for its dead id.
               uiActions.clearStickerHistory(id);
-              uiActions.clearUnitUiState(id);
+              uiActions.clearStickerUiState(id);
           });
 
           selectionActions.clear();
@@ -558,7 +558,7 @@ export default function App() {
                   x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
                   y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
               };
-              const stickerId = createImageUnit(clipboardData, center);
+              const stickerId = createImageSticker(clipboardData, center);
               if (stickerId) {
                   setActiveStickerEditTargetId(stickerId);
               }
@@ -573,7 +573,7 @@ export default function App() {
               x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
               y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
           };
-          const stickerId = createImageUnit(dataUrl, center);
+          const stickerId = createImageSticker(dataUrl, center);
           if (stickerId) {
               setActiveStickerEditTargetId(stickerId);
           }
@@ -612,7 +612,7 @@ export default function App() {
           onToggleHistory: () => uiActions.toggleHistoryPanel(),
           onUndoEdit: () => applyStickerHistorySnapshot("undo"),
           onRedoEdit: () => applyStickerHistorySnapshot("redo"),
-          onDelete: deleteSelectedUnitOrAnnotation,
+          onDelete: deleteSelectedStickerOrAnnotation,
           onCancelSelection: async () => {
               await api.setCaptureInputActive(false);
               resetSelection();
@@ -821,7 +821,7 @@ export default function App() {
                   return;
               }
               if (selectedStickerId()) {
-                  deleteSelectedUnitOrAnnotation();
+                  deleteSelectedStickerOrAnnotation();
               }
           });
 
@@ -838,7 +838,7 @@ export default function App() {
                   void api.debugLogEvent("trigger-delete-ignored-stale", `elapsedMs=${elapsedMs}`);
                   return;
               }
-              deleteSelectedUnitOrAnnotation();
+              deleteSelectedStickerOrAnnotation();
           });
 
           // Create a minimal MouseEvent-compatible object for capture events
@@ -1059,9 +1059,8 @@ export default function App() {
       }
   };
 
-  // Unit Interaction wrappers
-  // Unit Interaction wrappers
-  const onStartDragUnit = (e: MouseEvent, id: string) => {
+  // Sticker Interaction wrappers
+  const onStartDragSticker = (e: MouseEvent, id: string) => {
       // FIX: Allow native file drag if Shift is held (Drag-Out Mode)
       if (checkDragModifier(e, 'dragOut')) {
            return; // Allow native behavior (no preventDefault)
@@ -1089,7 +1088,7 @@ export default function App() {
       }
 
       // Multi-Select Interaction Logic
-      const wasSelected = selectedUnitIds.includes(id);
+      const wasSelected = selectedStickerIds.includes(id);
       const targetSticker = stickerStore.stickers.find((unit) => unit.id === id);
       const targetGroup = targetSticker?.data.groupId
           ? stickerStore.stickerGroups.find((group) => group.id === targetSticker.data.groupId)
@@ -1140,7 +1139,7 @@ export default function App() {
 
 
 
-  const resolveUnitImage = (id: string): string | undefined => {
+  const resolveLinkedImage = (id: string): string | undefined => {
       return resolveStickerImage({
           stickers: stickerStore.stickers,
           links: stickerStore.links,
@@ -1218,15 +1217,15 @@ export default function App() {
                     x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
                     y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
                 };
-                createImageUnit(thumbnail, center);
+                createImageSticker(thumbnail, center);
                 void syncService.scheduleSessionSync();
             }}
         />
 
         <div id="ports-layer" ref={portsLayerRef!} class="absolute inset-0 z-[5] pointer-events-none overflow-visible"></div>
 
-        <CanvasUnits
-            onStartDrag={onStartDragUnit}
+        <CanvasStickers
+            onStartDrag={onStartDragSticker}
             onDoubleClick={handleDoubleClick}
 
             onDelete={(id) => {
@@ -1251,7 +1250,7 @@ export default function App() {
                 void syncService.scheduleSessionSync();
             }}
 
-            resolveUnitImage={resolveUnitImage}
+            resolveLinkedImage={resolveLinkedImage}
             portsLayerRef={portsLayerRef}
         />
 

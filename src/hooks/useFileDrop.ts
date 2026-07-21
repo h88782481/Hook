@@ -62,20 +62,20 @@ export function useFileDrop() {
                 const my = e.clientY;
 
                 const allStickers = stickerStore.stickers;
-                let hitUnitId: string | null = null;
+                let hitStickerId: string | null = null;
 
                 for (let i = allStickers.length - 1; i >= 0; i--) {
                     const u = allStickers[i];
                     if (!u.data.minified &&
                         mx >= u.x && mx <= u.x + u.w &&
                         my >= u.y && my <= u.y + u.h) {
-                        hitUnitId = u.id;
+                        hitStickerId = u.id;
                         break;
                     }
                 }
 
-                if (hitUnitId) {
-                    stickerStore.actions.updateStickerData(hitUnitId, {
+                if (hitStickerId) {
+                    stickerStore.actions.updateStickerData(hitStickerId, {
                         previewSrc: base64Src,
                     });
 

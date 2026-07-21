@@ -14,7 +14,7 @@ import {
 import { stickerStore } from "../store/stickerStore";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import type { StickerRasterizeScope } from "../services/stickerRasterize";
-import { rasterizeStickerAnnotationsForUnit } from "../services/stickerRasterizeActions";
+import { rasterizeStickerAnnotations } from "../services/stickerRasterizeActions";
 import { syncService } from "../services/syncService";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import {
@@ -684,7 +684,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         // This runs from a void-invoked click handler, so guard it here rather
         // than relying solely on the global unhandledrejection net.
         try {
-            const rasterized = await rasterizeStickerAnnotationsForUnit({
+            const rasterized = await rasterizeStickerAnnotations({
                 unitId: props.unitId,
                 currentSticker: unit,
                 scope,

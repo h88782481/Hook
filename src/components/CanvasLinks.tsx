@@ -23,8 +23,8 @@ export const CanvasLinks: Component = () => {
         }
 
         return currentLinks.flatMap(link => {
-             const sFrom = list.find(s => s.id === link.fromUnitId);
-             const sTo = list.find(s => s.id === link.toUnitId);
+             const sFrom = list.find(s => s.id === link.fromStickerId);
+             const sTo = list.find(s => s.id === link.toStickerId);
 
              if (!sFrom || !sTo) return [];
 
@@ -83,10 +83,10 @@ export const CanvasLinks: Component = () => {
             )}
         </For>
 
-        <Show when={hoveringLink().sourceUnitId && hoveringLink().targetUnitId && !isCleanView()}>
+        <Show when={hoveringLink().sourceStickerId && hoveringLink().targetStickerId && !isCleanView()}>
             {(() => {
-                const sFrom = stickerStore.stickers.find(u => u.id === hoveringLink().sourceUnitId);
-                const sTo = stickerStore.stickers.find(u => u.id === hoveringLink().targetUnitId);
+                const sFrom = stickerStore.stickers.find(u => u.id === hoveringLink().sourceStickerId);
+                const sTo = stickerStore.stickers.find(u => u.id === hoveringLink().targetStickerId);
                 if (sFrom && sTo) {
                     return (
                         <>

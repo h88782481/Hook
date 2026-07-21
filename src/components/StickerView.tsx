@@ -45,7 +45,7 @@ interface Props {
   onRendered: (id: string, dataUrl: string) => void;
   onResize: (nextFrame: Pick<Sticker, "x" | "y" | "w" | "h">) => void; // NEW: Ctrl+Wheel Resize with Pivot
   onOpacityChange: (opacity: number) => void; // NEW: Alt+Wheel Opacity
-  resolveUnitImage?: (unitId: string) => string | undefined; // NEW: Helper to resolve referenced images
+  resolveLinkedImage?: (stickerId: string) => string | undefined; // NEW: Helper to resolve referenced images
 
   multiDragPositions?: Record<string, {x: number; y: number}> | null; // Multi-Drag State
   connectedPorts?: string[]; // List of connected INPUT ports
@@ -96,7 +96,7 @@ export const StickerView: Component<Props> = (props) => {
       return hasSelectedExistingAnnotations();
   };
   const allowContainerMouseDown = () => !shouldBlockContainerMouseDown();
-  const handleUnitDoubleClick = (event: MouseEvent) => {
+  const handleStickerDoubleClick = (event: MouseEvent) => {
       if (!isStickerSurfaceDoubleClickTarget(event.target, event.currentTarget)) {
           event.stopPropagation();
           return;
@@ -178,8 +178,8 @@ export const StickerView: Component<Props> = (props) => {
           const imageInput = getInputs().find(i => i.name === 'image');
           if (imageInput && props.connectedLinks) {
                const link = props.connectedLinks.find(l => l.toPortId === imageInput.name);
-               if (link && props.resolveUnitImage) {
-                   const src = props.resolveUnitImage(link.fromUnitId);
+               if (link && props.resolveLinkedImage) {
+                   const src = props.resolveLinkedImage(link.fromStickerId);
                    if (src) {
                        resolvedSrc = src;
                    }
@@ -244,7 +244,7 @@ export const StickerView: Component<Props> = (props) => {
       return { x, y };
   };
 
-  const pointTargetsThisUnit = (x: number, y: number) => {
+  const pointTargetsThisSticker = (x: number, y: number) => {
       if (!unitContainerRef) return false;
       const target = document.elementFromPoint(x, y);
       if (target instanceof Element) {
@@ -419,7 +419,7 @@ export const StickerView: Component<Props> = (props) => {
       const detail = (event as CustomEvent<NativeDragPreflightOverlayPayload>).detail;
       if (!detail?.shiftKey) return;
       const point = overlayPayloadClientPoint(detail);
-      if (!point || !pointTargetsThisUnit(point.x, point.y)) return;
+      if (!point || !pointTargetsThisSticker(point.x, point.y)) return;
       beginPendingHookStickerExportDrag(point.x, point.y);
   };
 
@@ -515,7 +515,7 @@ export const StickerView: Component<Props> = (props) => {
             y: event.clientY,
         });
       }}
-      onDblClick={handleUnitDoubleClick}
+      onDblClick={handleStickerDoubleClick}
       onWheel={(e) => {
         if (e.ctrlKey) {
             e.preventDefault();

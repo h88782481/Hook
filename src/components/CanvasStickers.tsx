@@ -3,14 +3,14 @@ import { StickerView } from "./StickerView";
 import { stickerStore } from "../store/stickerStore";
 import {
     selectionActions,
-    unitUiState,
+    stickerUiState,
     multiDragPositions,
     activeStickerGroupId,
 } from "../store/uiStore";
 import { syncService } from "../services/syncService";
 
 // Define Props for callbacks that are still managed by parent or complex flows
-interface CanvasUnitsProps {
+interface CanvasStickersProps {
     onStartDrag: (e: MouseEvent, id: string) => void;
     onDoubleClick: (e: MouseEvent, id: string) => void;
     onDelete: (id: string) => void;
@@ -22,11 +22,11 @@ interface CanvasUnitsProps {
     onLinkHover: (uId: string, targetId: string | null) => void;
     onRendered: (id: string, dataUrl: string) => void;
 
-    resolveUnitImage: (id: string) => string | undefined;
+    resolveLinkedImage: (id: string) => string | undefined;
     portsLayerRef: HTMLDivElement | undefined;
 }
 
-export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
+export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
     const STICKER_RESIZE_SYNC_DEBOUNCE_MS = 140;
     const STICKER_APPEARANCE_SYNC_DEBOUNCE_MS = 140;
     let stickerResizeSyncTimer: number | null = null;
@@ -85,8 +85,8 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               isSelected={selectionActions.isSelected(u.id)}
 
               // UI State (Show/Hide panels)
-              showActions={(unitUiState[u.id]?.showActions || false) && !u.data.minified}
-              showSidePanel={(unitUiState[u.id]?.showSidePanel || false) && !u.data.minified}
+              showActions={(stickerUiState[u.id]?.showActions || false) && !u.data.minified}
+              showSidePanel={(stickerUiState[u.id]?.showSidePanel || false) && !u.data.minified}
 
               // Setup
               portsLayer={props.portsLayerRef}
@@ -119,9 +119,9 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               }}
 
               // Data Resolution
-              connectedPorts={stickerStore.links.filter(l => l.toUnitId === u.id).map(l => l.toPortId)}
-              connectedLinks={stickerStore.links.filter(l => l.toUnitId === u.id)}
-              resolveUnitImage={props.resolveUnitImage}
+              connectedPorts={stickerStore.links.filter(l => l.toStickerId === u.id).map(l => l.toPortId)}
+              connectedLinks={stickerStore.links.filter(l => l.toStickerId === u.id)}
+              resolveLinkedImage={props.resolveLinkedImage}
           />
           );
       }}</For>

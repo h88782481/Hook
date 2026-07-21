@@ -16,11 +16,8 @@ import {
     type StickerEditSnapshot,
 } from "../services/stickerHistory";
 import type {
-    StickerAnnotationState,
-    StickerCaptureMeta,
     StickerColorState,
     StickerEditingDomain,
-    StickerImageEditState,
     StickerCanvasTool,
     StickerCreateTool,
     StickerToolSettings,
@@ -38,42 +35,43 @@ import {
 } from "../services/historyModel";
 import { api } from "../services/api";
 import { applyStickerToolSettingsPatch, normalizeStickerToolSettings } from "../services/toolSettings";
+import type { ClipboardStickerPayload } from "../types/stickerModel";
 
-// Selection: selectedUnitIds is the single source of truth.
-// selectedStickerId is the focused/active unit (last entry), derived from it.
-export const [selectedUnitIds, setSelectedUnitIds] = createStore<string[]>([]);
+// Selection: selectedStickerIds is the single source of truth.
+// selectedStickerId is the focused/active sticker (last entry), derived from it.
+export const [selectedStickerIds, setSelectedStickerIds] = createStore<string[]>([]);
 
 export const selectedStickerId = (): string | null => {
-    const length = selectedUnitIds.length;
-    return length > 0 ? selectedUnitIds[length - 1] : null;
+    const length = selectedStickerIds.length;
+    return length > 0 ? selectedStickerIds[length - 1] : null;
 };
 
 export const selectionActions = {
     add: (id: string) => {
-        setSelectedUnitIds((prev) => (prev.includes(id) ? prev.filter((uid) => uid !== id).concat(id) : [...prev, id]));
+        setSelectedStickerIds((prev) => (prev.includes(id) ? prev.filter((uid) => uid !== id).concat(id) : [...prev, id]));
     },
     remove: (id: string) => {
-        setSelectedUnitIds((prev) => prev.filter((uid) => uid !== id));
+        setSelectedStickerIds((prev) => prev.filter((uid) => uid !== id));
     },
     toggle: (id: string) => {
-        if (selectedUnitIds.includes(id)) {
+        if (selectedStickerIds.includes(id)) {
             selectionActions.remove(id);
         } else {
             selectionActions.add(id);
         }
     },
     clear: () => {
-        setSelectedUnitIds([]);
+        setSelectedStickerIds([]);
     },
     set: (ids: string[]) => {
-        setSelectedUnitIds(ids);
+        setSelectedStickerIds(ids);
     },
-    isSelected: (id: string) => selectedUnitIds.includes(id),
+    isSelected: (id: string) => selectedStickerIds.includes(id),
 };
 
 // Global Dragging State
 export const [draggingStickerId, setDraggingStickerId] = createSignal<string | null>(null);
-// Primary dragged unit for snapping; multi-drag offsets live in multiDragPositions.
+// Primary dragged sticker for snapping; multi-drag offsets live in multiDragPositions.
 export const [multiDragPositions, setMultiDragPositions] = createSignal<Record<string, {x: number, y: number}> | null>(null);
 // Capture Mode (Screenshot)
 export const [isSelecting, setIsSelecting] = createSignal(false);
@@ -122,61 +120,33 @@ export const [layoutTick, setLayoutTick] = createSignal(0);
 // Linking State
 export const [linkingState, setLinkingState] = createSignal<{
     isLinking: boolean,
-    sourceUnitId: string | null,
-    sourceParamId: string | null,
+    sourceStickerId: string | null,
+    sourcePortId: string | null,
     startX: number,
     startY: number
 }>({
     isLinking: false,
-    sourceUnitId: null,
-    sourceParamId: null,
+    sourceStickerId: null,
+    sourcePortId: null,
     startX: 0,
     startY: 0
 });
 
-export const [hoveringLink, setHoveringLink] = createSignal<{sourceUnitId: string | null, targetUnitId: string | null}>({
-    sourceUnitId: null,
-    targetUnitId: null
+export const [hoveringLink, setHoveringLink] = createSignal<{sourceStickerId: string | null, targetStickerId: string | null}>({
+    sourceStickerId: null,
+    targetStickerId: null
 });
 
 // Mouse Tracking
 export const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
 
-// Unit-Specific UI State (e.g. Panels open/close)
+// Sticker-Specific UI State (e.g. Panels open/close)
 // Key: Sticker ID
-export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showSidePanel: boolean }>>({});
+export const [stickerUiState, setStickerUiState] = createStore<Record<string, { showActions: boolean; showSidePanel: boolean }>>({});
 
 
-// Clipboard paste cascade state
-export interface ClipboardData {
-    src: string;
-    w: number;
-    h: number;
-    minified?: boolean;
-    savedRect?: { x: number, y: number, w: number, h: number };
-    cropOffset?: { x: number, y: number };
-    opacityNormal?: number;
-    opacityMini?: number;
-    rasterizedAnnotationLayerSrc?: string;
-    annotationState?: StickerAnnotationState;
-    imageEditState?: StickerImageEditState;
-    previewSrc?: string;
-    filePath?: string;
-    dragOutFilePath?: string;
-    groupId?: string;
-    captureMeta?: StickerCaptureMeta;
-
-    // Cascade Logic
-    originalId: string;
-    originalX: number;
-    originalY: number;
-    nextCascadeX: number;
-    nextCascadeY: number;
-
-    // Copy Context
-    offsetX: number;
-    offsetY: number;
-}
+// Clipboard paste cascade state (shared content fields live on StickerContentPayload)
+export type ClipboardData = ClipboardStickerPayload;
 export const [clipboard, setClipboard] = createSignal<ClipboardData | null>(null);
 
 // Persist the current history store to disk. Failures are non-fatal: history
@@ -216,44 +186,44 @@ export const uiActions = {
 
     // Helper to toggle actions menu safely
     toggleActions: (id: string) => {
-        setUnitUiState(id, (prev) => {
+        setStickerUiState(id, (prev) => {
             const current = prev?.showActions ?? false;
             return { ...prev, showActions: !current };
         });
     },
     // Helper to toggle sticker side panel safely
     toggleSidePanel: (id: string) => {
-        setUnitUiState(id, (prev) => {
+        setStickerUiState(id, (prev) => {
             const current = prev?.showSidePanel ?? false;
             return { ...prev, showSidePanel: !current };
         });
     },
     closeActions: (id: string) => {
-        setUnitUiState(id, (prev) => ({
+        setStickerUiState(id, (prev) => ({
             ...prev,
             showActions: false,
         }));
     },
     closePopups: (id: string) => {
-        setUnitUiState(id, (prev) => ({
+        setStickerUiState(id, (prev) => ({
             ...prev,
             showActions: false,
             showSidePanel: false,
         }));
     },
     closeAllPopups: () => {
-        // Collapse every unit's action/side popups. Iterate the keys currently
+        // Collapse every sticker's action/side popups. Iterate the keys currently
         // present in the store rather than leaving this as a no-op.
-        Object.keys(unitUiState).forEach((id) => {
-            setUnitUiState(id, (prev) => ({
+        Object.keys(stickerUiState).forEach((id) => {
+            setStickerUiState(id, (prev) => ({
                 ...prev,
                 showActions: false,
                 showSidePanel: false,
             }));
         });
     },
-    clearUnitUiState: (unitId: string) => {
-        setUnitUiState(unitId, undefined!);
+    clearStickerUiState: (stickerId: string) => {
+        setStickerUiState(stickerId, undefined!);
     },
     setStickerEditMode: (mode: StickerToolSettings["mode"]) => {
         setStickerColorPickerReturnMode(null);

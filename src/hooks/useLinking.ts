@@ -4,16 +4,16 @@ import { syncService } from "../services/syncService";
 import { calculatePortY } from "../utils/stickerPortUtils";
 
 interface UseLinkingOptions {
-    onLinkCreated?: (sourceUnitId: string, targetUnitId: string, targetPortId: string) => void;
+    onLinkCreated?: (sourceStickerId: string, targetStickerId: string, targetPortId: string) => void;
 }
 
 export function useLinking(options: UseLinkingOptions = {}) {
 
-    const startLinking = (unitId: string, paramId: string, x: number, y: number) => {
+    const startLinking = (stickerId: string, portId: string, x: number, y: number) => {
         setLinkingState({
             isLinking: true,
-            sourceUnitId: unitId,
-            sourceParamId: paramId,
+            sourceStickerId: stickerId,
+            sourcePortId: portId,
             startX: x,
             startY: y
         });
@@ -21,15 +21,15 @@ export function useLinking(options: UseLinkingOptions = {}) {
     };
 
     const handleLinkHover = (sourceId: string, targetId: string | null) => {
-        setHoveringLink({ sourceUnitId: sourceId, targetUnitId: targetId });
+        setHoveringLink({ sourceStickerId: sourceId, targetStickerId: targetId });
     };
 
-    const handleInputLinkDrag = (unitId: string, portId: string, e: MouseEvent) => {
+    const handleInputLinkDrag = (stickerId: string, portId: string, e: MouseEvent) => {
         // 1. Check if occupied
-        const index = stickerStore.links.findIndex(l => l.toUnitId === unitId && l.toPortId === portId);
+        const index = stickerStore.links.findIndex(l => l.toStickerId === stickerId && l.toPortId === portId);
         if (index !== -1) {
             const link = stickerStore.links[index];
-            const sourceSticker = stickerStore.stickers.find(u => u.id === link.fromUnitId);
+            const sourceSticker = stickerStore.stickers.find(u => u.id === link.fromStickerId);
 
             if (sourceSticker) {
                 console.log("Re-linking (Moving) from input:", portId, "Source:", sourceSticker.id);
@@ -43,8 +43,8 @@ export function useLinking(options: UseLinkingOptions = {}) {
                 // 3. Start Linking State
                 setLinkingState({
                     isLinking: true,
-                    sourceUnitId: link.fromUnitId,
-                    sourceParamId: link.fromPortId,
+                    sourceStickerId: link.fromStickerId,
+                    sourcePortId: link.fromPortId,
                     startX: startX,
                     startY: startY
                 });
@@ -54,10 +54,10 @@ export function useLinking(options: UseLinkingOptions = {}) {
         }
     };
 
-    const handleLinkDrop = (targetUnitId: string, targetPortId: string) => {
+    const handleLinkDrop = (targetStickerId: string, targetPortId: string) => {
         const state = linkingState();
-        if (state.isLinking && state.sourceUnitId && state.sourceParamId && state.sourceUnitId !== targetUnitId) {
-             const sourceId = state.sourceUnitId;
+        if (state.isLinking && state.sourceStickerId && state.sourcePortId && state.sourceStickerId !== targetStickerId) {
+             const sourceId = state.sourceStickerId;
 
              // Cycle Detection
              const hasCycle = (start: string, end: string) => {
@@ -70,8 +70,8 @@ export function useLinking(options: UseLinkingOptions = {}) {
                      if (curr === end) return true;
 
                      const neighbors = stickerStore.links
-                         .filter(l => l.fromUnitId === curr)
-                         .map(l => l.toUnitId);
+                         .filter(l => l.fromStickerId === curr)
+                         .map(l => l.toStickerId);
 
                      for (const n of neighbors) {
                          if (!visited.has(n)) {
@@ -83,32 +83,32 @@ export function useLinking(options: UseLinkingOptions = {}) {
                  return false;
              };
 
-             if (hasCycle(targetUnitId, sourceId)) {
+             if (hasCycle(targetStickerId, sourceId)) {
                  alert("Cyclic dependency detected!");
-                 setLinkingState({ isLinking: false, sourceUnitId: null, sourceParamId: null, startX: 0, startY: 0 });
+                 setLinkingState({ isLinking: false, sourceStickerId: null, sourcePortId: null, startX: 0, startY: 0 });
                  return;
              }
 
              // Create Link
              const newLink = {
                  id: crypto.randomUUID(),
-                 fromUnitId: sourceId,
-                 fromPortId: state.sourceParamId,
-                 toUnitId: targetUnitId,
+                 fromStickerId: sourceId,
+                 fromPortId: state.sourcePortId,
+                 toStickerId: targetStickerId,
                  toPortId: targetPortId
              };
 
              // Remove existing link to this specific input port (Single Input Rule)
-             const existing = stickerStore.links.find(l => l.toUnitId === targetUnitId && l.toPortId === targetPortId);
+             const existing = stickerStore.links.find(l => l.toStickerId === targetStickerId && l.toPortId === targetPortId);
              if (existing) {
                  stickerStore.actions.removeLink(existing.id);
              }
 
              stickerStore.actions.addLink(newLink);
-             options.onLinkCreated?.(sourceId, targetUnitId, targetPortId);
+             options.onLinkCreated?.(sourceId, targetStickerId, targetPortId);
              syncService.scheduleSessionSync();
         }
-        setLinkingState({ isLinking: false, sourceUnitId: null, sourceParamId: null, startX: 0, startY: 0 });
+        setLinkingState({ isLinking: false, sourceStickerId: null, sourcePortId: null, startX: 0, startY: 0 });
     };
 
     return { startLinking, handleLinkHover, handleInputLinkDrag, handleLinkDrop };

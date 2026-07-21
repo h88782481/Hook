@@ -1,6 +1,7 @@
 import { unwrap } from "solid-js/store";
 import {
     createSticker,
+    stickerContentPayloadFromSticker,
     type SessionSticker,
     type Sticker,
 } from "../types/stickerModel";
@@ -16,28 +17,31 @@ export interface FrozenStickerEntry {
 export const stickerToSessionSticker = (
     unit: Sticker,
     options?: { normalizePreview?: boolean },
-): SessionSticker => ({
-    id: unit.id,
-    src: unit.data.src || "",
-    x: unit.x,
-    y: unit.y,
-    w: unit.w,
-    h: unit.h,
-    minified: unit.data.minified ?? false,
-    savedRect: unit.data.savedRect || null,
-    cropOffset: unit.data.cropOffset || null,
-    opacityNormal: unit.data.opacityNormal ?? 1,
-    opacityMini: unit.data.opacityMini ?? 0.9,
-    filePath: unit.data.filePath || null,
-    previewSrc: options?.normalizePreview
-        ? normalizePreviewSrc(unit) || null
-        : unit.data.previewSrc || null,
-    rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
-    annotationState: unit.data.annotationState || null,
-    imageEditState: unit.data.imageEditState || null,
-    groupId: unit.data.groupId || null,
-    captureMeta: unit.data.captureMeta || null,
-});
+): SessionSticker => {
+    const content = stickerContentPayloadFromSticker(unit);
+    return {
+        id: unit.id,
+        x: unit.x,
+        y: unit.y,
+        w: unit.w,
+        h: unit.h,
+        src: content.src || "",
+        minified: content.minified ?? false,
+        savedRect: content.savedRect || null,
+        cropOffset: content.cropOffset || null,
+        opacityNormal: content.opacityNormal ?? 1,
+        opacityMini: content.opacityMini ?? 0.9,
+        filePath: content.filePath || null,
+        previewSrc: options?.normalizePreview
+            ? normalizePreviewSrc(unit) || null
+            : content.previewSrc || null,
+        rasterizedAnnotationLayerSrc: content.rasterizedAnnotationLayerSrc || null,
+        annotationState: content.annotationState || null,
+        imageEditState: content.imageEditState || null,
+        groupId: content.groupId || null,
+        captureMeta: content.captureMeta || null,
+    };
+};
 
 export const sessionStickerToSticker = (sticker: SessionSticker): Sticker =>
     createSticker({

@@ -337,7 +337,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         stickerStore.actions.updateStickerData(props.unitId, patch);
     };
 
-    const propagateStickerEditFromCurrentUnit = () => {
+    const propagateStickerEditFromCurrent = () => {
         stickerStore.actions.propagateStickerEditsFrom(props.unitId);
     };
 
@@ -349,7 +349,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             stickerStore.actions.updateStickerEditData(props.unitId, patch, {
                 markLocalEdit: options.markLocalEdit,
             });
-            propagateStickerEditFromCurrentUnit();
+            propagateStickerEditFromCurrent();
         } else {
             patchStickerDataLocally(patch);
         }
@@ -661,7 +661,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         liveRasterizedAnnotationEraseHistoryCaptured = false;
         if (shouldSync) {
             stickerStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
-            propagateStickerEditFromCurrentUnit();
+            propagateStickerEditFromCurrent();
             await syncService.scheduleSessionSync();
         }
         return true;

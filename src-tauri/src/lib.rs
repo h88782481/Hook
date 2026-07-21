@@ -2152,28 +2152,45 @@ fn save_sticker_drag_export_from_path(
     Ok(path)
 }
 
+fn load_rgba_image_from_bytes(
+    image_bytes: &[u8],
+) -> Result<(usize, usize, Vec<u8>), String> {
+    let img =
+        image::load_from_memory(image_bytes).map_err(|e| format!("Image load failed: {}", e))?;
+    let rgba = img.to_rgba8();
+    let width = rgba.width() as usize;
+    let height = rgba.height() as usize;
+    Ok((width, height, rgba.into_raw()))
+}
+
+fn write_rgba_image_to_clipboard(width: usize, height: usize, raw_bytes: Vec<u8>) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
+    let clipboard_image = arboard::ImageData {
+        width,
+        height,
+        bytes: std::borrow::Cow::Owned(raw_bytes),
+    };
+    clipboard
+        .set_image(clipboard_image)
+        .map_err(|e| format!("Clipboard write failed: {}", e))?;
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<String, String> {
     // Publish both clipboard representations from one command:
     // browsers/rich editors read the image formats, Explorer reads CF_HDROP.
     let image_data = decode_base64_image_data(&base64_image)?;
-
-    let img =
-        image::load_from_memory(&image_data).map_err(|e| format!("Image load failed: {}", e))?;
+    let (width, height, raw_bytes) = load_rgba_image_from_bytes(&image_data)?;
 
     let cache_dir = ensure_clipboard_cache_dir()?;
-
     let timestamp = file_timestamp_component();
     let file_path = cache_dir.join(format!("Hook_{}.png", timestamp));
     let mut file = File::create(&file_path).map_err(|e| format!("Failed to create file: {}", e))?;
     file.write_all(&image_data)
         .map_err(|e| format!("Failed to write file: {}", e))?;
-
-    let rgba = img.to_rgba8();
-    let width = rgba.width() as usize;
-    let height = rgba.height() as usize;
-    let raw_bytes = rgba.into_raw();
 
     let mut clipboard =
         arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
@@ -2209,30 +2226,8 @@ fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<String,
 
 fn copy_to_clipboard(base64_image: String) -> Result<(), String> {
     let image_bytes = decode_base64_image_data(&base64_image)?;
-
-    // 3. Load Image to identify format/dimensions
-    let img =
-        image::load_from_memory(&image_bytes).map_err(|e| format!("Image load failed: {}", e))?;
-
-    let rgba = img.to_rgba8();
-    let width = rgba.width() as usize;
-    let height = rgba.height() as usize;
-    let raw_bytes = rgba.into_raw();
-
-    // 4. Write to Clipboard
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
-
-    let image_data = arboard::ImageData {
-        width,
-        height,
-        bytes: std::borrow::Cow::Owned(raw_bytes),
-    };
-
-    clipboard
-        .set_image(image_data)
-        .map_err(|e| format!("Clipboard write failed: {}", e))?;
-
+    let (width, height, raw_bytes) = load_rgba_image_from_bytes(&image_bytes)?;
+    write_rgba_image_to_clipboard(width, height, raw_bytes)?;
     println!("Image copied to system clipboard");
     Ok(())
 }
@@ -2434,9 +2429,11 @@ pub struct StickerData {
 #[serde(rename_all = "camelCase")]
 pub struct LinkData {
     pub id: String,
-    pub from_unit_id: String,
+    #[serde(alias = "fromUnitId")]
+    pub from_sticker_id: String,
     pub from_port_id: String,
-    pub to_unit_id: String,
+    #[serde(alias = "toUnitId")]
+    pub to_sticker_id: String,
     pub to_port_id: String,
 }
 

@@ -14,7 +14,7 @@ import {
 } from "./stickerRasterize";
 import { syncService } from "./syncService";
 
-export const rasterizeStickerAnnotationsForUnit = async (params: {
+export const rasterizeStickerAnnotations = async (params: {
     unitId: string;
     currentSticker: Sticker;
     scope: StickerRasterizeScope;

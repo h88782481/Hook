@@ -3,7 +3,7 @@ import type { Link, Sticker } from "../types/stickerModel";
 const STICKER_IMAGE_INPUT = "image";
 
 const findConnectedImageInput = (sticker: Sticker, links: readonly Link[]) =>
-    links.find((link) => link.toUnitId === sticker.id && link.toPortId === STICKER_IMAGE_INPUT);
+    links.find((link) => link.toStickerId === sticker.id && link.toPortId === STICKER_IMAGE_INPUT);
 
 export const resolveStickerImage = (input: {
     stickers: readonly Sticker[];
@@ -22,7 +22,7 @@ export const resolveStickerImage = (input: {
     if (connectedInput) {
         const upstream = resolveStickerImage({
             ...input,
-            stickerId: connectedInput.fromUnitId,
+            stickerId: connectedInput.fromStickerId,
             visited,
         });
         if (upstream) return upstream;

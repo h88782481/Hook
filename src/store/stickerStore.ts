@@ -28,7 +28,7 @@ const addSticker = (sticker: Sticker) => {
 
 const removeSticker = (id: string) => {
     setStickers((prev) => prev.filter((u) => u.id !== id));
-    setLinks((prev) => prev.filter((l) => l.fromUnitId !== id && l.toUnitId !== id));
+    setLinks((prev) => prev.filter((l) => l.fromStickerId !== id && l.toStickerId !== id));
 };
 
 const updateSticker = (id: string, updates: Partial<Sticker>) => {

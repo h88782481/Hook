@@ -98,7 +98,7 @@ export function useSelection() {
         }
     };
 
-    const addCaptureUnit = async (
+    const addCaptureSticker = async (
         response: ManualLongCaptureFrame,
         rect: CaptureRect,
         origin: { x: number; y: number },
@@ -512,7 +512,7 @@ export function useSelection() {
         try {
             if (backendSessionId) {
                 const response = await api.finishLongCaptureSession(backendSessionId);
-                await addCaptureUnit(response, rect, origin, "long-vertical", axis);
+                await addCaptureSticker(response, rect, origin, "long-vertical", axis);
             } else if (framesSnapshot.length === 0) {
                 await api.debugLogEvent("auto-long-capture-finish-empty", `session=${sessionId}`);
                 return false;
@@ -528,7 +528,7 @@ export function useSelection() {
                             minOverlapPx: options.minOverlapPx,
                         },
                     );
-                await addCaptureUnit(response, rect, origin, "long-vertical", axis);
+                await addCaptureSticker(response, rect, origin, "long-vertical", axis);
             }
             await api.debugLogEvent(
                 "auto-long-capture-finish",
@@ -816,7 +816,7 @@ export function useSelection() {
                     Math.round(rect.w),
                     Math.round(rect.h),
                 );
-                await addCaptureUnit(response, rect, { x: startX, y: startY }, activeCaptureMode);
+                await addCaptureSticker(response, rect, { x: startX, y: startY }, activeCaptureMode);
 
             } catch (e) {
                 console.error("Capture Failed", e);

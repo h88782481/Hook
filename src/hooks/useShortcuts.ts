@@ -18,7 +18,7 @@ interface ShortcutHandlers {
   onUndoEdit?: () => void | Promise<void>;
   onRedoEdit?: () => void | Promise<void>;
 
-  // Unit Operations
+  // Sticker Operations
   onDelete?: () => void | Promise<void>;
   onCancelSelection?: () => void | Promise<void>;
   onCancelStickerEdit?: () => void | Promise<void>;

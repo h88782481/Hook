@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import {
     draggingStickerId, setDraggingStickerId,
-    selectedUnitIds,
+    selectedStickerIds,
     multiDragPositions, setMultiDragPositions
 } from "../store/uiStore";
 import { stickerStore } from "../store/stickerStore";
@@ -28,7 +28,7 @@ export function useDraggable() {
 
              // Initialize Multi-Drag
              // Determine if we are dragging a selection or a single unit
-             const selection = selectedUnitIds;
+             const selection = selectedStickerIds;
              const isMulti = selection.includes(id) && selection.length > 1;
 
              const targetIds = isMulti ? selection : [id];

@@ -12,24 +12,29 @@ export interface Port {
     label?: string;
 }
 
-export interface StickerData {
+/**
+ * Shared visual/content fields for a sticker image payload.
+ * Used by in-memory StickerData, session persistence, and clipboard cascade.
+ */
+export interface StickerContentPayload {
     src?: string;
+    previewSrc?: string;
     minified?: boolean;
     savedRect?: { x: number; y: number; w: number; h: number };
     cropOffset?: { x: number; y: number };
-  opacityNormal?: number;
-  opacityMini?: number;
-
-  previewSrc?: string;
+    opacityNormal?: number;
+    opacityMini?: number;
     rasterizedAnnotationLayerSrc?: string;
     filePath?: string;
     dragOutFilePath?: string;
-
     annotationState?: StickerAnnotationState;
     imageEditState?: StickerImageEditState;
-    stickerEditPropagation?: StickerEditPropagationState;
     groupId?: string;
     captureMeta?: StickerCaptureMeta;
+}
+
+export interface StickerData extends StickerContentPayload {
+    stickerEditPropagation?: StickerEditPropagationState;
 }
 
 export interface StickerEditPropagationState {
@@ -58,38 +63,32 @@ export interface Sticker {
 
 export interface Link {
     id: string;
-    fromUnitId: string;
+    fromStickerId: string;
     fromPortId: string;
-    toUnitId: string;
+    toStickerId: string;
     toPortId: string;
 }
 
-export interface SessionSticker {
+/** Session wire fields: same content payload, nullable for JSON round-trips. */
+type SessionNullableContent = {
+    [K in keyof Omit<StickerContentPayload, "dragOutFilePath">]?:
+        | StickerContentPayload[K]
+        | null;
+};
+
+export type SessionSticker = {
     id: string;
     x: number;
     y: number;
     w: number;
     h: number;
-    src?: string | null;
-    previewSrc?: string | null;
-    minified?: boolean | null;
-    savedRect?: { x: number; y: number; w: number; h: number } | null;
-    cropOffset?: { x: number; y: number } | null;
-    opacityNormal?: number | null;
-    opacityMini?: number | null;
-    filePath?: string | null;
-    rasterizedAnnotationLayerSrc?: string | null;
-    annotationState?: StickerData["annotationState"] | null;
-    imageEditState?: StickerData["imageEditState"] | null;
-    groupId?: string | null;
-    captureMeta?: StickerData["captureMeta"] | null;
-}
+} & SessionNullableContent;
 
 export interface SessionLink {
     id: string;
-    fromUnitId: string;
+    fromStickerId: string;
     fromPortId: string;
-    toUnitId: string;
+    toStickerId: string;
     toPortId: string;
 }
 
@@ -98,6 +97,23 @@ export interface SessionGroup {
     name: string;
     hidden?: boolean;
     locked?: boolean;
+}
+
+/**
+ * Clipboard cascade payload: content fields plus paste positioning state.
+ */
+export interface ClipboardStickerPayload extends StickerContentPayload {
+    src: string;
+    w: number;
+    h: number;
+
+    originalId: string;
+    originalX: number;
+    originalY: number;
+    nextCascadeX: number;
+    nextCascadeY: number;
+    offsetX: number;
+    offsetY: number;
 }
 
 export type { StickerGroup };
@@ -123,4 +139,22 @@ export const createSticker = (params: {
     inputs: [...STICKER_DEFAULT_PORTS.inputs],
     outputs: [...STICKER_DEFAULT_PORTS.outputs],
     data: params.data ?? {},
+});
+
+/** Extract the shared content payload from a live sticker (for clipboard / session). */
+export const stickerContentPayloadFromSticker = (sticker: Sticker): StickerContentPayload => ({
+    src: sticker.data.src,
+    previewSrc: sticker.data.previewSrc,
+    minified: sticker.data.minified,
+    savedRect: sticker.data.savedRect,
+    cropOffset: sticker.data.cropOffset,
+    opacityNormal: sticker.data.opacityNormal,
+    opacityMini: sticker.data.opacityMini,
+    rasterizedAnnotationLayerSrc: sticker.data.rasterizedAnnotationLayerSrc,
+    filePath: sticker.data.filePath,
+    dragOutFilePath: sticker.data.dragOutFilePath,
+    annotationState: sticker.data.annotationState,
+    imageEditState: sticker.data.imageEditState,
+    groupId: sticker.data.groupId,
+    captureMeta: sticker.data.captureMeta,
 });

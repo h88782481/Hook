@@ -8,10 +8,10 @@ import { resolveStickerImage } from "../services/stickerImageResolution";
 
 export function useStickerActions() {
     const propagateFromSticker = (fromStickerId: string) => {
-        const outLinks = stickerStore.links.filter((l) => l.fromUnitId === fromStickerId);
+        const outLinks = stickerStore.links.filter((l) => l.fromStickerId === fromStickerId);
 
         outLinks.forEach((l) => {
-            const childId = l.toUnitId;
+            const childId = l.toStickerId;
             const childSticker = stickerStore.stickers.find((u) => u.id === childId);
             if (!childSticker) return;
 

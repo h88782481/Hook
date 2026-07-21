@@ -11,9 +11,9 @@ import {
 
 const mapLinkToSessionLink = (link: Link) => ({
     id: link.id,
-    fromUnitId: link.fromUnitId,
+    fromStickerId: link.fromStickerId,
     fromPortId: link.fromPortId,
-    toUnitId: link.toUnitId,
+    toStickerId: link.toStickerId,
     toPortId: link.toPortId,
 });
 
@@ -123,14 +123,14 @@ export const syncService = {
             const sessionData = await api.loadSession();
             if (sessionData) {
                 const loadedStickers = sessionData.stickers.map(sessionStickerToSticker);
-                const loadedUnitIds = new Set(loadedStickers.map((unit) => unit.id));
+                const loadedStickerIds = new Set(loadedStickers.map((unit) => unit.id));
                 const loadedLinks = sessionData.links
-                    .filter((link) => loadedUnitIds.has(link.fromUnitId) && loadedUnitIds.has(link.toUnitId))
+                    .filter((link) => loadedStickerIds.has(link.fromStickerId) && loadedStickerIds.has(link.toStickerId))
                     .map((link) => ({
                         id: link.id,
-                        fromUnitId: link.fromUnitId,
+                        fromStickerId: link.fromStickerId,
                         fromPortId: link.fromPortId,
-                        toUnitId: link.toUnitId,
+                        toStickerId: link.toStickerId,
                         toPortId: link.toPortId,
                     }));
 

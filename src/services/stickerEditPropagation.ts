@@ -10,7 +10,7 @@ import type {
     StickerTextAnnotation,
 } from "../types/stickerEditing";
 import type { Link, StickerEditPropagationState, Sticker } from "../types/stickerModel";
-import { scaleStrokeWidth } from "./stickerGeometry";
+import { scaleAnnotation } from "./stickerAnnotationTransforms";
 
 export interface StickerEditPropagationPatch {
     stickerId: string;
@@ -28,93 +28,6 @@ const cloneAnnotationState = (state: StickerAnnotationState): StickerAnnotationS
 
 const samePoint = (a: StickerPoint, b: StickerPoint) =>
     Math.abs(a.x - b.x) < 0.0001 && Math.abs(a.y - b.y) < 0.0001;
-
-const scaleStyle = <T extends { width: number; cornerRadius?: number }>(
-    style: T,
-    scaleX: number,
-    scaleY: number,
-): T => ({
-    ...style,
-    width: scaleStrokeWidth(style.width, scaleX, scaleY),
-    cornerRadius:
-        style.cornerRadius === undefined
-            ? undefined
-            : scaleStrokeWidth(style.cornerRadius, scaleX, scaleY),
-});
-
-const scaleAnnotation = (
-    annotation: StickerAnnotation,
-    scaleX: number,
-    scaleY: number,
-    offsetX = 0,
-    offsetY = 0,
-): StickerAnnotation => {
-    if (
-        annotation.type === "rect" ||
-        annotation.type === "round-rect" ||
-        annotation.type === "ellipse" ||
-        annotation.type === "triangle" ||
-        annotation.type === "polygon"
-    ) {
-        const shape = annotation as StickerShapeAnnotation;
-        return {
-            ...shape,
-            x: shape.x * scaleX + offsetX,
-            y: shape.y * scaleY + offsetY,
-            w: shape.w * scaleX,
-            h: shape.h * scaleY,
-            style: scaleStyle(shape.style, scaleX, scaleY),
-        };
-    }
-
-    if (annotation.type === "mosaic" || annotation.type === "blur") {
-        const effect = annotation as StickerEffectAnnotation;
-        return {
-            ...effect,
-            x: effect.x * scaleX + offsetX,
-            y: effect.y * scaleY + offsetY,
-            w: effect.w * scaleX,
-            h: effect.h * scaleY,
-            style: scaleStyle(effect.style, scaleX, scaleY),
-            points: effect.points?.map((point) => ({
-                x: point.x * scaleX + offsetX,
-                y: point.y * scaleY + offsetY,
-            })),
-            brushWidth:
-                effect.brushWidth === undefined
-                    ? undefined
-                    : scaleStrokeWidth(effect.brushWidth, scaleX, scaleY),
-            strength:
-                effect.strength === undefined
-                    ? undefined
-                    : scaleStrokeWidth(effect.strength, scaleX, scaleY),
-        };
-    }
-
-    if (annotation.type === "text" || annotation.type === "serial") {
-        const text = annotation as StickerTextAnnotation;
-        return {
-            ...text,
-            x: text.x * scaleX + offsetX,
-            y: text.y * scaleY + offsetY,
-            fontSize:
-                text.fontSize === undefined
-                    ? undefined
-                    : scaleStrokeWidth(text.fontSize, scaleX, scaleY),
-            style: scaleStyle(text.style, scaleX, scaleY),
-        };
-    }
-
-    const line = annotation as StickerLineAnnotation;
-    return {
-        ...line,
-        points: line.points.map((point) => ({
-            x: point.x * scaleX + offsetX,
-            y: point.y * scaleY + offsetY,
-        })),
-        style: scaleStyle(line.style, scaleX, scaleY),
-    };
-};
 
 const clipSegmentToFrame = (
     start: StickerPoint,
@@ -396,13 +309,13 @@ export const buildStickerEditPropagationPatches = ({
         const sourceSticker = workingStickers.get(fromStickerId);
         if (!sourceSticker) return;
 
-        const outgoingLinks = links.filter((link) => link.fromUnitId === fromStickerId);
+        const outgoingLinks = links.filter((link) => link.fromStickerId === fromStickerId);
         outgoingLinks.forEach((link) => {
-            const edgeKey = `${link.fromUnitId}->${link.toUnitId}:${link.id}`;
+            const edgeKey = `${link.fromStickerId}->${link.toStickerId}:${link.id}`;
             if (visitedEdges.has(edgeKey)) return;
             visitedEdges.add(edgeKey);
 
-            const targetSticker = workingStickers.get(link.toUnitId);
+            const targetSticker = workingStickers.get(link.toStickerId);
             if (!targetSticker) return;
             if (!shouldAcceptUpstreamStickerEdit(targetSticker)) return;
 
