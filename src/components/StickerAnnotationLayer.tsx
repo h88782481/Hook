@@ -1845,13 +1845,13 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         event.preventDefault();
         const { annotation, handle, bounds } = hit;
         uiActions.setSelectedStickerAnnotation(annotation.id);
-        if ("w" in annotation && "h" in annotation) {
+        if (annotation.type !== "text" && annotation.type !== "serial" && "w" in annotation && "h" in annotation) {
             captureHostPointer(event.pointerId);
             setResizeAnnotation({
                 annotationId: annotation.id,
                 handle,
                 current: toLocalPoint(event),
-                original: annotation,
+                original: annotation as StickerShapeAnnotation | StickerEffectAnnotation,
             });
             return true;
         }
