@@ -24,7 +24,6 @@ export interface UnitData {
     rasterizedAnnotationLayerSrc?: string;
     filePath?: string;
     dragOutFilePath?: string;
-    outputs?: Record<string, unknown>;
 
     annotationState?: StickerAnnotationState;
     imageEditState?: StickerImageEditState;
@@ -53,7 +52,8 @@ export interface Unit {
     h: number;
 
     data: UnitData;
-    params: Record<string, any>;
+    /** Always empty for stickers; retained for session JSON round-trip with Rust. */
+    params: Record<string, unknown>;
 
     inputs: Port[];
     outputs: Port[];
@@ -83,7 +83,6 @@ export interface SessionSticker {
     params?: Record<string, unknown> | null;
     filePath?: string | null;
     rasterizedAnnotationLayerSrc?: string | null;
-    outputs?: Record<string, unknown> | null;
     annotationState?: UnitData["annotationState"] | null;
     imageEditState?: UnitData["imageEditState"] | null;
     groupId?: string | null;

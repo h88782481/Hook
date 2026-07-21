@@ -18,20 +18,17 @@ import {
 
 const [units, setUnits] = createStore<Unit[]>([]);
 const [links, setLinks] = createStore<Link[]>([]);
-const [unitParams, setUnitParams] = createStore<Record<string, Record<string, any>>>({});
 const [stickerGroups, setStickerGroups] = createStore<StickerGroup[]>([]);
 const [recycleBin, setRecycleBin] = createStore<FrozenStickerEntry[]>([]);
 const [referenceLibrary, setReferenceLibrary] = createStore<FrozenStickerEntry[]>([]);
 
 const addUnit = (unit: Unit) => {
     setUnits((prev) => [...prev, unit]);
-    setUnitParams(unit.id, unit.params || {});
 };
 
 const removeUnit = (id: string) => {
     setUnits((prev) => prev.filter((u) => u.id !== id));
     setLinks((prev) => prev.filter((l) => l.fromUnitId !== id && l.toUnitId !== id));
-    setUnitParams(id, undefined!);
 };
 
 const updateUnit = (id: string, updates: Partial<Unit>) => {
@@ -177,13 +174,11 @@ const removeLink = (id: string) => {
 export const graphStore = {
     units,
     links,
-    unitParams,
     stickerGroups,
     recycleBin,
     referenceLibrary,
     setUnits,
     setLinks,
-    setUnitParams,
     setStickerGroups,
     setRecycleBin,
     setReferenceLibrary,

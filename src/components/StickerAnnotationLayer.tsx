@@ -715,7 +715,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     // erase queue: capture the starting base image once on pointer-down, erase
     // each new segment incrementally onto the evolving base layer, patch the
     // preview locally per frame so the erase tracks the cursor, and only run the
-    // full propagate + workflow sync once on pointer-up. Erasing the base image
+    // full propagate + session sync once on pointer-up. Erasing the base image
     // makes those pixels transparent (destination-out), exactly like the
     // committed stroke did, but without waiting for the mouse release.
     // Live "erase the image content" mode (the default content-eraser, i.e. NOT

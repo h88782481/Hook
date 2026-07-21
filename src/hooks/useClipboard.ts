@@ -329,7 +329,7 @@ export function useClipboard() {
                  id: newId,
                  x: mp.x + (n.x - minX),
                  y: mp.y + (n.y - minY),
-                 params: { ...n.params }
+                 params: {},
              };
          });
 

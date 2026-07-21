@@ -83,7 +83,6 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               // State
               unit={u}
               multiDragPositions={multiDragPositions()}
-              params={graphStore.unitParams[u.id] || {}}
               isSelected={selectedUnitIds.includes(u.id) || selectedStickerId() === u.id}
 
               // UI State (Show/Hide panels)

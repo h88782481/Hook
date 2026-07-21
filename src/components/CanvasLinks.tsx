@@ -4,7 +4,6 @@ import {
     linkingState,
     mousePos,
     hoveringLink,
-    selectedStickerId,
     multiDragPositions,
     unitUiState,
     layoutTick,
@@ -140,64 +139,6 @@ export const CanvasLinks: Component = () => {
                 />
             )}
         </For>
-
-        {/* SELECTED UNIT LINKS OVERLAY */}
-        {/* Only show in Normal View to avoid clutter in Clean View */}
-        <Show when={selectedStickerId() && !isCleanView()}>
-             {(() => {
-                 const id = selectedStickerId();
-                 if (!id) return null;
-                 const u = graphStore.units.find(s => s.id === id);
-                 const params = graphStore.unitParams[id] ?? {};
-                 const links: { targetId: string }[] = [];
-
-                 Object.values(params).forEach(val => {
-                     if (typeof val === 'string' && val.length > 0 && !val.startsWith("data:")) {
-                         if (graphStore.units.some(s => s.id === val)) {
-                             links.push({ targetId: val });
-                         }
-                     }
-                 });
-
-                 return (
-                     <For each={links}>
-                         {(link) => {
-                             const sFrom = u;
-                             const sTo = graphStore.units.find(s => s.id === link.targetId);
-
-                             if (!sFrom || !sTo) return null;
-
-                             return (
-                                 <>
-                                     <line
-                                         x1={sFrom.x + sFrom.w / 2}
-                                         y1={sFrom.y + sFrom.h / 2}
-                                         x2={sTo.x + sTo.w / 2}
-                                         y2={sTo.y + sTo.h / 2}
-                                         stroke="#FEF08A"
-                                         stroke-width="1.5"
-                                         stroke-dasharray="4,4"
-                                         opacity="0.5"
-                                     />
-                                     <rect
-                                         x={sTo.x - 2}
-                                         y={sTo.y - 2}
-                                         width={sTo.w + 4}
-                                         height={sTo.h + 4}
-                                         fill="none"
-                                         stroke="#FEF08A"
-                                         stroke-width="1.5"
-                                         stroke-dasharray="4,4"
-                                         rx="6"
-                                         opacity="0.5"
-                                     />
-                                 </>
-                             );
-                         }}
-                     </For>
-                 );
-             })()}
-        </Show>
 
         {/* HOVERING LINK PREVIEW */}
         <Show when={hoveringLink().sourceUnitId && hoveringLink().targetUnitId && !isCleanView()}>

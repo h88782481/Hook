@@ -31,7 +31,6 @@ const globalScrollRegistry: Record<string, number> = {};
 
 interface Props {
   unit: Unit;
-  params: Record<string, any>; // Direct Store reference for reactivity
   isSelected: boolean;
   showActions: boolean;
   showSidePanel: boolean;
@@ -168,11 +167,10 @@ export const UnitView: Component<Props> = (props) => {
   const getInputs = () => [{ name: "image", label: "Image", type: "image", description: "Input image source" }];
   const getOutputs = () => [{ name: "output_image", label: "Image", type: "image" }];
 
-  // Helper to determine Source Image (Screen vs Manual Override)
+  // Helper to determine Source Image
   // Priority:
-  // 1. Input Connection (Upstream) -> Use Data Src (as result)
-  // 2. Manual File -> Use Params
-  // 3. Screenshot (Default) -> Use Data Src
+  // 1. Input Connection (Upstream) -> Use resolved upstream image
+  // 2. Screenshot / local src (Default)
   const displaySrc = () => {
       let resolvedSrc: string | undefined;
       {
@@ -185,11 +183,6 @@ export const UnitView: Component<Props> = (props) => {
                        resolvedSrc = src;
                    }
                }
-          }
-
-          const path = props.params.image_path;
-          if (!resolvedSrc && path && path.startsWith("data:")) {
-              resolvedSrc = path;
           }
       }
       if (!resolvedSrc) {

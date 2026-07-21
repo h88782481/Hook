@@ -13,7 +13,7 @@ const mapSessionStickerToUnit = (sticker: any): Unit => ({
     y: sticker.y,
     w: sticker.w,
     h: sticker.h,
-    params: (sticker.params as Record<string, any>) || {},
+    params: {},
     inputs: STICKER_DEFAULT_PORTS.inputs,
     outputs: STICKER_DEFAULT_PORTS.outputs,
     data: {
@@ -26,7 +26,6 @@ const mapSessionStickerToUnit = (sticker: any): Unit => ({
         previewSrc: sticker.previewSrc && sticker.previewSrc !== sticker.src ? sticker.previewSrc : undefined,
         filePath: sticker.filePath || undefined,
         rasterizedAnnotationLayerSrc: sticker.rasterizedAnnotationLayerSrc || undefined,
-        outputs: sticker.outputs || undefined,
         annotationState: sticker.annotationState || undefined,
         imageEditState: sticker.imageEditState || undefined,
         groupId: sticker.groupId || undefined,
@@ -46,11 +45,10 @@ const mapUnitToSessionSticker = (unit: Unit) => ({
     cropOffset: unit.data.cropOffset || null,
     opacityNormal: unit.data.opacityNormal ?? 1,
     opacityMini: unit.data.opacityMini ?? 0.9,
-    params: unit.params || {},
+    params: {},
     filePath: unit.data.filePath || null,
     previewSrc: normalizePreviewSrc(unit) || null,
     rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
-    outputs: unit.data.outputs || null,
     annotationState: unit.data.annotationState || null,
     imageEditState: unit.data.imageEditState || null,
     groupId: unit.data.groupId || null,
@@ -187,12 +185,6 @@ export const syncService = {
                 graphStore.setStickerGroups((sessionData.groups || []) as StickerGroup[]);
                 graphStore.setRecycleBin((sessionData.recycleBin || []) as any);
                 graphStore.setReferenceLibrary((sessionData.referenceLibrary || []) as any);
-
-                const paramsMap: any = {};
-                loadedUnits.forEach((u: any) => {
-                    paramsMap[u.id] = u.params || {};
-                });
-                graphStore.setUnitParams(paramsMap);
 
                 syncService.updateBackendRects();
                 if (bootProfile?.initialUiMode === "overlay" && loadedUnits.length > 0) {

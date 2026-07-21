@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 
 export interface PinRect {
-    id: string; // Unique ID (e.g. "params-unit-1")
+    id: string;
     x: number;
     y: number;
     width: number;

@@ -21,41 +21,15 @@
   --theme-text-muted: rgba(247, 252, 230, 0.48);
   --theme-backdrop-blur: 18px;
 
-  /* Compatibility aliases for existing controls */
   --primary: var(--theme-signal);
-  --primary-light: #efff92;
-  --primary-dark: #a3cc00;
-  --primary-glow: rgba(217, 255, 56, 0.18);
   --accent-blue: var(--theme-success);
-  --accent-blue-glow: rgba(34, 197, 94, 0.16);
-  --accent-pale: #f7fce6;
-  --accent-pale-glow: rgba(247, 252, 230, 0.12);
-  --accent-green: var(--theme-success);
-  --accent-red: var(--theme-danger);
-  --glass-bg: var(--theme-panel);
-  --glass-bg-light: rgba(255, 255, 255, 0.05);
-  --glass-border: var(--theme-border);
-  --glass-blur: var(--theme-backdrop-blur);
   --shadow-float: 0 16px 38px rgba(0, 0, 0, 0.34);
   --shadow-subtle: 0 8px 18px rgba(0, 0, 0, 0.26);
-  --text-primary: var(--theme-text);
-  --text-secondary: var(--theme-text-secondary);
-  --text-muted: var(--theme-text-muted);
-
-  /* Transitions */
   --transition-fast: 150ms ease;
-  --transition-normal: 200ms ease;
-  --transition-slow: 300ms ease;
-
-  /* Border Radius */
-  --radius-sm: 0px;
   --radius-md: 0px;
   --radius-lg: 0px;
-  --radius-xl: 0px;
 }
 
-/* Ensure transparent background for Tauri window */
-/* Ensure transparent background for Tauri window */
 html, body {
   background: transparent;
   width: 100%;
@@ -394,96 +368,16 @@ main {
     /* touch-action: none; ? */
 }
 
-/* Specific Node Types */
 .sticker-node {
     position: relative;
 }
 
-.art-node {
-    /* Art Nodes usually have a minimum size */
-    min-width: 200px;
-    min-height: 150px;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Sticker visual elements */
 .selection-border {
     position: absolute;
     border-radius: inherit;
     pointer-events: none;
     z-index: 20;
 }
-
-.mini-border {
-    position: absolute;
-    inset: 0px;
-    border: 2px dashed;
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 20;
-}
-.mini-border.white { border-color: white; }
-.mini-border.gray { border-color: #6b7280; }
-
-/* Legacy Panel Styles - REMOVED */
-
-.param-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.param-row label {
-    font-size: 0.75rem;
-    color: #a1a1aa; /* zinc-400 */
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.param-row input[type="range"] {
-    width: 100%;
-    accent-color: var(--primary);
-    cursor: pointer;
-}
-
-.param-scroll-container {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(217, 255, 56, 0.36) rgba(255, 255, 255, 0.06);
-}
-
-.param-scroll-container::-webkit-scrollbar {
-    width: 8px;
-}
-
-.param-scroll-container::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 0;
-}
-
-.param-scroll-container::-webkit-scrollbar-thumb {
-    background: rgba(217, 255, 56, 0.36);
-    border-radius: 0;
-    border: 2px solid rgba(11, 14, 18, 0.92);
-}
-
-.param-scroll-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(217, 255, 56, 0.56);
-}
-
-.param-row span {
-    font-size: 0.75rem;
-    color: white;
-    align-self: flex-end;
-}
-
-.error-msg {
-    color: #ef4444;
-    font-size: 0.8rem;
-    text-align: center;
-    padding: 10px;
-}
-
 
 /* Missing Color Utilities */
 .text-white { color: white !important; }
