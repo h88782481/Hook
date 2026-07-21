@@ -9,7 +9,7 @@ import type {
 } from "../types/stickerEditing";
 import { clamp } from "../utils/math";
 
-export const TRANSPARENT_STICKER_COLOR = "transparent";
+const TRANSPARENT_STICKER_COLOR = "transparent";
 
 // Highlighter strokes render as a single translucent wash. The opacity is
 // applied once at the layer level (one <g>/offscreen composite) rather than
@@ -39,7 +39,7 @@ export const createDefaultStickerColorState = (): StickerColorState => ({
     palette: [...DEFAULT_STICKER_PALETTE],
 });
 
-export const createDefaultStickerToolProfiles = (): StickerCreateToolProfiles => ({
+const createDefaultStickerToolProfiles = (): StickerCreateToolProfiles => ({
     "shape-rect": {
         strokeWidth: 3,
         shapeCornerRadius: 0,
@@ -351,7 +351,7 @@ export const getEffectiveStickerColor = (colors: StickerColorState, preferSample
 // Return the alpha (0-1) encoded in a sticker color, or 1 when none is present.
 // Supports the literal "transparent" (=0), 8-digit #RRGGBBAA, and treats 3/6-digit
 // hex (and any other opaque value) as fully opaque.
-export const getStickerColorAlpha = (color: string | undefined): number => {
+const getStickerColorAlpha = (color: string | undefined): number => {
     if (!color) return 0;
     const trimmed = color.trim().toLowerCase();
     if (trimmed === TRANSPARENT_STICKER_COLOR) return 0;

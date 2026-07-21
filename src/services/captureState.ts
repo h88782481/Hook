@@ -78,7 +78,7 @@ export type CaptureSelectionStartState =
 
 export const isLongCaptureMode = (mode: CaptureSelectionMode) => mode === "long-vertical";
 
-export const getCaptureDuplicateDebugEvent = (mode: CaptureSelectionMode): CaptureDuplicateDebugEvent =>
+const getCaptureDuplicateDebugEvent = (mode: CaptureSelectionMode): CaptureDuplicateDebugEvent =>
     isLongCaptureMode(mode) ? "trigger-long-capture-ignored-duplicate" : "trigger-capture-ignored-duplicate";
 
 export const beginCaptureSelectionState = (

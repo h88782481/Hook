@@ -214,16 +214,6 @@ export interface ContentEraserStroke {
     opacity: number;
 }
 
-export interface StickerBeautifyState {
-    enabled: boolean;
-    // Preset id from BEAUTIFY_BACKGROUNDS (gradient or solid). Resolved to a
-    // concrete fill at render time so presets can evolve without migrating data.
-    backgroundId: string;
-    padding: number;
-    cornerRadius: number;
-    shadow: boolean;
-}
-
 export interface StickerImageEditState {
     contentEraseStrokes: ContentEraserStroke[];
     cropRect?: { x: number; y: number; w: number; h: number };
@@ -234,7 +224,6 @@ export interface StickerImageEditState {
     borderWidth?: number;
     borderColor?: string;
     cornerRadius?: number;
-    beautify?: StickerBeautifyState;
 }
 
 export interface StickerCaptureMeta {

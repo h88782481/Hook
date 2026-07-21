@@ -4,7 +4,7 @@ type Point = { x: number; y: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Size = { w: number; h: number };
 
-export type MeasurementShapeMode =
+type MeasurementShapeMode =
     | "crop"
     | "shape-rect"
     | "shape-round-rect"
@@ -34,7 +34,7 @@ const ESTIMATED_CHAR_WIDTH = 7;
 
 const displayDimension = (value: number) => Math.max(0, Math.round(value));
 
-export const formatShapeMeasurement = (mode: MeasurementShapeMode, rect: Rect) => {
+const formatShapeMeasurement = (mode: MeasurementShapeMode, rect: Rect) => {
     const width = displayDimension(rect.w);
     const height = displayDimension(rect.h);
     if (mode === "shape-ellipse" && width === height) {
@@ -43,14 +43,14 @@ export const formatShapeMeasurement = (mode: MeasurementShapeMode, rect: Rect) =
     return `${width} x ${height}`;
 };
 
-export const formatLineMeasurement = (points: Point[]) => {
+const formatLineMeasurement = (points: Point[]) => {
     if (points.length < 2) return null;
     const start = points[0];
     const end = points[points.length - 1];
     return `L = ${Math.round(Math.hypot(end.x - start.x, end.y - start.y))}`;
 };
 
-export const buildMeasurementBadge = (
+const buildMeasurementBadge = (
     label: string,
     anchor: Point,
     bounds: Size,

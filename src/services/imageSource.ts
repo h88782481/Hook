@@ -4,7 +4,7 @@ const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
 const WINDOWS_DRIVE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/;
 const WINDOWS_UNC_PATH_PATTERN = /^\\\\[^\\]+\\[^\\]+/;
 
-export const isLikelyLocalFilePath = (src: string | null | undefined) => {
+const isLikelyLocalFilePath = (src: string | null | undefined) => {
     if (!src) return false;
     return WINDOWS_DRIVE_PATH_PATTERN.test(src) || WINDOWS_UNC_PATH_PATTERN.test(src);
 };

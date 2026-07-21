@@ -22,7 +22,7 @@ export interface ShortcutBinding extends ShortcutDef {
 }
 
 // Default shortcut definitions
-export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
+const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   // Clipboard Operations
   { id: 'copy', key: 'c', modifiers: ['ctrl'], description: 'Copy selected unit', enabled: true, context: 'unit-selected' },
   { id: 'paste', key: 'v', modifiers: ['ctrl'], description: 'Paste unit', enabled: true },

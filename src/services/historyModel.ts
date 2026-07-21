@@ -24,8 +24,8 @@ export interface HistoryState {
     screenshots: ScreenshotHistoryEntry[];
 }
 
-export const MAX_COLOR_HISTORY = 24;
-export const MAX_SCREENSHOT_HISTORY = 24;
+const MAX_COLOR_HISTORY = 24;
+const MAX_SCREENSHOT_HISTORY = 24;
 
 export const createEmptyHistoryState = (): HistoryState => ({
     colors: [],
@@ -75,14 +75,14 @@ export const removeScreenshotFromHistory = (
     id: string,
 ): ScreenshotHistoryEntry[] => history.filter((entry) => entry.id !== id);
 
-export const THUMBNAIL_MAX_EDGE = 240;
+const THUMBNAIL_MAX_EDGE = 240;
 
 /**
  * Compute thumbnail dimensions that fit within THUMBNAIL_MAX_EDGE while
  * preserving aspect ratio. Never upscales. Pure so it can be unit tested
  * without a canvas.
  */
-export const computeThumbnailSize = (
+const computeThumbnailSize = (
     width: number,
     height: number,
     maxEdge = THUMBNAIL_MAX_EDGE,

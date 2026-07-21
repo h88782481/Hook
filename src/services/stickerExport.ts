@@ -19,24 +19,17 @@ import {
     isTransparentStickerColor,
 } from "./stickerEditing";
 import {
-    computeBeautifyLayout,
-    paintBeautifyBackground,
-    resolveBeautifyBackground,
-} from "./stickerBeautify";
-import {
     buildPolygonPoints,
     buildTrianglePoints,
     getAnnotationCenter,
     traceRoundedPolygonPath,
 } from "./stickerGeometry";
-import { loadImage, drawStrokePath, applyLineDash } from "./stickerCanvas";
-import { clamp } from "../utils/math";
-
-// Render-order rank, mirrored from stickerAnnotationModel.annotationRenderRank
-// (kept inline to avoid a services→components dependency). Blur sits below
-// mosaic so a blur brush never paints over a mosaic censoring the same pixels.
-const annotationRenderRank = (type: string) =>
-    type === "blur" ? 0 : type === "mosaic" ? 1 : 2;
+import {
+    annotationRenderRank,
+    loadImage,
+    drawStrokePath,
+    applyLineDash,
+} from "./stickerCanvas";
 
 const eraseStrokePathToTransparency = (
     context: CanvasRenderingContext2D,
@@ -382,7 +375,7 @@ const drawAnnotationsWithHighlighterLayer = (
     }
 };
 
-export const renderStickerCompositeWithAnnotations = async (
+const renderStickerCompositeWithAnnotations = async (
     unit: Sticker,
     annotationsOverride: StickerAnnotation[],
     options?: {
@@ -484,67 +477,11 @@ export const renderStickerCompositeWithAnnotations = async (
     return canvas.toDataURL("image/png");
 };
 
-export const renderStickerComposite = async (unit: Sticker): Promise<string> => {
-    const composite = await renderStickerCompositeWithAnnotations(
+export const renderStickerComposite = async (unit: Sticker): Promise<string> =>
+    renderStickerCompositeWithAnnotations(
         unit,
         unit.data.annotationState?.elements || [],
     );
-    return applyBeautify(composite, unit);
-};
-
-/**
- * If beautify is enabled for the unit, place the composite onto a larger
- * background canvas with padding, rounded corners and an optional drop shadow.
- * Otherwise returns the composite unchanged. Applied only at export time
- * (save/copy), never to the on-canvas unit.
- */
-const applyBeautify = async (compositeSrc: string, unit: Sticker): Promise<string> => {
-    const beautify = unit.data.imageEditState?.beautify;
-    if (!beautify?.enabled) return compositeSrc;
-
-    const inner = await loadImage(compositeSrc);
-    const layout = computeBeautifyLayout(inner.width, inner.height, beautify.padding);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = layout.outerWidth;
-    canvas.height = layout.outerHeight;
-    const context = canvas.getContext("2d");
-    if (!context) return compositeSrc;
-
-    paintBeautifyBackground(
-        context,
-        resolveBeautifyBackground(beautify.backgroundId),
-        layout.outerWidth,
-        layout.outerHeight,
-    );
-
-    const radius = clamp(beautify.cornerRadius, 0, Math.min(layout.innerWidth / 2, layout.innerHeight / 2));
-
-    context.save();
-    if (beautify.shadow) {
-        context.shadowColor = "rgba(0, 0, 0, 0.35)";
-        context.shadowBlur = Math.max(8, Math.round(beautify.padding / 2));
-        context.shadowOffsetY = Math.max(4, Math.round(beautify.padding / 4));
-    }
-    // Clip to a rounded rect so the shadow follows the rounded corners.
-    context.beginPath();
-    context.roundRect(layout.innerX, layout.innerY, layout.innerWidth, layout.innerHeight, radius);
-    context.closePath();
-    // Paint an opaque backing so the shadow renders even if the inner image
-    // has transparent regions, then clip and draw the composite.
-    context.fillStyle = "#ffffff";
-    context.fill();
-    context.restore();
-
-    context.save();
-    context.beginPath();
-    context.roundRect(layout.innerX, layout.innerY, layout.innerWidth, layout.innerHeight, radius);
-    context.clip();
-    context.drawImage(inner, layout.innerX, layout.innerY, layout.innerWidth, layout.innerHeight);
-    context.restore();
-
-    return canvas.toDataURL("image/png");
-};
 
 export const renderStickerBaseLayer = async (unit: Sticker): Promise<string> =>
     renderStickerCompositeWithAnnotations(unit, [], {

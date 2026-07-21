@@ -17,7 +17,7 @@ import type { StickerPoint } from "../types/stickerEditing";
  * as the inline queues did, so results from a superseded/finished stroke are
  * dropped instead of clobbering newer state.
  */
-export type LiveEraseBatchProcessor = (
+type LiveEraseBatchProcessor = (
     points: StickerPoint[],
     generation: number,
 ) => Promise<void>;

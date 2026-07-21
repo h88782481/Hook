@@ -27,7 +27,7 @@ const createInitialState = (): StickerContextMenuState => ({
     submenuOffsetY: 0,
 });
 
-export const createStickerContextMenuController = (): StickerContextMenuController => {
+const createStickerContextMenuController = (): StickerContextMenuController => {
     const [state, setState] = createStore<StickerContextMenuState>(createInitialState());
 
     return {

@@ -187,14 +187,10 @@ export const isStraightLineMode = (mode: DraftLine["mode"]) =>
 export const isMeasuredLineMode = (mode: DraftLine["mode"]) =>
     mode === "line" || mode === "arrow";
 
-// Render-order rank for sticker annotations. Censoring effects sit at the very
-// bottom so painted annotations (text, arrows, shapes) stay visible above them.
-// Among effects, blur renders below mosaic so a blur brush — which reveals a
-// (pre-blurred) copy of the underlying image — can never paint over and erase a
-// mosaic that censors the same pixels. Within a rank the original order is kept
-// because Array.prototype.sort is stable.
-export const annotationRenderRank = (type: string) =>
-    type === "blur" ? 0 : type === "mosaic" ? 1 : 2;
+export {
+    annotationRenderRank,
+    getStrokeDashArray,
+} from "../services/stickerCanvas";
 
 export const getVisibleStroke = (color: string, width: number) =>
     width > 0 && !isTransparentStickerColor(color) ? color : "none";
@@ -204,13 +200,6 @@ export const getVisibleFill = (color: string | undefined) =>
 
 export const getAnnotationCornerRadius = (shape: StickerShapeAnnotation) =>
     shape.style.cornerRadius ?? (shape.type === "round-rect" ? 12 : 0);
-
-export const getStrokeDashArray = (dashPattern?: "solid" | "dash-1" | "dash-2") => {
-    if (!dashPattern || dashPattern === "solid") return undefined;
-    if (dashPattern === "dash-1") return "8 4";
-    if (dashPattern === "dash-2") return "4 2 1 2";
-    return undefined;
-};
 
 export const normalizeRect = (start: StickerPoint, end: StickerPoint) => ({
     x: Math.min(start.x, end.x),

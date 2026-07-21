@@ -305,7 +305,6 @@ export const StickerView: Component<Props> = (props) => {
       if (imageEditState.flippedX || imageEditState.flippedY) return false;
       if ((imageEditState.borderWidth || 0) > 0) return false;
       if ((imageEditState.cornerRadius || 0) > 0) return false;
-      if (imageEditState.beautify?.enabled) return false;
 
       return unit.data.filePath;
   };

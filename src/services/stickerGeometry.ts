@@ -153,7 +153,7 @@ export const getArrowShaftPoints = (
     return shaftPoints;
 };
 
-export const annotationContainsPoint = (
+const annotationContainsPoint = (
     annotation: StickerAnnotation,
     point: StickerPoint,
     tolerance = 8,
@@ -742,7 +742,7 @@ export const scaleAnnotationAroundPivot = (
 };
 
 // Minimum sides for a polygon; fewer would render a degenerate shape.
-export const MIN_POLYGON_SIDES = 3;
+const MIN_POLYGON_SIDES = 3;
 
 // Triangle vertices: apex at top-center, base spanning the box bottom.
 export const buildTrianglePoints = (box: ShapeBox): StickerPoint[] => [
@@ -1022,12 +1022,12 @@ export const getAnnotationGroupCenter = (annotations: StickerAnnotation[]): Stic
     };
 };
 
-export const rotateAnnotationAroundCenter = (
+const rotateAnnotationAroundCenter = (
     annotation: StickerAnnotation,
     angleDegrees: number,
 ): StickerAnnotation => rotateAnnotationAroundPivot(annotation, getAnnotationCenter(annotation), angleDegrees);
 
-export const scaleAnnotationAroundCenter = (
+const scaleAnnotationAroundCenter = (
     annotation: StickerAnnotation,
     scale: AnnotationScale,
 ): StickerAnnotation => scaleAnnotationAroundPivot(annotation, getAnnotationCenter(annotation), scale);

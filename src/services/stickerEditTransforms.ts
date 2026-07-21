@@ -6,11 +6,11 @@ import type { Sticker } from "../types/stickerModel";
 import {
     flipAnnotation,
     flipContentEraserStroke,
+    scaleAnnotation,
     scaleContentEraserStroke,
     type FlipAxis,
     type StickerFrame,
 } from "./stickerAnnotationTransforms";
-import { scaleStickerAnnotationState } from "./stickerEditPropagation";
 import { scaleStrokeWidth } from "./stickerGeometry";
 
 const getScale = (sourceFrame: StickerFrame, targetFrame: StickerFrame) => ({
@@ -18,7 +18,24 @@ const getScale = (sourceFrame: StickerFrame, targetFrame: StickerFrame) => ({
     y: sourceFrame.h === 0 ? 1 : targetFrame.h / sourceFrame.h,
 });
 
-export const scaleStickerImageEditState = (
+const scaleStickerAnnotationState = (
+    state: StickerAnnotationState | undefined,
+    sourceFrame: StickerFrame,
+    targetFrame: StickerFrame,
+): StickerAnnotationState | undefined => {
+    if (!state) return undefined;
+
+    const scale = getScale(sourceFrame, targetFrame);
+
+    return {
+        serialCounter: state.serialCounter,
+        elements: state.elements.map((annotation) =>
+            scaleAnnotation(annotation, scale.x, scale.y),
+        ),
+    };
+};
+
+const scaleStickerImageEditState = (
     state: StickerImageEditState | undefined,
     sourceFrame: StickerFrame,
     targetFrame: StickerFrame,
@@ -43,7 +60,7 @@ export const scaleStickerImageEditState = (
     };
 };
 
-export const flipStickerAnnotationStateForFrame = (
+const flipStickerAnnotationStateForFrame = (
     state: StickerAnnotationState | undefined,
     frame: StickerFrame,
     axis: FlipAxis,
@@ -56,7 +73,7 @@ export const flipStickerAnnotationStateForFrame = (
     };
 };
 
-export const flipStickerImageEditStateForFrame = (
+const flipStickerImageEditStateForFrame = (
     state: StickerImageEditState | undefined,
     frame: StickerFrame,
     axis: FlipAxis,

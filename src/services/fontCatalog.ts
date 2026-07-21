@@ -1,4 +1,4 @@
-export const COMMON_STICKER_FONT_FAMILIES = [
+const COMMON_STICKER_FONT_FAMILIES = [
     "微软雅黑",
     "宋体",
     "黑体",

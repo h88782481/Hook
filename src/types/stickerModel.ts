@@ -43,8 +43,6 @@ export interface StickerEditPropagationState {
     /** Set by direct user edits; upstream annotation edits no longer overwrite this sticker. */
     locallyEdited?: boolean;
     revision?: number;
-    upstreamSourceStickerId?: string;
-    upstreamSourceRevision?: number;
 }
 
 export interface Sticker {
@@ -118,7 +116,7 @@ export interface ClipboardStickerPayload extends StickerContentPayload {
 
 export type { StickerGroup };
 
-export const STICKER_DEFAULT_PORTS = {
+const STICKER_DEFAULT_PORTS = {
     inputs: [{ id: "image", type: "image" as const, direction: "input" as const, label: "Image" }],
     outputs: [{ id: "output_image", type: "image" as const, direction: "output" as const, label: "Image" }],
 };

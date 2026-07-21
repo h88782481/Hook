@@ -156,8 +156,3 @@ export function useShortcuts(options: UseShortcutsOptions) {
 export function checkDragModifier(e: MouseEvent, type: keyof typeof DRAG_MODIFIERS): boolean {
   return ShortcutManager.isDragModifierActive(e, type);
 }
-
-/**
- * Re-export for convenience
- */
-export { ShortcutManager, DRAG_MODIFIERS };

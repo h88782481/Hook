@@ -12,7 +12,7 @@ import type {
 import type { Link, StickerEditPropagationState, Sticker } from "../types/stickerModel";
 import { scaleAnnotation } from "./stickerAnnotationTransforms";
 
-export interface StickerEditPropagationPatch {
+interface StickerEditPropagationPatch {
     stickerId: string;
     data: Partial<Sticker["data"]>;
 }
@@ -163,23 +163,6 @@ const clipAnnotationToFrame = (
     }));
 };
 
-export const scaleStickerAnnotationState = (
-    state: StickerAnnotationState | undefined,
-    sourceFrame: Pick<Sticker, "w" | "h">,
-    targetFrame: Pick<Sticker, "w" | "h">,
-): StickerAnnotationState | undefined => {
-    if (!state) return undefined;
-
-    const scaleX = sourceFrame.w === 0 ? 1 : targetFrame.w / sourceFrame.w;
-    const scaleY = sourceFrame.h === 0 ? 1 : targetFrame.h / sourceFrame.h;
-    const cloned = cloneAnnotationState(state);
-
-    return {
-        serialCounter: cloned.serialCounter,
-        elements: cloned.elements.map((annotation) => scaleAnnotation(annotation, scaleX, scaleY)),
-    };
-};
-
 const getContainedFrameTransform = (
     sourceFrame: Pick<Sticker, "w" | "h">,
     targetFrame: Pick<Sticker, "w" | "h">,
@@ -200,7 +183,7 @@ const getContainedFrameTransform = (
     };
 };
 
-export const mapStickerAnnotationStateToContainedFrame = (
+const mapStickerAnnotationStateToContainedFrame = (
     state: StickerAnnotationState | undefined,
     sourceFrame: Pick<Sticker, "w" | "h">,
     targetFrame: Pick<Sticker, "w" | "h">,
@@ -250,7 +233,7 @@ const mapContentEraserStrokeToContainedFrame = (
     width: stroke.width * Math.abs(scale),
 });
 
-export const mapStickerImageEditStateToContainedFrame = (
+const mapStickerImageEditStateToContainedFrame = (
     state: StickerImageEditState | undefined,
     sourceFrame: Pick<Sticker, "w" | "h">,
     targetFrame: Pick<Sticker, "w" | "h">,
@@ -336,8 +319,6 @@ export const buildStickerEditPropagationPatches = ({
                     ...targetSticker.data.stickerEditPropagation,
                     acceptUpstream: targetSticker.data.stickerEditPropagation?.acceptUpstream ?? true,
                     locallyEdited: false,
-                    upstreamSourceStickerId: sourceSticker.id,
-                    upstreamSourceRevision: sourceSticker.data.stickerEditPropagation?.revision ?? 0,
                 },
             };
 
