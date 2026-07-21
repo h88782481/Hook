@@ -531,7 +531,7 @@ fn select_sticker_save_path(
     let filter_wide: Vec<u16> = "PNG Image (*.png)\0*.png\0All Files (*.*)\0*.*\0\0"
         .encode_utf16()
         .collect();
-    let title_wide = wide_null("????????);
+    let title_wide = wide_null("另存为贴图图片");
     let default_extension_wide = wide_null("png");
     let mut file_buffer = vec![0u16; 32768];
     let copy_len = default_filename_wide.len().min(file_buffer.len());
@@ -574,10 +574,10 @@ fn select_sticker_save_path(
 #[cfg(target_os = "windows")]
 fn select_image_open_path() -> Result<Option<PathBuf>, String> {
     let filter_wide: Vec<u16> =
-        "???? (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0?????(*.*)\0*.*\0\0"
+        "图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0所有文件 (*.*)\0*.*\0\0"
             .encode_utf16()
             .collect();
-    let title_wide = wide_null("????????");
+    let title_wide = wide_null("打开图片进行编辑");
     let mut file_buffer = vec![0u16; 32768];
 
     let mut dialog = OPENFILENAMEW::default();
@@ -5158,11 +5158,11 @@ pub fn run() {
                       append_runtime_log_line("register_ctrle_success");
                 }
 
-                let capture_item = MenuItem::with_id(app, "capture", "?? (Ctrl+1)", true, None::<&str>)?;
-                let long_capture_item = MenuItem::with_id(app, "long_capture", "????(Ctrl+3)", true, None::<&str>)?;
+                let capture_item = MenuItem::with_id(app, "capture", "截图 (Ctrl+1)", true, None::<&str>)?;
+                let long_capture_item = MenuItem::with_id(app, "long_capture", "长截图 (Ctrl+3)", true, None::<&str>)?;
                 let open_image_item =
-                    MenuItem::with_id(app, "open_image", "????????(Ctrl+O)", true, None::<&str>)?;
-                let quit_item = MenuItem::with_id(app, "quit", "???, true, None::<&str>)?;
+                    MenuItem::with_id(app, "open_image", "编辑已有图片… (Ctrl+O)", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
                 let tray_menu = Menu::with_items(
                     app,
                     &[&capture_item, &long_capture_item, &open_image_item, &quit_item],
