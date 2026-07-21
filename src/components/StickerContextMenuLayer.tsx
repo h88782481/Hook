@@ -66,12 +66,12 @@ export const StickerContextMenuLayer = () => {
     });
 
     const persistSession = () => {
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const persistLayoutAndSession = () => {
         void syncService.updateBackendRects();
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const handleCloseSticker = () => {

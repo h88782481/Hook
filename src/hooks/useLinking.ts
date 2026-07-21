@@ -106,7 +106,7 @@ export function useLinking(options: UseLinkingOptions = {}) {
 
              graphStore.actions.addLink(newLink);
              options.onLinkCreated?.(sourceId, targetUnitId, targetPortId);
-             syncService.performWorkflowSync();
+             syncService.scheduleSessionSync();
         }
         setLinkingState({ isLinking: false, sourceUnitId: null, sourceParamId: null, startX: 0, startY: 0 });
     };

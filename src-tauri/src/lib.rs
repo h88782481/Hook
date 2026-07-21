@@ -39,9 +39,6 @@ use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_OR,
 };
 #[cfg(target_os = "windows")]
-use windows::Win32::System::Memory::{
-};
-#[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
     GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
 };
@@ -534,7 +531,7 @@ fn select_sticker_save_path(
     let filter_wide: Vec<u16> = "PNG Image (*.png)\0*.png\0All Files (*.*)\0*.*\0\0"
         .encode_utf16()
         .collect();
-    let title_wide = wide_null("另存为贴图图片");
+    let title_wide = wide_null("另存为贴图图�?);
     let default_extension_wide = wide_null("png");
     let mut file_buffer = vec![0u16; 32768];
     let copy_len = default_filename_wide.len().min(file_buffer.len());
@@ -577,7 +574,7 @@ fn select_sticker_save_path(
 #[cfg(target_os = "windows")]
 fn select_image_open_path() -> Result<Option<PathBuf>, String> {
     let filter_wide: Vec<u16> =
-        "图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0所有文件 (*.*)\0*.*\0\0"
+        "图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0所有文�?(*.*)\0*.*\0\0"
             .encode_utf16()
             .collect();
     let title_wide = wide_null("打开图片进行编辑");
@@ -2109,51 +2106,6 @@ fn save_sticker_drag_export_from_path(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn copy_node_image_to_clipboard(base64_image: String) -> Result<String, String> {
-    use clipboard_win::{formats, Clipboard, Setter};
-
-    let image_data = decode_base64_image_data(&base64_image)?;
-    let cache_dir = ensure_clipboard_cache_dir()?;
-
-    // Use a fixed name or timestamp?
-    // If we use fixed, it overwrites (good for cache size, bad if pasting old ref).
-    // Use timestamp to be safe for now.
-    let timestamp = file_timestamp_component();
-    let filename = format!("ArtNode_{}.png", timestamp);
-    let file_path = cache_dir.join(&filename);
-
-    // 4. Write File
-    let mut file = File::create(&file_path).map_err(|e| format!("Failed to create file: {}", e))?;
-    file.write_all(&image_data)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
-
-    let path_string = file_path.to_string_lossy().to_string();
-
-    // 5. Write to Clipboard (CF_HDROP)
-    let _clip = Clipboard::new_attempts(10).map_err(|e| format!("Clipboard open failed: {}", e))?;
-
-    // formats::FileList expect a Vec<String>
-    let paths = vec![path_string.clone()];
-
-    formats::FileList
-        .write_clipboard(&paths)
-        .map_err(|e| format!("Clipboard write file list failed: {}", e))?;
-
-    println!(
-        "Copied file to clipboard cache: {}",
-        cache_file_name_for_log(&file_path)
-    );
-    Ok(path_string)
-}
-
-#[cfg(not(target_os = "windows"))]
-#[tauri::command]
-fn copy_node_image_to_clipboard(_base64_image: String) -> Result<String, String> {
-    Err("File Copy not supported on non-Windows OS".to_string())
-}
-
-#[cfg(target_os = "windows")]
-#[tauri::command]
 fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<String, String> {
     // Publish both clipboard representations from one command:
     // browsers/rich editors read the image formats, Explorer reads CF_HDROP.
@@ -2464,21 +2416,6 @@ pub struct SessionData {
     pub reference_library: Vec<FrozenStickerEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ScreenColorSample {
-    pub hex: String,
-    pub rgb: ScreenColorRgb,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ScreenColorRgb {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-}
-
 #[tauri::command]
 async fn get_precise_selection(
     _app: tauri::AppHandle,
@@ -2654,52 +2591,6 @@ async fn get_precise_selection(
     {
         Ok(None)
     }
-}
-
-#[tauri::command]
-async fn pick_screen_color_at_cursor() -> Result<ScreenColorSample, String> {
-    let (x, y) = current_cursor_position_physical()
-        .ok_or_else(|| "Cursor position unavailable".to_string())?;
-    sample_screen_color_physical(x.round() as i32, y.round() as i32)
-}
-
-#[cfg(target_os = "windows")]
-fn sample_screen_color_physical(x: i32, y: i32) -> Result<ScreenColorSample, String> {
-    use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
-
-    let screen_dc = unsafe { GetDC(None) };
-    if screen_dc.is_invalid() {
-        return Err("Screen DC unavailable".to_string());
-    }
-
-    let color = unsafe { GetPixel(screen_dc, x, y) };
-    unsafe {
-        ReleaseDC(None, screen_dc);
-    }
-
-    if color.0 == u32::MAX {
-        return Err("Screen pixel unavailable".to_string());
-    }
-
-    let raw = color.0;
-    let r = (raw & 0x0000_00ff) as u8;
-    let g = ((raw & 0x0000_ff00) >> 8) as u8;
-    let b = ((raw & 0x00ff_0000) >> 16) as u8;
-
-    Ok(ScreenColorSample {
-        hex: format!("#{r:02x}{g:02x}{b:02x}"),
-        rgb: ScreenColorRgb { r, g, b },
-    })
-}
-
-#[cfg(not(target_os = "windows"))]
-fn sample_screen_color_physical(_x: i32, _y: i32) -> Result<ScreenColorSample, String> {
-    Err("Screen color picking is only supported on Windows".to_string())
-}
-
-#[tauri::command]
-fn pick_screen_color_at(x: f64, y: f64) -> Result<ScreenColorSample, String> {
-    sample_screen_color_physical(x.round() as i32, y.round() as i32)
 }
 
 #[tauri::command]
@@ -4935,14 +4826,6 @@ fn trigger_toggle_sticker_toolbar(window: &tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-fn initialize_overlay(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        println!("Initializing overlay window state...");
-        setup_overlay_window(&window);
-    }
-}
-
-#[tauri::command]
 fn get_boot_profile() -> BootProfile {
     boot_profile_from_env()
 }
@@ -5051,16 +4934,6 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
 fn trigger_capture_mode(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         enter_capture_mode(&window);
-        return Ok(());
-    }
-
-    Err("Window not found".to_string())
-}
-
-#[tauri::command]
-fn trigger_long_capture_mode(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        enter_long_capture_mode(&window);
         return Ok(());
     }
 
@@ -5196,7 +5069,6 @@ pub fn run() {
              save_sticker_drag_export_from_path,
              get_cursor_position,
             copy_to_clipboard,
-            copy_node_image_to_clipboard,
             copy_sticker_image_to_smart_clipboard,
             set_capture_input_active,
             save_session,
@@ -5206,7 +5078,6 @@ pub fn run() {
             save_tool_settings,
             load_tool_settings,
             get_installed_fonts,
-            initialize_overlay,
             get_boot_profile,
             show_canvas_window,
             show_overlay_host,
@@ -5217,11 +5088,8 @@ pub fn run() {
             set_overlay_capture_exclusion,
             hide_to_tray,
             trigger_capture_mode,
-            trigger_long_capture_mode,
             append_runtime_log,
             get_precise_selection,
-            pick_screen_color_at,
-            pick_screen_color_at_cursor,
             analyze_long_capture_pair,
             stitch_long_capture_frames,
             start_long_capture_session,
@@ -5295,10 +5163,10 @@ pub fn run() {
                 }
 
                 let capture_item = MenuItem::with_id(app, "capture", "截图 (Ctrl+1)", true, None::<&str>)?;
-                let long_capture_item = MenuItem::with_id(app, "long_capture", "长截图 (Ctrl+3)", true, None::<&str>)?;
+                let long_capture_item = MenuItem::with_id(app, "long_capture", "长截�?(Ctrl+3)", true, None::<&str>)?;
                 let open_image_item =
-                    MenuItem::with_id(app, "open_image", "编辑已有图片… (Ctrl+O)", true, None::<&str>)?;
-                let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+                    MenuItem::with_id(app, "open_image", "编辑已有图片�?(Ctrl+O)", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "退�?, true, None::<&str>)?;
                 let tray_menu = Menu::with_items(
                     app,
                     &[&capture_item, &long_capture_item, &open_image_item, &quit_item],

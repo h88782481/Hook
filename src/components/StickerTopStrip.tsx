@@ -654,7 +654,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         if (!snapshot) return;
         graphStore.actions.restoreStickerEditSnapshot(props.unitId, snapshot);
         graphStore.actions.propagateStickerEditsFrom(props.unitId);
-        await syncService.performWorkflowSync();
+        await syncService.scheduleSessionSync();
     };
 
     const runHistoryAction = async (mode: HistoryActionMode) => {

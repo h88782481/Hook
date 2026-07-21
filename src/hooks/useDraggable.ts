@@ -182,7 +182,7 @@ export function useDraggable() {
 
             if (changed) {
                  await syncService.updateBackendRects();
-                 await syncService.performWorkflowSync();
+                 await syncService.scheduleSessionSync();
             }
         }
 

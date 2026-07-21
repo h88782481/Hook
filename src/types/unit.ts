@@ -17,13 +17,10 @@ export interface UnitData {
     minified?: boolean;
     savedRect?: { x: number; y: number; w: number; h: number };
     cropOffset?: { x: number; y: number };
-    opacityNormal?: number;
-    opacityMini?: number;
+  opacityNormal?: number;
+  opacityMini?: number;
 
-    portVisibility?: Record<string, boolean>;
-    disabledParamValues?: Record<string, any>;
-
-    previewSrc?: string;
+  previewSrc?: string;
     rasterizedAnnotationLayerSrc?: string;
     filePath?: string;
     dragOutFilePath?: string;

@@ -27,8 +27,7 @@ pub enum CaptureWorkloadProfile {
     StandardRegion,
     LongCapture,
 }
-#[cfg(target_os = "windows")]
-// use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+
 #[cfg(target_os = "windows")]
 const WINDOWS_CAPTURE_UNSUPPORTED: &str =
     "Screen capture not supported on this device/driver. Update graphics drivers or OS.";

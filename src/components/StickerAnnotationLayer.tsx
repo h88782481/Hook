@@ -349,7 +349,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         } else {
             patchUnitDataLocally(patch);
         }
-        await syncService.performWorkflowSync();
+        await syncService.scheduleSessionSync();
     };
 
     const rememberCurrentState = (includeImageData = false) => {
@@ -655,7 +655,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (shouldSync) {
             graphStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
             propagateStickerEditFromCurrentUnit();
-            await syncService.performWorkflowSync();
+            await syncService.scheduleSessionSync();
         }
         return true;
     };

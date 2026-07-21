@@ -23,15 +23,6 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
   const getInputs = () => [{ name: "image", label: "Image", type: "image" }];
   const getOutputs = () => [{ name: "output_image", label: "Image", type: "image" }];
 
-  const isPortVisible = (portName: string) => {
-      const userVis = props.unit.data.portVisibility?.[portName];
-      if (typeof userVis === "boolean") return userVis;
-      return true;
-  };
-
-  const getVisibleInputs = () => getInputs().filter((p) => isPortVisible(p.name));
-  const getVisibleOutputs = () => getOutputs().filter((p) => isPortVisible(p.name));
-
   return (
         <Show when={props.portsLayer && !props.isCleanView}>
             <Portal mount={props.portsLayer!}>
@@ -44,11 +35,11 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                             height: `${isMinified() ? 60 : props.height}px`,
                         }}
                     >
-                        <For each={getVisibleInputs()}>
+                        <For each={getInputs()}>
                             {(port, index) => {
                                 const top = () => {
                                     if (isMinified()) {
-                                        const step = 60 / getVisibleInputs().length;
+                                        const step = 60 / getInputs().length;
                                         return index() * step + step / 2;
                                     }
                                     return 36 + index() * 36;
@@ -72,11 +63,11 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                                 );
                             }}
                         </For>
-                        <For each={getVisibleOutputs()}>
+                        <For each={getOutputs()}>
                             {(port, index) => {
                                 const top = () => {
                                     if (isMinified()) {
-                                        const step = 60 / getVisibleOutputs().length;
+                                        const step = 60 / getOutputs().length;
                                         return index() * step + step / 2;
                                     }
                                     return 36 + index() * 36;

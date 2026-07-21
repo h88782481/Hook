@@ -15,7 +15,6 @@ interface CanvasUnitsProps {
     onStartDrag: (e: MouseEvent, id: string) => void;
     onDoubleClick: (e: MouseEvent, id: string) => void;
     onDelete: (id: string) => void;
-    onParamChange: (id: string, pid: string, val: any, isFinal?: boolean) => void;
 
     // Linking events
     onLinkStart: (uId: string, portId: string, x: number, y: number) => void;
@@ -42,7 +41,7 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
         stickerResizeSyncTimer = window.setTimeout(() => {
             stickerResizeSyncTimer = null;
             graphStore.actions.propagateStickerEditsFrom(unitId);
-            void syncService.performWorkflowSync();
+            void syncService.scheduleSessionSync();
         }, STICKER_RESIZE_SYNC_DEBOUNCE_MS);
     };
 
@@ -53,7 +52,7 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
 
         stickerAppearanceSyncTimer = window.setTimeout(() => {
             stickerAppearanceSyncTimer = null;
-            void syncService.performWorkflowSync();
+            void syncService.scheduleSessionSync();
         }, STICKER_APPEARANCE_SYNC_DEBOUNCE_MS);
     };
 
@@ -99,7 +98,6 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               onDoubleTap={(e) => props.onDoubleClick(e, u.id)}
 
               onDelete={() => props.onDelete(u.id)}
-              onParamChange={(pid, val, isFinal) => props.onParamChange(u.id, pid, val, isFinal)}
 
               // Linking
               onLinkStart={(propId, x, y) => props.onLinkStart(u.id, propId, x, y)}

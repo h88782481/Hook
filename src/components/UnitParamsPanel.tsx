@@ -21,7 +21,7 @@ export const UnitParamsPanel: Component<UnitParamsPanelProps> = (props) => {
               acceptUpstream,
           },
       });
-      void syncService.performWorkflowSync();
+      void syncService.scheduleSessionSync();
   };
 
   return (

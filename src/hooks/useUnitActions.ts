@@ -4,13 +4,9 @@ import { syncService } from "../services/syncService";
 import { logger } from "../services/logger";
 import { setDraggingStickerId, setMultiDragPositions } from "../store/uiStore";
 import { computeRestoredMinifiedStickerWindow } from "../services/stickerEditing";
-import { useNodeParameters } from "./useNodeParameters";
-import type { Unit } from "../types/unit";
 import { resolveUnitImageFromGraph } from "../services/graphImageResolution";
 
 export function useUnitActions() {
-    const { handleParamChange } = useNodeParameters();
-
     const propagateFromUnit = (fromUnitId: string) => {
         const outLinks = graphStore.links.filter((l) => l.fromUnitId === fromUnitId);
 
@@ -68,7 +64,7 @@ export function useUnitActions() {
             }
             setTimeout(() => {
                 syncService.updateBackendRects();
-                syncService.performWorkflowSync();
+                syncService.scheduleSessionSync();
             }, 100);
             return;
         }
@@ -110,9 +106,9 @@ export function useUnitActions() {
 
         setTimeout(() => {
             syncService.updateBackendRects();
-            syncService.performWorkflowSync();
+            syncService.scheduleSessionSync();
         }, 100);
     };
 
-    return { handleParamChange, propagateFromUnit, handleDoubleClick };
+    return { propagateFromUnit, handleDoubleClick };
 }

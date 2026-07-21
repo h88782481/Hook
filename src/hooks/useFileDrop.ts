@@ -79,7 +79,7 @@ export function useFileDrop() {
                     });
 
                     window.setTimeout(() => {
-                        void syncService.performWorkflowSync();
+                        void syncService.scheduleSessionSync();
                     }, 50);
                     return;
                 }

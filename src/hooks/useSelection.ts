@@ -132,7 +132,7 @@ export function useSelection() {
         graphStore.actions.addUnit(newUnit);
         selectionActions.set([newUnit.id]);
         await syncService.updateBackendRects();
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
         await api.debugLogEvent("selection-capture-success", `cssW=${cssW} cssH=${cssH}`);
 
         // Record the capture in the screenshot history (downscaled thumbnail).

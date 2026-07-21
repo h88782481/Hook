@@ -1,7 +1,6 @@
-import { DISABLED_PREFIX } from "../constants";
 import type { Link, Unit } from "../types/unit";
 
-const DEFAULT_IMAGE_INPUTS = ["image", "input_image", "input"];
+const DEFAULT_IMAGE_INPUTS = ["image", "input"];
 
 const isImageLikePort = (name?: string, type?: string) => {
     const normalizedName = (name || "").toLowerCase();
@@ -32,7 +31,7 @@ const findConnectedImageInput = (unit: Unit, links: readonly Link[]) => {
     return links.find((link) => link.toUnitId === unit.id && imageInputs.has(link.toPortId));
 };
 
-const imageOutputAliases = new Set(["output", "output_image", "image", "result", "preview"]);
+const imageOutputAliases = new Set(["output", "output_image", "image", "preview"]);
 
 const isImageOutputPort = (unit: Unit, portId: string) => {
     const normalized = portId.toLowerCase();
@@ -85,22 +84,19 @@ export const resolveUnitImageFromGraph = (input: {
     const unit = input.units.find((item) => item.id === input.unitId);
     if (!unit) return undefined;
 
-    const imageInputDisabled = unit.params?.image === DISABLED_PREFIX;
-    if (!imageInputDisabled) {
-        const connectedInput = findConnectedImageInput(unit, input.links);
-        if (connectedInput) {
-            const upstream = resolveUnitImageFromGraph({
-                ...input,
-                unitId: connectedInput.fromUnitId,
-                visited,
-            });
-            if (upstream) return upstream;
-        }
+    const connectedInput = findConnectedImageInput(unit, input.links);
+    if (connectedInput) {
+        const upstream = resolveUnitImageFromGraph({
+            ...input,
+            unitId: connectedInput.fromUnitId,
+            visited,
+        });
+        if (upstream) return upstream;
+    }
 
-        const manualImage = unit.params?.image_path;
-        if (typeof manualImage === "string" && manualImage.startsWith("data:")) {
-            return manualImage;
-        }
+    const manualImage = unit.params?.image_path;
+    if (typeof manualImage === "string" && manualImage.startsWith("data:")) {
+        return manualImage;
     }
 
     return unit.data.previewSrc || unit.data.src;

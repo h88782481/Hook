@@ -20,7 +20,6 @@ import { UnitParamsPanel } from "./UnitParamsPanel";
 import { UnitPorts } from "./UnitPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
-import { DISABLED_PREFIX } from "../constants";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
 import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
@@ -37,7 +36,6 @@ interface Props {
   showActions: boolean;
   showParams: boolean; // NEW: Toggle state for params
   onMouseDown: (e: MouseEvent) => void;
-  onParamChange: (propId: string, value: any, isFinal?: boolean) => void;
   onDoubleTap: (e: MouseEvent) => void;
   onDelete: () => void;
   onLinkStart: (propId: string, startX: number, startY: number) => void;
@@ -83,19 +81,6 @@ export const UnitView: Component<Props> = (props) => {
   const logWheelEvent = (phase: string, detail: string) => {
       void api.debugLogEvent("sticker-wheel-trace", `layer=unit phase=${phase} unit=${props.unit.id} ${detail}`);
   };
-
-
-
-  // Check disabled state using the reactive getParams() getter
-  const isParamDisabled = (paramId: string) => props.params[paramId] === DISABLED_PREFIX;
-
-  // Get the actual value (for display), returning default if disabled
-
-
-
-
-  // Clear dragging state when params update from backend
-
 
   const liveUnit = () => graphStore.units.find((unit) => unit.id === props.unit.id) || props.unit;
   const isMinified = () => !!liveUnit().data.minified;
@@ -182,17 +167,7 @@ export const UnitView: Component<Props> = (props) => {
 
   // === PORT LOGIC ===
   const getInputs = () => [{ name: "image", label: "Image", type: "image", description: "Input image source" }];
-  const derivedParams = () => [];
   const getOutputs = () => [{ name: "output_image", label: "Image", type: "image" }];
-  const isPortVisible = (portName: string) => {
-      const userVis = props.unit.data.portVisibility?.[portName];
-      if (typeof userVis === 'boolean') return userVis;
-      return true;
-  };
-  const getVisibleInputs = () => getInputs().filter(p => isPortVisible(p.name));
-  const getVisibleOutputs = () => getOutputs().filter(p => isPortVisible(p.name));
-
-
 
   // Helper to determine Source Image (Screen vs Manual Override)
   // Priority:
@@ -201,31 +176,21 @@ export const UnitView: Component<Props> = (props) => {
   // 3. Screenshot (Default) -> Use Data Src
   const displaySrc = () => {
       let resolvedSrc: string | undefined;
-      // Check for Manual Override in Image Units
       {
-          // Check if Image Input is explicitly disabled
-          const isImageDisabled = props.unit.params["image"] === DISABLED_PREFIX;
-
-          if (!isImageDisabled) {
-              // If Input Connected, ignore Manual override (Input Priority)
-              // We check if "image" input is connected
-              const imageInput = getInputs().find(i => i.name === 'image');
-              if (imageInput && props.connectedLinks) {
-                   // Find link targeting this input port
-                   const link = props.connectedLinks.find(l => l.toPortId === imageInput.name);
-                   if (link && props.resolveUnitImage) {
-                       const src = props.resolveUnitImage(link.fromUnitId);
-                       if (src) {
-                           resolvedSrc = src;
-                       }
+          const imageInput = getInputs().find(i => i.name === 'image');
+          if (imageInput && props.connectedLinks) {
+               const link = props.connectedLinks.find(l => l.toPortId === imageInput.name);
+               if (link && props.resolveUnitImage) {
+                   const src = props.resolveUnitImage(link.fromUnitId);
+                   if (src) {
+                       resolvedSrc = src;
                    }
-              }
+               }
+          }
 
-              // If NOT connected, check Manual
-              const path = props.params.image_path;
-              if (path && path.startsWith("data:")) {
-                  resolvedSrc = path;
-              }
+          const path = props.params.image_path;
+          if (!resolvedSrc && path && path.startsWith("data:")) {
+              resolvedSrc = path;
           }
       }
       if (!resolvedSrc) {
@@ -1023,7 +988,7 @@ export const UnitView: Component<Props> = (props) => {
 
         {/* === INTERACTION LAYER (Floating panels, outside of cropped visual) === */}
 
-        {/* Unit Params Panel (Handling Inputs, Outputs, Params, Header) */}
+        {/* Unit Params Panel */}
         <Show when={props.showParams}>
              <UnitParamsPanel
              unit={props.unit}

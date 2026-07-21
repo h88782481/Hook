@@ -52,7 +52,7 @@ export const StickerGroupBar: Component = () => {
                                 ...current,
                                 name: nextName,
                             });
-                            void syncService.performWorkflowSync();
+                            void syncService.scheduleSessionSync();
                         }}
                     >
                         重命名组
@@ -69,7 +69,7 @@ export const StickerGroupBar: Component = () => {
                             if (!confirmed) return;
                             graphStore.actions.deleteStickerGroup(groupId);
                             uiActions.setActiveStickerGroup(null);
-                            void syncService.performWorkflowSync();
+                            void syncService.scheduleSessionSync();
                         }}
                     >
                         删除组
@@ -89,7 +89,7 @@ export const StickerGroupBar: Component = () => {
                             selectionActions.clear();
                             uiActions.hideStickerToolbar();
                             uiActions.setActiveStickerGroup(null);
-                            void syncService.performWorkflowSync();
+                            void syncService.scheduleSessionSync();
                         }}
                     >
                         关闭组

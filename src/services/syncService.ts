@@ -205,7 +205,7 @@ export const syncService = {
         }
     },
 
-    performWorkflowSync: async () => {
+    scheduleSessionSync: async () => {
         scheduler.schedule();
     },
 };

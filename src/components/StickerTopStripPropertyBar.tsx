@@ -440,7 +440,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 flippedY: axis === "y" ? !current.flippedY : current.flippedY,
             },
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const resetCrop = () => {
@@ -459,7 +459,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 cropRect: undefined,
             },
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const parseCanvasStepperValue = (
@@ -484,7 +484,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         currentUnit.data.minified
             ? graphStore.actions.updateUnitData(props.unitId, { opacityMini: clamped })
             : graphStore.actions.updateUnitData(props.unitId, { opacityNormal: clamped });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const scaleStickerCanvas = (factor: number) => {
@@ -497,7 +497,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             w: currentUnit.w,
             h: currentUnit.h,
         }, factor));
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const updateStickerFrameCornerRadiusValue = (next: number) => {
@@ -512,7 +512,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 cornerRadius: clamped,
             },
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const commitCropOpacityDraft = () => {
@@ -552,7 +552,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         graphStore.actions.updateUnitData(props.unitId, {
             imageEditState: toggleStickerBorder(current, stickerColorState.activeColor),
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const applySelectedAnnotationFontFamilyChange = (annotationType: "text" | "serial", fontFamily: string) => {
@@ -568,7 +568,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         graphStore.actions.updateUnitData(props.unitId, {
             annotationState: updateTextAnnotationFontFamilyById(currentState, selectedAnnotation.id, trimmed),
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const updateSelectedTextAnnotationStyle = (updater: (annotation: StickerTextAnnotation) => StickerTextAnnotation) => {
@@ -588,7 +588,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 ),
             },
         });
-        void syncService.performWorkflowSync();
+        void syncService.scheduleSessionSync();
     };
 
     const patchSelectedTextAnnotationFontSize = (next: number) => {

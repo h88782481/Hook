@@ -94,7 +94,7 @@ export default function App() {
       cancelAutoLongCaptureSession,
       notifyAutoLongCaptureWheel,
   } = useSelection();
-  const { handleParamChange, handleDoubleClick, propagateFromUnit } = useUnitActions();
+  const { handleDoubleClick, propagateFromUnit } = useUnitActions();
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
       onLinkCreated: (sourceId) => {
           graphStore.actions.propagateStickerEditsFrom(sourceId);
@@ -490,7 +490,7 @@ export default function App() {
       if (!snapshot) return;
       graphStore.actions.restoreStickerEditSnapshot(id, snapshot);
       graphStore.actions.propagateStickerEditsFrom(id);
-      await syncService.performWorkflowSync();
+      await syncService.scheduleSessionSync();
   };
 
   const deleteSelectedUnitOrAnnotation = () => {
@@ -505,7 +505,7 @@ export default function App() {
               });
               graphStore.actions.propagateStickerEditsFrom(stickerId);
               uiActions.setSelectedStickerAnnotation(null);
-              void syncService.performWorkflowSync();
+              void syncService.scheduleSessionSync();
               return;
           }
       }
@@ -544,7 +544,7 @@ export default function App() {
           uiActions.hideStickerToolbar();
 
           void syncService.updateBackendRects();
-          void syncService.performWorkflowSync();
+          void syncService.scheduleSessionSync();
       }
   };
 
@@ -563,7 +563,7 @@ export default function App() {
               if (stickerId) {
                   setActiveStickerEditTargetId(stickerId);
               }
-              void syncService.performWorkflowSync();
+              void syncService.scheduleSessionSync();
               return;
           }
 
@@ -578,7 +578,7 @@ export default function App() {
           if (stickerId) {
               setActiveStickerEditTargetId(stickerId);
           }
-          void syncService.performWorkflowSync();
+          void syncService.scheduleSessionSync();
       } catch (error) {
           console.error("Open image for edit failed", error);
           await api.debugLogEvent(
@@ -1220,7 +1220,7 @@ export default function App() {
                     y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
                 };
                 createImageUnit(thumbnail, center);
-                void syncService.performWorkflowSync();
+                void syncService.scheduleSessionSync();
             }}
         />
 
@@ -1236,9 +1236,8 @@ export default function App() {
                     uiActions.hideStickerToolbar();
                 }
                 syncService.updateBackendRects();
-                syncService.performWorkflowSync();
+                syncService.scheduleSessionSync();
             }}
-            onParamChange={handleParamChange}
 
             onLinkStart={startLinking}
             onLinkDrop={handleLinkDrop}
@@ -1250,7 +1249,7 @@ export default function App() {
                     previewSrc: dataUrl,
                 });
                 propagateFromUnit(id);
-                void syncService.performWorkflowSync();
+                void syncService.scheduleSessionSync();
             }}
 
             resolveUnitImage={resolveUnitImage}

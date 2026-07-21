@@ -31,7 +31,7 @@ export function useClipboard() {
                             },
                         });
                         uiActions.setSelectedStickerAnnotation(duplicated.createdAnnotationId);
-                        await syncService.performWorkflowSync();
+                        await syncService.scheduleSessionSync();
                         return;
                     }
                 }
@@ -256,26 +256,14 @@ export function useClipboard() {
             });
         }
 
-        // Apply Crop Offset if applicable (Legacy behavior for cropped stickers)
-        let finalX = newX;
-        let finalY = newY;
-        let finalW = clip.w;
-        let finalH = clip.h;
-
-        if (clip.savedRect && clip.cropOffset) {
-             // Legacy adjustment removed to prioritize exact mouse positioning
-             // finalX = newX - clip.cropOffset.x;
-             // finalY = newY - clip.cropOffset.y;
-        }
-
         // Create Unit
         const newUnit: Unit = {
             id: crypto.randomUUID(),
             type: 'sticker',
-            x: finalX,
-            y: finalY,
-            w: finalW,
-            h: finalH,
+            x: newX,
+            y: newY,
+            w: clip.w,
+            h: clip.h,
             params: {},
             inputs: [],
             outputs: [],
@@ -359,7 +347,7 @@ export function useClipboard() {
          if (newUnits.length > 0) setSelectedStickerId(newUnits[newUnits.length-1].id);
 
          syncService.updateBackendRects();
-         syncService.performWorkflowSync();
+         syncService.scheduleSessionSync();
     }
 
     const createImageUnit = (base64: string, mpOverride?: {x: number, y: number}) => {

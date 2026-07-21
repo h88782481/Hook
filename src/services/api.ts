@@ -219,9 +219,6 @@ export const api = {
     updatePinRects: (rects: PinRect[]): Promise<void> =>
         safeInvoke("update_pin_rects", { rects }, () => undefined, false),
 
-    initializeOverlay: (): Promise<void> =>
-        safeInvoke("initialize_overlay", undefined, () => undefined, false),
-
     showOverlayHost: (clickThrough = true): Promise<void> =>
         safeInvoke("show_overlay_host", { clickThrough }, () => undefined, false),
 
@@ -336,16 +333,6 @@ export const api = {
     // --- System ---
     getCursorPosition: (): Promise<{x: number, y: number}> =>
         safeInvoke("get_cursor_position", undefined, () => ({ x: 0, y: 0 }), false),
-    pickScreenColorAt: (x: number, y: number): Promise<ScreenColorSample> =>
-        safeInvoke("pick_screen_color_at", { x, y }, () => ({
-            hex: "#000000",
-            rgb: { r: 0, g: 0, b: 0 },
-        }), false),
-    pickScreenColorAtCursor: (): Promise<ScreenColorSample> =>
-        safeInvoke("pick_screen_color_at_cursor", undefined, () => ({
-            hex: "#000000",
-            rgb: { r: 0, g: 0, b: 0 },
-        }), false),
 
     // --- File IO ---
     readImageFromPath: (path: string): Promise<string> =>
@@ -381,8 +368,6 @@ export const api = {
             false,
         ),
 
-    saveStickerImage: (base64: string): Promise<string> =>
-        safeInvoke("save_sticker_image", { base64Image: base64 }),
     saveStickerImageAs: (base64: string, dialogCenterX: number, dialogCenterY: number): Promise<string | null> =>
         safeInvoke("save_sticker_image_as", { base64Image: base64, dialogCenterX, dialogCenterY }),
     openImageForEdit: (): Promise<string | null> =>
@@ -390,10 +375,6 @@ export const api = {
     readClipboardImage: (): Promise<string | null> =>
         safeInvoke("read_clipboard_image", undefined, () => null, false),
 
-    copyNodeImageToClipboard: (base64: string): Promise<string> =>
-        safeInvoke("copy_node_image_to_clipboard", { base64Image: base64 }, () => "browser-preview", false),
-    copyToClipboard: (base64: string): Promise<void> =>
-        safeInvoke("copy_to_clipboard", { base64Image: base64 }, () => undefined, false),
     copyStickerImageToSmartClipboard: (base64: string): Promise<string> =>
         safeInvoke("copy_sticker_image_to_smart_clipboard", { base64Image: base64 }, () => "browser-preview", false),
 };
