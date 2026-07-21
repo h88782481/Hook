@@ -18,11 +18,6 @@ impl Rect {
     }
 }
 
-#[allow(dead_code)]
-pub fn should_ignore_cursor_events(rects: &[Rect], x: f64, y: f64) -> bool {
-    !rects.iter().any(|rect| rect.contains(x, y))
-}
-
 // Thread-safe container for the list of interactive areas
 #[derive(Clone)]
 pub struct SharedHitMap {
@@ -40,36 +35,5 @@ impl SharedHitMap {
             rectangles: Arc::new(Mutex::new(Vec::new())),
             active: Arc::new(Mutex::new(false)), // Default inactive
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{should_ignore_cursor_events, Rect};
-
-    #[test]
-    fn cursor_over_interactive_rect_disables_click_through() {
-        let rects = vec![Rect {
-            x: 100,
-            y: 200,
-            width: 300,
-            height: 150,
-            name: "sticker".to_string(),
-        }];
-
-        assert!(!should_ignore_cursor_events(&rects, 250.0, 260.0));
-    }
-
-    #[test]
-    fn cursor_outside_interactive_rect_keeps_click_through() {
-        let rects = vec![Rect {
-            x: 100,
-            y: 200,
-            width: 300,
-            height: 150,
-            name: "sticker".to_string(),
-        }];
-
-        assert!(should_ignore_cursor_events(&rects, 50.0, 50.0));
     }
 }

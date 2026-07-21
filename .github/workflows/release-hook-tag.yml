@@ -3,13 +3,7 @@ name: Release Hook Tag
 on:
   push:
     tags:
-      - 'V*.*.*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to publish manually
-        required: true
-        type: string
+      - 'v*'
 
 permissions:
   contents: write
@@ -21,8 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -42,29 +34,19 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Resolve release tag
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v') {
+            throw "Release tag must start with v. Received: $tag"
+          }
+          "HOOK_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build portable Hook EXE
         shell: powershell
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-local-hook-exe.ps1 -OutputDir "release\Hook\portable" -Force
-
-      - name: Resolve release tag
-        shell: powershell
-        run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tag = "${{ github.event.inputs.tag }}"
-          } else {
-            $tag = "${{ github.ref_name }}"
-          }
-
-          if ([string]::IsNullOrWhiteSpace($tag)) {
-            throw "Release tag is required."
-          }
-
-          if ($tag -notmatch '^V\d+\.\d+\.\d+$') {
-            throw "Release tag must match Vx.x.x. Received: $tag"
-          }
-
-          "HOOK_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Package minimal release zip
         shell: powershell

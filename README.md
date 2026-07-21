@@ -1,95 +1,83 @@
 # Hook
 
 <p align="center">
-  <a href="README.md"><strong>English</strong></a>
+  <a href="README.md"><strong>简体中文</strong></a>
   ·
-  <a href="README.zh-CN.md"><strong>简体中文</strong></a>
+  <a href="README.en.md"><strong>English</strong></a>
 </p>
 
 <p align="center">
-  Open-source Windows desktop screenshot tool.
+  面向 Windows 的开源桌面截图工具。
 </p>
 
 <p align="center">
-  Maintained by <strong>yamiyu</strong>
+  维护方：<strong>yamiyu</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/aiaimimi0920/Hook/actions/workflows/build-hook-exe.yml"><img src="https://github.com/aiaimimi0920/Hook/actions/workflows/build-hook-exe.yml/badge.svg" alt="Build Hook EXE" /></a>
+  <a href="https://github.com/aiaimimi0920/Hook/actions/workflows/release-hook-tag.yml"><img src="https://github.com/aiaimimi0920/Hook/actions/workflows/release-hook-tag.yml/badge.svg" alt="Release Hook Tag" /></a>
   <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Windows" />
   <img src="https://img.shields.io/badge/Tauri-v2-24C8DB" alt="Tauri v2" />
   <img src="https://img.shields.io/badge/SolidJS-TypeScript-2C4F7C" alt="SolidJS TypeScript" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F4EA2A" alt="MIT License" /></a>
 </p>
 
-Hook works well for quick capture and light editing.
+Hook 适合用于随手截图与简单编辑。
 
-## Table of contents
+## 目录
 
-- [Why Hook](#why-hook)
-- [Core capabilities](#core-capabilities)
-- [Release packages](#release-packages)
-- [Trust and policies](#trust-and-policies)
-- [Contributing](#contributing)
-- [License](#license)
+- [为什么是 Hook](#为什么是-hook)
+- [核心能力](#核心能力)
+- [发布包选择](#发布包选择)
+- [参与贡献](#参与贡献)
+- [许可证](#许可证)
 
-## Why Hook
+## 为什么是 Hook
 
-Hook focuses on the gap between a screenshot utility and a heavier design tool:
+Hook 关注的是截图工具和更重型设计工具之间的那段空白：
 
-- you can keep editing and organizing after capture
-- stickers, annotations, and reference images can stay in the same desktop workspace
-- the recycle bin and reference list make assets reusable
-- the node canvas and local capability bridges make it more than an image collector
+- 截图之后还可以继续直接编辑和组织
+- 贴图、标注、引用图可以沉淀在同一个桌面工作区
+- 回收站和参考列表让素材可反复利用
+- 节点画布和本地能力桥接让它不只是“图片收集器”
 
-## Core capabilities
+## 核心能力
 
-- **Capture and long capture**
-  - region capture
-  - long-capture sessions
-  - file-backed capture payloads for desktop performance
-- **Sticker and annotation workspace**
-  - crop, border, opacity, raster effects, color pick and copy
-  - text, numbering, shapes, brush, highlighter
-  - recycle bin and reference list
-- **Desktop workflow canvas**
-  - node graph, links, grouped parameters, sync entry points
-  - editing-oriented top toolbar and context menu
-  - local startup helpers and single-instance control
+- **截图与长截图**
+  - 区域截图
+  - 长截图会话
+  - 面向桌面性能的文件型截图载荷
+- **贴图与标注工作区**
+  - 裁剪、边框、透明度、光栅效果、取色复制
+  - 文本、编号、图形、画笔、高亮
+  - 回收站与参考列表
+- **桌面工作流画布**
+  - 节点图、连线、分组参数、同步入口
+  - 面向编辑的顶部工具栏与上下文菜单
+  - 本地启动辅助与单实例控制
 
-## Release packages
+## 发布包选择
 
-- **Portable (Current recommended package)**
-  - unzip and run
-  - current public release package for quick trials and ordinary daily capture
-  - if you hit Windows foreground/elevation limits in scenarios involving
-    special windows such as **Task Manager**, try launching Hook as
-    **administrator** as the current workaround
-- **Installer (Planned for future signed releases)**
-  - Hook keeps the signed UIAccess-oriented installer path in development
-  - it will become a public release package again after the project has real
-    signing material wired into the release pipeline
+- **便携版（当前推荐）**
+  - 解压即用
+  - 当前公开发布的主包体，适合快速试用和普通日常截图
+  - 如果你在 **任务管理器** 等特殊前台窗口场景下碰到交互限制，当前的过渡方案是以**管理员身份**启动
+- **安装版（未来签名版本计划重新公开提供）**
+  - Hook 仍在继续维护签名后的 UIAccess 安装路径
+  - 等项目接入真实签名材料后，会再把它恢复为公开发布包
 
-See [`UIACCESS_DISTRIBUTION.md`](UIACCESS_DISTRIBUTION.md) for the full explanation.
+## 参与贡献
 
-## Trust and policies
+欢迎提交 issue、构建反馈和聚焦型改进建议：
 
-- [Code Signing Policy](docs/CODE_SIGNING_POLICY.md)
-- [Privacy Policy](docs/PRIVACY_POLICY.md)
-- [UIAccess Distribution Notes](UIACCESS_DISTRIBUTION.md)
+- Issues：<https://github.com/aiaimimi0920/Hook/issues>
+- 本地校验：运行 `npm run verify:local`（typecheck + 前端构建）。打包由 GitHub Actions 自动完成。
+- 公共包标识符：`com.yamiyu.hook`。为了兼容旧本地数据目录，Hook 仍会回退读取 `io.github.aiaimimi0920.hook` 和 `com.vmjcv.hook`。
 
-## Contributing
-
-Issues, build feedback, and focused improvement suggestions are welcome:
-
-- Issues: <https://github.com/aiaimimi0920/Hook/issues>
-- Local verification: run `npm run verify:local` before packaging or submitting changes.
-- Public bundle identifier: `com.yamiyu.hook`. Hook keeps compatibility fallbacks for older local data directories created under `io.github.aiaimimi0920.hook` and `com.vmjcv.hook`.
-
-## License
+## 许可证
 
 MIT
 
-## Friendly Links
+## 友情链接
 
-- [linux.do](https://linux.do/) Thanks to the promotion from the linux.do community
+- [linux.do](https://linux.do/) 感谢 linux.do 社区的推广

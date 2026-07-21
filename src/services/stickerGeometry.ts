@@ -888,10 +888,6 @@ export const traceRoundedPolygonPath = (
     context.closePath();
 };
 
-// Convenience: vertices as an SVG `points` attribute string.
-export const toSvgPoints = (points: StickerPoint[]): string =>
-    points.map((p) => `${p.x},${p.y}`).join(" ");
-
 export const getAnnotationBounds = (annotation: StickerAnnotation): AnnotationBounds => {
     switch (annotation.type) {
         case "rect":

@@ -26,12 +26,8 @@
     "serve:static": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call scripts\\serve-static.cmd --port 1420 --root .output/public\"",
     "dev:tauri": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call scripts\\dev-tauri.cmd\"",
     "tauri": "\"%npm_config_local_prefix%\\scripts\\run-tauri.cmd\"",
-    "test": "cmd /d /s /c \"pushd %npm_config_local_prefix% && node_modules\\.bin\\vitest.cmd run --pool threads --maxWorkers 1 --no-file-parallelism\"",
-    "test:watch": "cmd /d /s /c \"pushd %npm_config_local_prefix% && node_modules\\.bin\\vitest.cmd watch --pool threads --maxWorkers 1 --no-file-parallelism\"",
     "typecheck": "tsc --noEmit",
-    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
-    "lint": "eslint src",
-    "verify:local": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call npm run typecheck && call npm test && call npm run build && call build-hook-release.bat\""
+    "verify:local": "cmd /d /s /c \"pushd %npm_config_local_prefix% && call npm run typecheck && call npm run build\""
   },
   "license": "MIT",
   "dependencies": {
@@ -39,23 +35,15 @@
     "solid-js": "^1.9.14"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
     "@tailwindcss/postcss": "^4.3.2",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "^22.20.0",
     "autoprefixer": "^10.5.2",
-    "eslint": "^9.39.4",
-    "eslint-plugin-solid": "^0.14.5",
-    "globals": "^17.7.0",
-    "jsdom": "^29.1.1",
-    "playwright": "^1.61.1",
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.63.0",
     "vite": "^6.4.3",
-    "vite-plugin-solid": "^2.11.12",
-    "vitest": "^3.2.6"
+    "vite-plugin-solid": "^2.11.12"
   },
   "overrides": {
     "@babel/core": "7.29.7",

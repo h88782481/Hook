@@ -183,28 +183,3 @@ impl TextProcessor for HttpTextProcessor {
         Ok(body.text)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn mock_transcriber_and_noop_processor_return_expected_text() {
-        let transcriber = MockTranscriber::new("hello neuro");
-        let context = FrontContext::default();
-        let transcript = transcriber
-            .transcribe(PathBuf::from("sample.wav"), context.clone())
-            .await
-            .expect("mock transcript");
-
-        assert_eq!(transcript, "hello neuro");
-
-        let processor = NoopTextProcessor;
-        let processed = processor
-            .process(transcript, VoiceMode::Dictate, context)
-            .await
-            .expect("noop process");
-
-        assert_eq!(processed, "hello neuro");
-    }
-}

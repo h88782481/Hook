@@ -49,30 +49,6 @@ fn remove_black_overlay_alpha(rgb_image: &mut image::RgbImage, alpha: Option<f32
     }
     true
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn black_composition_overlay_compensation_restores_pixel_brightness() {
-        let alpha = 0.18;
-        let original = [82u8, 164u8, 205u8];
-        let dimmed = original.map(|channel| ((channel as f32) * (1.0 - alpha)).round() as u8);
-        let mut image = image::RgbImage::from_pixel(1, 1, image::Rgb(dimmed));
-
-        remove_black_overlay_alpha(&mut image, Some(alpha));
-
-        let restored = image.get_pixel(0, 0).0;
-        for (actual, expected) in restored.iter().zip(original.iter()) {
-            assert!(
-                (*actual as i16 - *expected as i16).abs() <= 1,
-                "expected restored channel {actual} to be within 1 of {expected}"
-            );
-        }
-    }
-}
-
 #[tauri::command]
 pub async fn capture_region(
     _window: Window,

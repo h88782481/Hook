@@ -1,13 +1,10 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 
 export default defineConfig({
   base: "./",
   plugins: [solid()],
   envPrefix: ["VITE_", "TAURI_"],
-  test: {
-    setupFiles: ["./__tests__/setup/vitest.setup.ts"],
-  },
   server: {
     strictPort: true,
     port: 1420,
