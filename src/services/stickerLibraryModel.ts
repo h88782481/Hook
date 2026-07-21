@@ -1,4 +1,4 @@
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 import {
     type FrozenStickerEntry,
     instantiateStickerFromFrozenSnapshot,
@@ -13,7 +13,7 @@ export const restoreRecycleBinEntry = (
     entries: FrozenStickerEntry[],
     entryId: string,
     mouse: { x: number; y: number },
-): { entries: FrozenStickerEntry[]; restored: Unit } => {
+): { entries: FrozenStickerEntry[]; restored: Sticker } => {
     const match = entries.find((entry) => entry.entryId === entryId);
     if (!match) {
         throw new Error(`Recycle entry not found: ${entryId}`);
@@ -29,7 +29,7 @@ export const copyReferenceEntry = (
     entries: FrozenStickerEntry[],
     entryId: string,
     mouse: { x: number; y: number },
-): Unit => {
+): Sticker => {
     const match = entries.find((entry) => entry.entryId === entryId);
     if (!match) {
         throw new Error(`Reference entry not found: ${entryId}`);

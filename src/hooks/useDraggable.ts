@@ -4,7 +4,7 @@ import {
     selectedUnitIds,
     multiDragPositions, setMultiDragPositions
 } from "../store/uiStore";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 import { checkDragModifier } from "./useShortcuts";
 
@@ -17,7 +17,7 @@ export function useDraggable() {
     const [dragOffset, setDragOffset] = createSignal({ x: 0, y: 0 });
 
     const startDrag = (e: MouseEvent, id: string, onClick?: (id: string) => void) => {
-        const unit = graphStore.units.find(u => u.id === id);
+        const unit = stickerStore.stickers.find(u => u.id === id);
         if (unit) {
              setDragOffset({ x: e.clientX - unit.x, y: e.clientY - unit.y });
              setDraggingStickerId(id);
@@ -37,7 +37,7 @@ export function useDraggable() {
              const initialPositions: Record<string, {x: number, y: number}> = {};
 
              targetIds.forEach(tid => {
-                 const u = graphStore.units.find(u => u.id === tid);
+                 const u = stickerStore.stickers.find(u => u.id === tid);
                  if (u) {
                      dragStartPositions[tid] = { x: u.x, y: u.y };
                      initialPositions[tid] = { x: u.x, y: u.y };
@@ -73,7 +73,7 @@ export function useDraggable() {
         const primaryStart = dragStartPositions[primaryId];
         if (!primaryStart) return; // Should not happen
 
-        // --- Snapping Logic (Applied to Primary Unit) ---
+        // --- Snapping Logic (Applied to Primary Sticker) ---
         // For simplicity, snapping calculates the *Final Position* of the Primary Unit.
         // We then derive the Delta from that snapped position.
 
@@ -84,10 +84,10 @@ export function useDraggable() {
                if (checkDragModifier(e, 'cascade')) {
                     const mx = e.clientX;
                     const my = e.clientY;
-                    const allUnits = graphStore.units;
+                    const allStickers = stickerStore.stickers;
 
-                    for (let i = allUnits.length - 1; i >= 0; i--) {
-                        const target = allUnits[i];
+                    for (let i = allStickers.length - 1; i >= 0; i--) {
+                        const target = allStickers[i];
                         if (dragStartPositions[target.id]) continue; // Skip self/selection
 
                         if (mx >= target.x && mx <= target.x + target.w &&
@@ -101,9 +101,9 @@ export function useDraggable() {
                }
                // ALT: Adjacency
                else if (checkDragModifier(e, 'alignment')) {
-                   const draggedUnit = graphStore.units.find(s => s.id === primaryId);
-                   if (draggedUnit) {
-                       const targetUnits = graphStore.units.filter(s => !dragStartPositions[s.id]);
+                   const draggedSticker = stickerStore.stickers.find(s => s.id === primaryId);
+                   if (draggedSticker) {
+                       const targetUnits = stickerStore.stickers.filter(s => !dragStartPositions[s.id]);
                        let snappedX = false;
                        let snappedY = false;
 
@@ -113,8 +113,8 @@ export function useDraggable() {
                                    dx = target.x + target.w;
                                    snappedX = true;
                                }
-                               else if (Math.abs((dx + draggedUnit.w) - target.x) < threshold) {
-                                   dx = target.x - draggedUnit.w;
+                               else if (Math.abs((dx + draggedSticker.w) - target.x) < threshold) {
+                                   dx = target.x - draggedSticker.w;
                                    snappedX = true;
                                }
                            }
@@ -123,8 +123,8 @@ export function useDraggable() {
                                    dy = target.y + target.h;
                                    snappedY = true;
                                }
-                               else if (Math.abs((dy + draggedUnit.h) - target.y) < threshold) {
-                                   dy = target.y - draggedUnit.h;
+                               else if (Math.abs((dy + draggedSticker.h) - target.y) < threshold) {
+                                   dy = target.y - draggedSticker.h;
                                    snappedY = true;
                                }
                            }
@@ -172,10 +172,10 @@ export function useDraggable() {
 
             for (const uid in positions) {
                 const final = positions[uid];
-                const original = graphStore.units.find(u => u.id === uid);
+                const original = stickerStore.stickers.find(u => u.id === uid);
 
                 if (original && (original.x !== final.x || original.y !== final.y)) {
-                    graphStore.actions.updateUnit(uid, { x: final.x, y: final.y });
+                    stickerStore.actions.updateSticker(uid, { x: final.x, y: final.y });
                     changed = true;
                 }
             }

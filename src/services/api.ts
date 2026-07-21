@@ -2,14 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { BootProfile, defaultBootProfile, normalizeBootProfile } from "./bootProfile";
 import type { FrozenStickerEntry } from "./stickerSnapshot";
 import type { PinRect } from "../types/pinRect";
-import type { SessionSticker, SessionLink, SessionGroup } from "../types/unit";
+import type { SessionSticker, SessionLink, SessionGroup } from "../types/stickerModel";
 import type {
     LongCaptureAxis,
     LongCaptureDirection,
     LongCaptureOverlapAnalysis,
 } from "./captureState";
-
-export type { PinRect };
 
 export interface CaptureResponse {
     base64: string;
@@ -48,16 +46,13 @@ export interface ToolSettingsData {
 }
 
 const warnedMethods = new Set<string>();
-const BROWSER_SESSION_STORAGE_KEY = "hook_browser_preview_session";
-const BROWSER_SESSION_DATA_URL_THRESHOLD = 8 * 1024;
 
 const warnBrowserFallback = (method: string) => {
     if (warnedMethods.has(method)) return;
     warnedMethods.add(method);
-    console.warn(`[API] ${method} skipped: Tauri runtime unavailable (browser preview mode)`);
+    console.warn(`[API] ${method} skipped: Tauri runtime unavailable (browser UI preview)`);
 };
 
-// Type guard for Tauri runtime availability
 interface WindowWithTauri extends Window {
     __TAURI_INTERNALS__?: unknown;
 }
@@ -65,6 +60,15 @@ interface WindowWithTauri extends Window {
 export const isTauriRuntimeAvailable = () =>
     typeof window !== "undefined" && typeof (window as WindowWithTauri).__TAURI_INTERNALS__ !== "undefined";
 
+const emptySession = (): SessionData => ({
+    stickers: [],
+    links: [],
+    groups: [],
+    recycleBin: [],
+    referenceLibrary: [],
+});
+
+/** Invoke a Tauri command, or run a no-op fallback when only the Vite UI is open. */
 const safeInvoke = async <T>(
     command: string,
     args: Record<string, unknown> | undefined,
@@ -84,94 +88,6 @@ const safeInvoke = async <T>(
     return invoke(command, args);
 };
 
-const loadBrowserPreviewSession = (): SessionData => {
-    try {
-        const raw = window.localStorage.getItem(BROWSER_SESSION_STORAGE_KEY);
-        if (!raw) {
-            return { stickers: [], links: [], groups: [], recycleBin: [], referenceLibrary: [] };
-        }
-        const parsed = JSON.parse(raw);
-        if (
-            Array.isArray(parsed?.stickers) &&
-            Array.isArray(parsed?.links) &&
-            Array.isArray(parsed?.groups) &&
-            Array.isArray(parsed?.recycleBin) &&
-            Array.isArray(parsed?.referenceLibrary)
-        ) {
-            return {
-                stickers: parsed.stickers,
-                links: parsed.links,
-                groups: parsed.groups,
-                recycleBin: parsed.recycleBin,
-                referenceLibrary: parsed.referenceLibrary,
-            } as SessionData;
-        }
-    } catch (error) {
-        console.warn("[API] Failed to parse browser preview session:", error);
-    }
-
-    return { stickers: [], links: [], groups: [], recycleBin: [], referenceLibrary: [] };
-};
-
-const trimBrowserSessionValue = (
-    value: string | null | undefined,
-): string | null | undefined => {
-    if (typeof value === "string" && value.startsWith("data:") && value.length > BROWSER_SESSION_DATA_URL_THRESHOLD) {
-        return null;
-    }
-    return value;
-};
-
-const compactBrowserPreviewSession = (
-    stickers: SessionSticker[],
-    links: SessionLink[],
-    groups: SessionGroup[],
-    recycleBin: FrozenStickerEntry[],
-    referenceLibrary: FrozenStickerEntry[],
-): SessionData => ({
-    stickers: stickers.map((sticker) => ({
-        ...sticker,
-        src: trimBrowserSessionValue(sticker?.src),
-        previewSrc: trimBrowserSessionValue(sticker?.previewSrc),
-        rasterizedAnnotationLayerSrc: trimBrowserSessionValue(sticker?.rasterizedAnnotationLayerSrc),
-    })),
-    links,
-    groups,
-    recycleBin,
-    referenceLibrary,
-});
-
-const saveBrowserPreviewSession = (
-    stickers: SessionSticker[],
-    links: SessionLink[],
-    groups: SessionGroup[],
-    recycleBin: FrozenStickerEntry[],
-    referenceLibrary: FrozenStickerEntry[],
-) => {
-    try {
-        window.localStorage.setItem(
-            BROWSER_SESSION_STORAGE_KEY,
-            JSON.stringify({ stickers, links, groups, recycleBin, referenceLibrary }),
-        );
-    } catch (error) {
-        try {
-            const compact = compactBrowserPreviewSession(
-                stickers,
-                links,
-                groups,
-                recycleBin,
-                referenceLibrary,
-            );
-            window.localStorage.setItem(
-                BROWSER_SESSION_STORAGE_KEY,
-                JSON.stringify(compact),
-            );
-        } catch (compactError) {
-            console.warn("[API] Failed to save browser preview session:", compactError);
-        }
-    }
-};
-
 /**
  * Typed API Layer for Backend Communication
  * All raw `invoke` calls should be routed through here.
@@ -182,7 +98,7 @@ export const api = {
 
     // --- Session Management ---
     loadSession: (): Promise<SessionData> =>
-        safeInvoke("load_session", undefined, loadBrowserPreviewSession, false),
+        safeInvoke("load_session", undefined, emptySession, false),
 
     saveSession: (
         stickers: SessionSticker[],
@@ -194,7 +110,7 @@ export const api = {
         safeInvoke(
             "save_session",
             { stickers, links, groups, recycleBin, referenceLibrary },
-            () => saveBrowserPreviewSession(stickers, links, groups, recycleBin, referenceLibrary),
+            () => undefined,
             false,
         ),
 
@@ -375,5 +291,5 @@ export const api = {
         safeInvoke("read_clipboard_image", undefined, () => null, false),
 
     copyStickerImageToSmartClipboard: (base64: string): Promise<string> =>
-        safeInvoke("copy_sticker_image_to_smart_clipboard", { base64Image: base64 }, () => "browser-preview", false),
+        safeInvoke("copy_sticker_image_to_smart_clipboard", { base64Image: base64 }, () => "ui-preview", false),
 };

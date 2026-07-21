@@ -258,5 +258,3 @@ export const renderStickerEffectOverlay = (params: StickerEffectOverlayParams) =
     );
 };
 
-// Kept for any callers that still want the raw blur fill constant.
-export { BLUR_EFFECT_OVERLAY_FILL };

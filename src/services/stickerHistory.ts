@@ -1,14 +1,14 @@
 import { unwrap } from "solid-js/store";
 import { createEmptyAnnotationState, createEmptyImageEditState } from "./stickerEditing";
 import type { StickerAnnotationState, StickerImageEditState } from "../types/stickerEditing";
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 
 export interface StickerEditSnapshot {
     unitRect: { x: number; y: number; w: number; h: number };
     annotationState: StickerAnnotationState;
     imageEditState: StickerImageEditState;
     imageData?: Pick<
-        Unit["data"],
+        Sticker["data"],
         "src" | "previewSrc" | "filePath" | "rasterizedAnnotationLayerSrc"
     >;
 }
@@ -31,7 +31,7 @@ export const createEmptyStickerHistory = (): StickerEditHistory => ({
 });
 
 export const captureStickerEditSnapshot = (
-    unit: Unit,
+    unit: Sticker,
     options?: CaptureStickerEditSnapshotOptions,
 ): StickerEditSnapshot => {
     const snapshot: StickerEditSnapshot = {

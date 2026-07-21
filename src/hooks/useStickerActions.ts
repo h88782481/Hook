@@ -1,32 +1,32 @@
 import { api } from "../services/api";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 import { logger } from "../services/logger";
 import { setDraggingStickerId, setMultiDragPositions } from "../store/uiStore";
 import { computeRestoredMinifiedStickerWindow } from "../services/stickerEditing";
-import { resolveUnitImageFromGraph } from "../services/graphImageResolution";
+import { resolveStickerImage } from "../services/stickerImageResolution";
 
-export function useUnitActions() {
-    const propagateFromUnit = (fromUnitId: string) => {
-        const outLinks = graphStore.links.filter((l) => l.fromUnitId === fromUnitId);
+export function useStickerActions() {
+    const propagateFromSticker = (fromStickerId: string) => {
+        const outLinks = stickerStore.links.filter((l) => l.fromUnitId === fromStickerId);
 
         outLinks.forEach((l) => {
             const childId = l.toUnitId;
-            const childUnit = graphStore.units.find((u) => u.id === childId);
-            if (!childUnit) return;
+            const childSticker = stickerStore.stickers.find((u) => u.id === childId);
+            if (!childSticker) return;
 
-            const inputValue = resolveUnitImageFromGraph({
-                units: graphStore.units,
-                links: graphStore.links,
-                unitId: fromUnitId,
+            const inputValue = resolveStickerImage({
+                stickers: stickerStore.stickers,
+                links: stickerStore.links,
+                stickerId: fromStickerId,
             });
 
             if (inputValue) {
                 logger.debug(`[Propagation] Updating Sticker ${childId} with new input`);
-                graphStore.actions.updateUnitData(childId, {
+                stickerStore.actions.updateStickerData(childId, {
                     previewSrc: inputValue,
                 });
-                queueMicrotask(() => propagateFromUnit(childId));
+                queueMicrotask(() => propagateFromSticker(childId));
             }
         });
     };
@@ -34,7 +34,7 @@ export function useUnitActions() {
     const handleDoubleClick = (e: MouseEvent, id: string) => {
         e.stopPropagation();
 
-        const u = graphStore.units.find((unit) => unit.id === id);
+        const u = stickerStore.stickers.find((sticker) => sticker.id === id);
         if (!u) return;
 
         if (u.data.minified) {
@@ -47,7 +47,7 @@ export function useUnitActions() {
                     saved,
                     u.data.cropOffset,
                 );
-                graphStore.actions.updateStickerWindowState(
+                stickerStore.actions.updateStickerWindowState(
                     id,
                     {
                         x: restored.x,
@@ -60,7 +60,7 @@ export function useUnitActions() {
                     },
                 );
             } else {
-                graphStore.actions.updateUnitData(id, { minified: false });
+                stickerStore.actions.updateStickerData(id, { minified: false });
             }
             setTimeout(() => {
                 syncService.updateBackendRects();
@@ -89,7 +89,7 @@ export function useUnitActions() {
             `unit=${id} relX=${relX.toFixed(4)} relY=${relY.toFixed(4)} rectW=${rect.width.toFixed(2)} rectH=${rect.height.toFixed(2)} offsetX=${offsetX.toFixed(2)} offsetY=${offsetY.toFixed(2)} frameX=${newX.toFixed(2)} frameY=${newY.toFixed(2)}`,
         );
 
-        graphStore.actions.updateStickerWindowState(
+        stickerStore.actions.updateStickerWindowState(
             id,
             {
                 x: newX,
@@ -110,5 +110,5 @@ export function useUnitActions() {
         }, 100);
     };
 
-    return { propagateFromUnit, handleDoubleClick };
+    return { propagateFromSticker, handleDoubleClick };
 }

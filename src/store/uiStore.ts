@@ -143,7 +143,7 @@ export const [hoveringLink, setHoveringLink] = createSignal<{sourceUnitId: strin
 export const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
 
 // Unit-Specific UI State (e.g. Panels open/close)
-// Key: Unit ID
+// Key: Sticker ID
 export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showSidePanel: boolean }>>({});
 
 

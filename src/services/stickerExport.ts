@@ -1,4 +1,4 @@
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 import type {
     StickerAnnotation,
     StickerEffectAnnotation,
@@ -98,7 +98,7 @@ const drawAnnotation = (
     context: CanvasRenderingContext2D,
     annotation: StickerAnnotation,
     sourceImage: HTMLImageElement,
-    unit: Unit,
+    unit: Sticker,
 ) => {
     switch (annotation.type) {
         case "rect":
@@ -337,7 +337,7 @@ const drawAnnotationsWithHighlighterLayer = (
     context: CanvasRenderingContext2D,
     annotations: StickerAnnotation[],
     sourceImage: HTMLImageElement,
-    unit: Unit,
+    unit: Sticker,
     layerWidth: number,
     layerHeight: number,
 ) => {
@@ -383,7 +383,7 @@ const drawAnnotationsWithHighlighterLayer = (
 };
 
 export const renderStickerCompositeWithAnnotations = async (
-    unit: Unit,
+    unit: Sticker,
     annotationsOverride: StickerAnnotation[],
     options?: {
         includeRasterizedAnnotationLayer?: boolean;
@@ -484,7 +484,7 @@ export const renderStickerCompositeWithAnnotations = async (
     return canvas.toDataURL("image/png");
 };
 
-export const renderStickerComposite = async (unit: Unit): Promise<string> => {
+export const renderStickerComposite = async (unit: Sticker): Promise<string> => {
     const composite = await renderStickerCompositeWithAnnotations(
         unit,
         unit.data.annotationState?.elements || [],
@@ -498,7 +498,7 @@ export const renderStickerComposite = async (unit: Unit): Promise<string> => {
  * Otherwise returns the composite unchanged. Applied only at export time
  * (save/copy), never to the on-canvas unit.
  */
-const applyBeautify = async (compositeSrc: string, unit: Unit): Promise<string> => {
+const applyBeautify = async (compositeSrc: string, unit: Sticker): Promise<string> => {
     const beautify = unit.data.imageEditState?.beautify;
     if (!beautify?.enabled) return compositeSrc;
 
@@ -546,13 +546,13 @@ const applyBeautify = async (compositeSrc: string, unit: Unit): Promise<string> 
     return canvas.toDataURL("image/png");
 };
 
-export const renderStickerBaseLayer = async (unit: Unit): Promise<string> =>
+export const renderStickerBaseLayer = async (unit: Sticker): Promise<string> =>
     renderStickerCompositeWithAnnotations(unit, [], {
         includeRasterizedAnnotationLayer: false,
     });
 
 export const renderStickerTransparentAnnotationLayer = async (
-    unit: Unit,
+    unit: Sticker,
     annotationIds: string[],
 ): Promise<string> => {
     const baseSrc =

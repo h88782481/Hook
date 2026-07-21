@@ -1,11 +1,11 @@
 import { Component, Show, createSignal } from "solid-js";
-import { Unit } from "../types/unit";
-import { UnitActionsMenu } from "./UnitActionsMenu";
-import { graphStore } from "../store/graphStore";
+import { Sticker } from "../types/stickerModel";
+import { StickerActionsMenu } from "./StickerActionsMenu";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 
 interface StickerSidePanelProps {
-  unit: Unit;
+  unit: Sticker;
 }
 
 export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
@@ -15,7 +15,7 @@ export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
       props.unit.data.stickerEditPropagation?.acceptUpstream ?? true;
 
   const setAcceptsUpstreamStickerEditPropagation = (acceptUpstream: boolean) => {
-      graphStore.actions.updateUnitData(props.unit.id, {
+      stickerStore.actions.updateStickerData(props.unit.id, {
           stickerEditPropagation: {
               ...props.unit.data.stickerEditPropagation,
               acceptUpstream,
@@ -26,8 +26,8 @@ export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
 
   return (
     <div class="hook-terminal-shell absolute left-full top-0 ml-2 z-20 flex w-[220px] flex-col overflow-hidden">
-      <UnitActionsMenu
-        unitId={props.unit.id}
+      <StickerActionsMenu
+        stickerId={props.unit.id}
         expanded={expanded()}
         onToggleExpand={() => setExpanded(!expanded())}
       />

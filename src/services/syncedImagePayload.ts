@@ -1,8 +1,8 @@
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 
-type ImagePayloadUnit = Pick<Unit, "data">;
+type ImagePayloadSticker = Pick<Sticker, "data">;
 
-export const normalizePreviewSrc = (unit: ImagePayloadUnit) => {
+export const normalizePreviewSrc = (unit: ImagePayloadSticker) => {
     const previewSrc = unit.data.previewSrc;
     if (!previewSrc || previewSrc === unit.data.src) {
         return undefined;

@@ -2,7 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Comp
 import { Portal } from "solid-js/web";
 
 import { ColorPicker } from "./ColorPicker";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import {
     getResetColorForSlot,
     getShapeFillColorKey,
@@ -345,7 +345,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const availableFontFamilies = createMemo(() => mergeStickerFontFamilies(installedStickerFonts()));
     const [isLoadingInstalledFonts, setIsLoadingInstalledFonts] = createSignal(false);
     const [hasLoadedInstalledFonts, setHasLoadedInstalledFonts] = createSignal(false);
-    const unit = createMemo(() => graphStore.units.find((item) => item.id === props.unitId));
+    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
     const selectedExistingTextAnnotation = createMemo(() => {
         const annotationId = selectedStickerAnnotationId();
         if (!annotationId || selectedStickerAnnotationIds.length !== 1) return undefined;
@@ -407,31 +407,31 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const getEditableFrameCornerRadius = () => Math.max(0, Math.round(unit()?.data.imageEditState?.cornerRadius || 0));
 
     const pushCurrentStickerHistory = (includeImageData = false) => {
-        const currentUnit = unit();
-        if (!currentUnit) return false;
+        const currentSticker = unit();
+        if (!currentSticker) return false;
         uiActions.pushStickerHistory(
             props.unitId,
-            captureStickerEditSnapshot(currentUnit, includeImageData ? { includeImageData: true } : undefined),
+            captureStickerEditSnapshot(currentSticker, includeImageData ? { includeImageData: true } : undefined),
         );
         return true;
     };
 
     const applyCropFlip = async (axis: "x" | "y") => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         if (!pushCurrentStickerHistory(true)) return;
 
-        const current = currentUnit.data.imageEditState || { contentEraseStrokes: [] };
-        const flipped = flipStickerEditDataForFrame(currentUnit.data, currentUnit, axis);
-        const rasterizedAnnotationLayerSrc = currentUnit.data.rasterizedAnnotationLayerSrc
+        const current = currentSticker.data.imageEditState || { contentEraseStrokes: [] };
+        const flipped = flipStickerEditDataForFrame(currentSticker.data, currentSticker, axis);
+        const rasterizedAnnotationLayerSrc = currentSticker.data.rasterizedAnnotationLayerSrc
             ? await flipRasterizedAnnotationLayer({
-                  rasterizedAnnotationLayerSrc: currentUnit.data.rasterizedAnnotationLayerSrc,
-                  size: { w: currentUnit.w, h: currentUnit.h },
+                  rasterizedAnnotationLayerSrc: currentSticker.data.rasterizedAnnotationLayerSrc,
+                  size: { w: currentSticker.w, h: currentSticker.h },
                   axis,
               })
             : undefined;
 
-        graphStore.actions.updateUnitData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.unitId, {
             ...flipped,
             previewSrc: undefined,
             rasterizedAnnotationLayerSrc,
@@ -445,18 +445,18 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const resetCrop = () => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         if (!pushCurrentStickerHistory()) return;
 
         const restored = computeRestoredCropFrame(
-            { x: currentUnit.x, y: currentUnit.y, w: currentUnit.w, h: currentUnit.h },
-            currentUnit.data.imageEditState,
+            { x: currentSticker.x, y: currentSticker.y, w: currentSticker.w, h: currentSticker.h },
+            currentSticker.data.imageEditState,
         );
-        graphStore.actions.updateUnit(props.unitId, restored);
-        graphStore.actions.updateUnitData(props.unitId, {
+        stickerStore.actions.updateSticker(props.unitId, restored);
+        stickerStore.actions.updateStickerData(props.unitId, {
             imageEditState: {
-                ...(currentUnit.data.imageEditState || { contentEraseStrokes: [] }),
+                ...(currentSticker.data.imageEditState || { contentEraseStrokes: [] }),
                 cropRect: undefined,
             },
         });
@@ -478,36 +478,36 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const updateStickerOpacityValue = (next: number) => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         if (!pushCurrentStickerHistory()) return;
         const clamped = clamp(next, 0, 1);
-        currentUnit.data.minified
-            ? graphStore.actions.updateUnitData(props.unitId, { opacityMini: clamped })
-            : graphStore.actions.updateUnitData(props.unitId, { opacityNormal: clamped });
+        currentSticker.data.minified
+            ? stickerStore.actions.updateStickerData(props.unitId, { opacityMini: clamped })
+            : stickerStore.actions.updateStickerData(props.unitId, { opacityNormal: clamped });
         void syncService.scheduleSessionSync();
     };
 
     const scaleStickerCanvas = (factor: number) => {
-        const currentUnit = unit();
-        if (!currentUnit || !Number.isFinite(factor) || factor <= 0) return;
+        const currentSticker = unit();
+        if (!currentSticker || !Number.isFinite(factor) || factor <= 0) return;
         if (!pushCurrentStickerHistory()) return;
-        graphStore.actions.resizeStickerFrame(props.unitId, scaleStickerFrame({
-            x: currentUnit.x,
-            y: currentUnit.y,
-            w: currentUnit.w,
-            h: currentUnit.h,
+        stickerStore.actions.resizeStickerFrame(props.unitId, scaleStickerFrame({
+            x: currentSticker.x,
+            y: currentSticker.y,
+            w: currentSticker.w,
+            h: currentSticker.h,
         }, factor));
         void syncService.scheduleSessionSync();
     };
 
     const updateStickerFrameCornerRadiusValue = (next: number) => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         if (!pushCurrentStickerHistory()) return;
-        const current = currentUnit.data.imageEditState || { contentEraseStrokes: [] };
+        const current = currentSticker.data.imageEditState || { contentEraseStrokes: [] };
         const clamped = clamp(Math.round(next), 0, 128);
-        graphStore.actions.updateUnitData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.unitId, {
             imageEditState: {
                 ...current,
                 cornerRadius: clamped,
@@ -525,8 +525,8 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const commitCropCanvasWidthDraft = () => {
-        const currentUnit = unit();
-        if (!currentUnit) {
+        const currentSticker = unit();
+        if (!currentSticker) {
             setCropCanvasWidthDraft(null);
             return;
         }
@@ -534,7 +534,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         const nextWidth = parseCanvasStepperValue(cropCanvasWidthDraft(), fallback, 32, 8192);
         setCropCanvasWidthDraft(null);
         if (nextWidth === fallback) return;
-        scaleStickerCanvas(nextWidth / Math.max(currentUnit.w, 1));
+        scaleStickerCanvas(nextWidth / Math.max(currentSticker.w, 1));
     };
 
     const commitCropCornerRadiusDraft = () => {
@@ -546,11 +546,11 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const toggleCropBorder = () => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         if (!pushCurrentStickerHistory()) return;
-        const current = currentUnit.data.imageEditState || { contentEraseStrokes: [] };
-        graphStore.actions.updateUnitData(props.unitId, {
+        const current = currentSticker.data.imageEditState || { contentEraseStrokes: [] };
+        stickerStore.actions.updateStickerData(props.unitId, {
             imageEditState: toggleStickerBorder(current, stickerColorState.activeColor),
         });
         void syncService.scheduleSessionSync();
@@ -561,12 +561,12 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (!trimmed) return;
 
         const selectedAnnotation = selectedExistingTextAnnotation();
-        const currentUnit = unit();
-        const currentState = currentUnit?.data.annotationState;
+        const currentSticker = unit();
+        const currentState = currentSticker?.data.annotationState;
         if (selectedAnnotation?.type !== annotationType || !currentState) return;
         if (!pushCurrentStickerHistory()) return;
 
-        graphStore.actions.updateUnitData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.unitId, {
             annotationState: updateTextAnnotationFontFamilyById(currentState, selectedAnnotation.id, trimmed),
         });
         void syncService.scheduleSessionSync();
@@ -574,12 +574,12 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const updateSelectedTextAnnotationStyle = (updater: (annotation: StickerTextAnnotation) => StickerTextAnnotation) => {
         const selectedAnnotation = selectedExistingTextAnnotation();
-        const currentUnit = unit();
-        const currentState = currentUnit?.data.annotationState;
+        const currentSticker = unit();
+        const currentState = currentSticker?.data.annotationState;
         if (!selectedAnnotation || !currentState) return;
         if (!pushCurrentStickerHistory()) return;
 
-        graphStore.actions.updateUnitData(props.unitId, {
+        stickerStore.actions.updateStickerData(props.unitId, {
             annotationState: {
                 ...currentState,
                 elements: currentState.elements.map((annotation) =>

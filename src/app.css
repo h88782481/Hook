@@ -360,7 +360,7 @@ main {
   color: var(--theme-text-muted);
 }
 
-/* --- UnitView Styles --- */
+/* --- StickerView Styles --- */
 
 .unit-container {
     user-select: none;

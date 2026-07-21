@@ -1,5 +1,6 @@
 import type { ScreenColorSample } from "../services/api";
 import { isTransparentStickerColor } from "../services/stickerEditing";
+import { pointToSegmentDistance } from "../services/stickerGeometry";
 import type { StickerPoint, StickerShapeAnnotation } from "../types/stickerEditing";
 
 export type TransformAxisMode = "xy" | "x" | "y";
@@ -22,22 +23,6 @@ const DEFAULT_TRANSFORM_GIZMO_AXIS_LENGTH = 44;
 const DEFAULT_TRANSFORM_GIZMO_HIT_PADDING = 8;
 const DEFAULT_TRANSFORM_GIZMO_CENTER_SIZE = 10;
 const DEFAULT_TRANSFORM_GIZMO_SCALE_HANDLE_SIZE = 12;
-
-const pointToSegmentDistance = (point: StickerPoint, start: StickerPoint, end: StickerPoint) => {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    if (dx === 0 && dy === 0) {
-        return Math.hypot(point.x - start.x, point.y - start.y);
-    }
-
-    const t = Math.max(
-        0,
-        Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)),
-    );
-    const projX = start.x + t * dx;
-    const projY = start.y + t * dy;
-    return Math.hypot(point.x - projX, point.y - projY);
-};
 
 const isPointInRect = (point: StickerPoint, rect: GizmoRect, padding = 0) =>
     point.x >= rect.x - padding &&

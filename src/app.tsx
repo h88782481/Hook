@@ -19,7 +19,7 @@ import { addRecycleBinEntry } from "./services/stickerLibraryModel";
 import { captureFrozenStickerSnapshot } from "./services/stickerSnapshot";
 
 // Stores & Services
-import { graphStore } from "./store/graphStore";
+import { stickerStore } from "./store/stickerStore";
 import {
     linkingState,
     setLinkingState,
@@ -43,7 +43,7 @@ import {
 
 
 import { syncService } from "./services/syncService";
-import { resolveUnitImageFromGraph } from "./services/graphImageResolution";
+import { resolveStickerImage } from "./services/stickerImageResolution";
 import type { BootProfile } from "./services/bootProfile";
 import { captureStickerEditSnapshot } from "./services/stickerHistory";
 import { removeAnnotationById } from "./services/stickerAnnotationMutations";
@@ -60,10 +60,10 @@ import { useDraggable } from "./hooks/useDraggable";
 import { useSelection } from "./hooks/useSelection";
 import { useShortcuts, checkDragModifier } from "./hooks/useShortcuts";
 import { useLinking } from "./hooks/useLinking";
-import { useUnitActions } from "./hooks/useUnitActions";
+import { useStickerActions } from "./hooks/useStickerActions";
 import { useClipboard } from "./hooks/useClipboard";
 import { useFileDrop } from "./hooks/useFileDrop";
-import type { Unit, Link } from "./types/unit";
+import type { Sticker, Link } from "./types/stickerModel";
 
 type OverlaySyntheticMousePayload = {
     x?: number;
@@ -93,13 +93,13 @@ export default function App() {
       cancelAutoLongCaptureSession,
       notifyAutoLongCaptureWheel,
   } = useSelection();
-  const { handleDoubleClick, propagateFromUnit } = useUnitActions();
+  const { handleDoubleClick, propagateFromSticker } = useStickerActions();
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
       onLinkCreated: (sourceId) => {
-          graphStore.actions.propagateStickerEditsFrom(sourceId);
+          stickerStore.actions.propagateStickerEditsFrom(sourceId);
           // Defer propagation to a microtask so it runs after the synchronous
           // store writes above settle, without the arbitrary 20ms delay.
-          queueMicrotask(() => propagateFromUnit(sourceId));
+          queueMicrotask(() => propagateFromSticker(sourceId));
       },
   });
   const { handlePaste, handleCopy, handleSave, createImageUnit } = useClipboard(); // Assuming I implement Copy later if needed
@@ -449,8 +449,8 @@ export default function App() {
           );
       }
       if (!stickerId) return;
-      const selectedUnit = graphStore.units.find((unit) => unit.id === stickerId);
-      if (!selectedUnit) return;
+      const selectedSticker = stickerStore.stickers.find((unit) => unit.id === stickerId);
+      if (!selectedSticker) return;
 
       if (activeStickerEditTargetId() === stickerId) {
           uiActions.hideStickerToolbar();
@@ -466,7 +466,7 @@ export default function App() {
               if (options.forceClickThrough) {
                   await api.setOverlayClickThrough(true);
               }
-              if (graphStore.units.length > 0) {
+              if (stickerStore.stickers.length > 0) {
                   await api.setMouseMonitorActive(true);
                   await syncService.updateBackendRects();
               }
@@ -477,7 +477,7 @@ export default function App() {
   const applyStickerHistorySnapshot = async (direction: "undo" | "redo") => {
       const id = selectedStickerId();
       if (!id) return;
-      const unit = graphStore.units.find((item) => item.id === id);
+      const unit = stickerStore.stickers.find((item) => item.id === id);
       if (!unit) return;
 
       const current = captureStickerEditSnapshot(unit, { includeImageData: true });
@@ -487,8 +487,8 @@ export default function App() {
               : uiActions.redoStickerHistory(id, current);
 
       if (!snapshot) return;
-      graphStore.actions.restoreStickerEditSnapshot(id, snapshot);
-      graphStore.actions.propagateStickerEditsFrom(id);
+      stickerStore.actions.restoreStickerEditSnapshot(id, snapshot);
+      stickerStore.actions.propagateStickerEditsFrom(id);
       await syncService.scheduleSessionSync();
   };
 
@@ -496,13 +496,13 @@ export default function App() {
       const annotationId = selectedStickerAnnotationId();
       const stickerId = selectedStickerId();
       if (annotationId && stickerId) {
-          const activeUnit = graphStore.units.find((unit) => unit.id === stickerId);
-          if (activeUnit?.data.annotationState) {
-              uiActions.pushStickerHistory(stickerId, captureStickerEditSnapshot(activeUnit));
-              graphStore.actions.updateStickerEditData(stickerId, {
-                  annotationState: removeAnnotationById(activeUnit.data.annotationState, annotationId),
+          const activeSticker = stickerStore.stickers.find((unit) => unit.id === stickerId);
+          if (activeSticker?.data.annotationState) {
+              uiActions.pushStickerHistory(stickerId, captureStickerEditSnapshot(activeSticker));
+              stickerStore.actions.updateStickerEditData(stickerId, {
+                  annotationState: removeAnnotationById(activeSticker.data.annotationState, annotationId),
               });
-              graphStore.actions.propagateStickerEditsFrom(stickerId);
+              stickerStore.actions.propagateStickerEditsFrom(stickerId);
               uiActions.setSelectedStickerAnnotation(null);
               void syncService.scheduleSessionSync();
               return;
@@ -518,20 +518,20 @@ export default function App() {
 
       if (ids.length > 0) {
           const recycleEntries = ids
-              .map((id) => graphStore.units.find((unit) => unit.id === id))
-              .filter((unit): unit is Unit => !!unit)
+              .map((id) => stickerStore.stickers.find((unit) => unit.id === id))
+              .filter((unit): unit is Sticker => !!unit)
               .map((unit) => captureFrozenStickerSnapshot(unit));
 
           if (recycleEntries.length > 0) {
-              graphStore.setRecycleBin(
+              stickerStore.setRecycleBin(
                   recycleEntries.reduce(
                       (entries, entry) => addRecycleBinEntry(entries, entry),
-                      [...graphStore.recycleBin],
+                      [...stickerStore.recycleBin],
                   ),
               );
           }
 
-          ids.forEach((id) => graphStore.actions.removeUnit(id));
+          ids.forEach((id) => stickerStore.actions.removeSticker(id));
           ids.forEach((id) => {
               // Clear all per-unit UI state keyed by unit id so deleting a unit
               // does not leak history/panel/notice entries for its dead id.
@@ -617,13 +617,13 @@ export default function App() {
               await api.setCaptureInputActive(false);
               resetSelection();
               uiActions.setSelectedStickerAnnotation(null);
-              if ((activeBootProfile?.initialUiMode || "overlay") === "canvas" && graphStore.units.length > 0) {
+              if ((activeBootProfile?.initialUiMode || "overlay") === "canvas" && stickerStore.stickers.length > 0) {
                   await api.showCanvasWindow();
-              } else if ((activeBootProfile?.initialUiMode || "overlay") === "tray" && graphStore.units.length === 0) {
+              } else if ((activeBootProfile?.initialUiMode || "overlay") === "tray" && stickerStore.stickers.length === 0) {
                   await api.hideToTray();
               } else {
                   await api.showOverlayHost(true);
-                  if (graphStore.units.length > 0) {
+                  if (stickerStore.stickers.length > 0) {
                       await api.setMouseMonitorActive(true);
                       await syncService.updateBackendRects();
                   }
@@ -813,7 +813,7 @@ export default function App() {
                       await api.setCaptureInputActive(false);
                       resetSelection();
                       await api.setOverlayClickThrough(true);
-                      if (graphStore.units.length > 0) {
+                      if (stickerStore.stickers.length > 0) {
                           await api.setMouseMonitorActive(true);
                           await syncService.updateBackendRects();
                       }
@@ -1000,7 +1000,7 @@ export default function App() {
   // We use createEffect to track signal dependencies accessed in updateBackendRects
   createEffect(() => {
       // Access signals to subscribe (implicit in updateBackendRects, but we make it explicit for clarity if needed)
-      // data: graphStore.units, extraRects()
+      // data: stickerStore.stickers, extraRects()
       syncService.updateBackendRects();
   });
 
@@ -1090,9 +1090,9 @@ export default function App() {
 
       // Multi-Select Interaction Logic
       const wasSelected = selectedUnitIds.includes(id);
-      const targetUnit = graphStore.units.find((unit) => unit.id === id);
-      const targetGroup = targetUnit?.data.groupId
-          ? graphStore.stickerGroups.find((group) => group.id === targetUnit.data.groupId)
+      const targetSticker = stickerStore.stickers.find((unit) => unit.id === id);
+      const targetGroup = targetSticker?.data.groupId
+          ? stickerStore.stickerGroups.find((group) => group.id === targetSticker.data.groupId)
           : undefined;
       const activeEditTarget = activeStickerEditTargetId();
       if (activeEditTarget && activeEditTarget !== id) {
@@ -1121,8 +1121,8 @@ export default function App() {
       }
 
       startDrag(e, id, (clickedId) => {
-          const clickedUnit = graphStore.units.find((unit) => unit.id === clickedId);
-          if (!clickedUnit || activeStickerEditTargetId() !== clickedId) {
+          const clickedSticker = stickerStore.stickers.find((unit) => unit.id === clickedId);
+          if (!clickedSticker || activeStickerEditTargetId() !== clickedId) {
               uiActions.hideStickerToolbar();
           }
           // Handle Click (No Drag)
@@ -1141,10 +1141,10 @@ export default function App() {
 
 
   const resolveUnitImage = (id: string): string | undefined => {
-      return resolveUnitImageFromGraph({
-          units: graphStore.units,
-          links: graphStore.links,
-          unitId: id,
+      return resolveStickerImage({
+          stickers: stickerStore.stickers,
+          links: stickerStore.links,
+          stickerId: id,
       });
   };
 
@@ -1230,7 +1230,7 @@ export default function App() {
             onDoubleClick={handleDoubleClick}
 
             onDelete={(id) => {
-                graphStore.actions.removeUnit(id);
+                stickerStore.actions.removeSticker(id);
                 if (selectedStickerId() === id) {
                     uiActions.hideStickerToolbar();
                 }
@@ -1244,10 +1244,10 @@ export default function App() {
             onLinkHover={handleLinkHover}
 
             onRendered={(id, dataUrl) => {
-                graphStore.actions.updateUnitData(id, {
+                stickerStore.actions.updateStickerData(id, {
                     previewSrc: dataUrl,
                 });
-                propagateFromUnit(id);
+                propagateFromSticker(id);
                 void syncService.scheduleSessionSync();
             }}
 

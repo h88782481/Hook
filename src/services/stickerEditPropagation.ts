@@ -9,17 +9,18 @@ import type {
     StickerShapeAnnotation,
     StickerTextAnnotation,
 } from "../types/stickerEditing";
-import type { Link, StickerEditPropagationState, Unit } from "../types/unit";
+import type { Link, StickerEditPropagationState, Sticker } from "../types/stickerModel";
+import { scaleStrokeWidth } from "./stickerGeometry";
 
 export interface StickerEditPropagationPatch {
-    unitId: string;
-    data: Partial<Unit["data"]>;
+    stickerId: string;
+    data: Partial<Sticker["data"]>;
 }
 
 interface BuildStickerEditPropagationPatchesInput {
-    units: readonly Unit[];
+    stickers: readonly Sticker[];
     links: readonly Link[];
-    sourceUnitId: string;
+    sourceStickerId: string;
 }
 
 const cloneAnnotationState = (state: StickerAnnotationState): StickerAnnotationState =>
@@ -27,9 +28,6 @@ const cloneAnnotationState = (state: StickerAnnotationState): StickerAnnotationS
 
 const samePoint = (a: StickerPoint, b: StickerPoint) =>
     Math.abs(a.x - b.x) < 0.0001 && Math.abs(a.y - b.y) < 0.0001;
-
-const scaleStrokeWidth = (width: number, scaleX: number, scaleY: number) =>
-    width * ((Math.abs(scaleX) + Math.abs(scaleY)) / 2);
 
 const scaleStyle = <T extends { width: number; cornerRadius?: number }>(
     style: T,
@@ -121,7 +119,7 @@ const scaleAnnotation = (
 const clipSegmentToFrame = (
     start: StickerPoint,
     end: StickerPoint,
-    frame: Pick<Unit, "w" | "h">,
+    frame: Pick<Sticker, "w" | "h">,
 ): [StickerPoint, StickerPoint] | undefined => {
     const minX = 0;
     const minY = 0;
@@ -164,7 +162,7 @@ const clipSegmentToFrame = (
 
 const clipPointPathToFrame = (
     points: readonly StickerPoint[],
-    frame: Pick<Unit, "w" | "h">,
+    frame: Pick<Sticker, "w" | "h">,
 ): StickerPoint[][] => {
     if (frame.w <= 0 || frame.h <= 0 || points.length < 2) return [];
 
@@ -205,7 +203,7 @@ const withClippedId = (id: string, index: number) => (index === 0 ? id : `${id}:
 
 const clipBoxToFrame = <T extends StickerShapeAnnotation | StickerEffectAnnotation>(
     annotation: T,
-    frame: Pick<Unit, "w" | "h">,
+    frame: Pick<Sticker, "w" | "h">,
 ): T | undefined => {
     const x = Math.max(0, annotation.x);
     const y = Math.max(0, annotation.y);
@@ -224,7 +222,7 @@ const clipBoxToFrame = <T extends StickerShapeAnnotation | StickerEffectAnnotati
 
 const clipAnnotationToFrame = (
     annotation: StickerAnnotation,
-    frame: Pick<Unit, "w" | "h">,
+    frame: Pick<Sticker, "w" | "h">,
 ): StickerAnnotation[] => {
     if (
         annotation.type === "rect" ||
@@ -254,8 +252,8 @@ const clipAnnotationToFrame = (
 
 export const scaleStickerAnnotationState = (
     state: StickerAnnotationState | undefined,
-    sourceFrame: Pick<Unit, "w" | "h">,
-    targetFrame: Pick<Unit, "w" | "h">,
+    sourceFrame: Pick<Sticker, "w" | "h">,
+    targetFrame: Pick<Sticker, "w" | "h">,
 ): StickerAnnotationState | undefined => {
     if (!state) return undefined;
 
@@ -270,8 +268,8 @@ export const scaleStickerAnnotationState = (
 };
 
 const getContainedFrameTransform = (
-    sourceFrame: Pick<Unit, "w" | "h">,
-    targetFrame: Pick<Unit, "w" | "h">,
+    sourceFrame: Pick<Sticker, "w" | "h">,
+    targetFrame: Pick<Sticker, "w" | "h">,
 ) => {
     if (sourceFrame.w === 0 || sourceFrame.h === 0) {
         return {
@@ -291,8 +289,8 @@ const getContainedFrameTransform = (
 
 export const mapStickerAnnotationStateToContainedFrame = (
     state: StickerAnnotationState | undefined,
-    sourceFrame: Pick<Unit, "w" | "h">,
-    targetFrame: Pick<Unit, "w" | "h">,
+    sourceFrame: Pick<Sticker, "w" | "h">,
+    targetFrame: Pick<Sticker, "w" | "h">,
 ): StickerAnnotationState | undefined => {
     if (!state) return undefined;
 
@@ -317,7 +315,7 @@ export const mapStickerAnnotationStateToContainedFrame = (
 
 const clipContentEraserStrokeToFrame = (
     stroke: ContentEraserStroke,
-    frame: Pick<Unit, "w" | "h">,
+    frame: Pick<Sticker, "w" | "h">,
 ): ContentEraserStroke[] =>
     clipPointPathToFrame(stroke.points, frame).map((points, index) => ({
         ...stroke,
@@ -341,8 +339,8 @@ const mapContentEraserStrokeToContainedFrame = (
 
 export const mapStickerImageEditStateToContainedFrame = (
     state: StickerImageEditState | undefined,
-    sourceFrame: Pick<Unit, "w" | "h">,
-    targetFrame: Pick<Unit, "w" | "h">,
+    sourceFrame: Pick<Sticker, "w" | "h">,
+    targetFrame: Pick<Sticker, "w" | "h">,
 ): StickerImageEditState | undefined => {
     if (!state) return undefined;
 
@@ -380,69 +378,69 @@ export const markStickerEditPropagationLocally = (
     revision: (previous?.revision ?? 0) + 1,
 });
 
-const shouldAcceptUpstreamStickerEdit = (unit: Unit) => {
+const shouldAcceptUpstreamStickerEdit = (unit: Sticker) => {
     const propagation = unit.data.stickerEditPropagation;
     return (propagation?.acceptUpstream ?? true) && !propagation?.locallyEdited;
 };
 
 export const buildStickerEditPropagationPatches = ({
-    units,
+    stickers,
     links,
-    sourceUnitId,
+    sourceStickerId,
 }: BuildStickerEditPropagationPatchesInput): StickerEditPropagationPatch[] => {
-    const workingUnits = new Map(units.map((unit) => [unit.id, structuredClone(unit)] as const));
+    const workingStickers = new Map(stickers.map((sticker) => [sticker.id, structuredClone(sticker)] as const));
     const patches: StickerEditPropagationPatch[] = [];
     const visitedEdges = new Set<string>();
 
-    const visit = (fromUnitId: string) => {
-        const sourceUnit = workingUnits.get(fromUnitId);
-        if (!sourceUnit) return;
+    const visit = (fromStickerId: string) => {
+        const sourceSticker = workingStickers.get(fromStickerId);
+        if (!sourceSticker) return;
 
-        const outgoingLinks = links.filter((link) => link.fromUnitId === fromUnitId);
+        const outgoingLinks = links.filter((link) => link.fromUnitId === fromStickerId);
         outgoingLinks.forEach((link) => {
             const edgeKey = `${link.fromUnitId}->${link.toUnitId}:${link.id}`;
             if (visitedEdges.has(edgeKey)) return;
             visitedEdges.add(edgeKey);
 
-            const targetUnit = workingUnits.get(link.toUnitId);
-            if (!targetUnit) return;
-            if (!shouldAcceptUpstreamStickerEdit(targetUnit)) return;
+            const targetSticker = workingStickers.get(link.toUnitId);
+            if (!targetSticker) return;
+            if (!shouldAcceptUpstreamStickerEdit(targetSticker)) return;
 
             const annotationState = mapStickerAnnotationStateToContainedFrame(
-                sourceUnit.data.annotationState,
-                sourceUnit,
-                targetUnit,
+                sourceSticker.data.annotationState,
+                sourceSticker,
+                targetSticker,
             );
             const imageEditState = mapStickerImageEditStateToContainedFrame(
-                sourceUnit.data.imageEditState,
-                sourceUnit,
-                targetUnit,
+                sourceSticker.data.imageEditState,
+                sourceSticker,
+                targetSticker,
             );
-            const data: Partial<Unit["data"]> = {
+            const data: Partial<Sticker["data"]> = {
                 annotationState,
                 imageEditState,
                 stickerEditPropagation: {
-                    ...targetUnit.data.stickerEditPropagation,
-                    acceptUpstream: targetUnit.data.stickerEditPropagation?.acceptUpstream ?? true,
+                    ...targetSticker.data.stickerEditPropagation,
+                    acceptUpstream: targetSticker.data.stickerEditPropagation?.acceptUpstream ?? true,
                     locallyEdited: false,
-                    upstreamSourceUnitId: sourceUnit.id,
-                    upstreamSourceRevision: sourceUnit.data.stickerEditPropagation?.revision ?? 0,
+                    upstreamSourceStickerId: sourceSticker.id,
+                    upstreamSourceRevision: sourceSticker.data.stickerEditPropagation?.revision ?? 0,
                 },
             };
 
-            const nextTarget: Unit = {
-                ...targetUnit,
+            const nextTarget: Sticker = {
+                ...targetSticker,
                 data: {
-                    ...targetUnit.data,
+                    ...targetSticker.data,
                     ...data,
                 },
             };
-            workingUnits.set(targetUnit.id, nextTarget);
-            patches.push({ unitId: targetUnit.id, data });
-            visit(targetUnit.id);
+            workingStickers.set(targetSticker.id, nextTarget);
+            patches.push({ stickerId: targetSticker.id, data });
+            visit(targetSticker.id);
         });
     };
 
-    visit(sourceUnitId);
+    visit(sourceStickerId);
     return patches;
 };

@@ -1,23 +1,20 @@
 import { unwrap } from "solid-js/store";
 import {
-    STICKER_DEFAULT_PORTS,
+    createSticker,
     type SessionSticker,
-    type Unit,
-} from "../types/unit";
+    type Sticker,
+} from "../types/stickerModel";
 import { normalizePreviewSrc } from "./syncedImagePayload";
-
-/** Recycle/reference snapshots share the session sticker wire format. */
-export type FrozenStickerSessionSnapshot = SessionSticker;
 
 export interface FrozenStickerEntry {
     entryId: string;
     sourceStickerId: string;
     createdAt: string;
-    snapshot: FrozenStickerSessionSnapshot;
+    snapshot: SessionSticker;
 }
 
-export const unitToSessionSticker = (
-    unit: Unit,
+export const stickerToSessionSticker = (
+    unit: Sticker,
     options?: { normalizePreview?: boolean },
 ): SessionSticker => ({
     id: unit.id,
@@ -42,53 +39,50 @@ export const unitToSessionSticker = (
     captureMeta: unit.data.captureMeta || null,
 });
 
-export const sessionStickerToUnit = (sticker: SessionSticker): Unit => ({
-    id: sticker.id,
-    type: "sticker",
-    x: sticker.x,
-    y: sticker.y,
-    w: sticker.w,
-    h: sticker.h,
-    inputs: [...STICKER_DEFAULT_PORTS.inputs],
-    outputs: [...STICKER_DEFAULT_PORTS.outputs],
-    data: {
-        src: sticker.src || undefined,
-        minified: sticker.minified ?? false,
-        savedRect: sticker.savedRect || undefined,
-        cropOffset: sticker.cropOffset || undefined,
-        opacityNormal: sticker.opacityNormal ?? 1,
-        opacityMini: sticker.opacityMini ?? 0.9,
-        previewSrc:
-            sticker.previewSrc && sticker.previewSrc !== sticker.src
-                ? sticker.previewSrc
-                : undefined,
-        filePath: sticker.filePath || undefined,
-        rasterizedAnnotationLayerSrc: sticker.rasterizedAnnotationLayerSrc || undefined,
-        annotationState: sticker.annotationState || undefined,
-        imageEditState: sticker.imageEditState || undefined,
-        groupId: sticker.groupId || undefined,
-        captureMeta: sticker.captureMeta || undefined,
-    },
-});
+export const sessionStickerToSticker = (sticker: SessionSticker): Sticker =>
+    createSticker({
+        id: sticker.id,
+        x: sticker.x,
+        y: sticker.y,
+        w: sticker.w,
+        h: sticker.h,
+        data: {
+            src: sticker.src || undefined,
+            minified: sticker.minified ?? false,
+            savedRect: sticker.savedRect || undefined,
+            cropOffset: sticker.cropOffset || undefined,
+            opacityNormal: sticker.opacityNormal ?? 1,
+            opacityMini: sticker.opacityMini ?? 0.9,
+            previewSrc:
+                sticker.previewSrc && sticker.previewSrc !== sticker.src
+                    ? sticker.previewSrc
+                    : undefined,
+            filePath: sticker.filePath || undefined,
+            rasterizedAnnotationLayerSrc: sticker.rasterizedAnnotationLayerSrc || undefined,
+            annotationState: sticker.annotationState || undefined,
+            imageEditState: sticker.imageEditState || undefined,
+            groupId: sticker.groupId || undefined,
+            captureMeta: sticker.captureMeta || undefined,
+        },
+    });
 
-export const captureFrozenStickerSnapshot = (unit: Unit): FrozenStickerEntry => ({
+export const captureFrozenStickerSnapshot = (unit: Sticker): FrozenStickerEntry => ({
     entryId: crypto.randomUUID(),
     sourceStickerId: unit.id,
     createdAt: new Date().toISOString(),
-    snapshot: structuredClone(unwrap(unitToSessionSticker(unit))),
+    snapshot: structuredClone(unwrap(stickerToSessionSticker(unit))),
 });
 
 export const instantiateStickerFromFrozenSnapshot = (
     entry: FrozenStickerEntry,
     mouse: { x: number; y: number },
-): Unit => {
-    const unit = sessionStickerToUnit(entry.snapshot);
-    return {
-        ...unit,
-        id: crypto.randomUUID(),
+): Sticker => {
+    const unit = sessionStickerToSticker(entry.snapshot);
+    return createSticker({
         x: mouse.x + 50,
         y: mouse.y + 50,
-        inputs: [...STICKER_DEFAULT_PORTS.inputs],
-        outputs: [...STICKER_DEFAULT_PORTS.outputs],
-    };
+        w: unit.w,
+        h: unit.h,
+        data: unit.data,
+    });
 };

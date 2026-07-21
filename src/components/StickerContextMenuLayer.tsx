@@ -14,7 +14,7 @@ import { stickerContextMenuController } from "../services/stickerContextMenuCont
 import { captureFrozenStickerSnapshot } from "../services/stickerSnapshot";
 import { syncService } from "../services/syncService";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { selectionActions, uiActions } from "../store/uiStore";
 import { StickerContextMenuPanel } from "./StickerContextMenuPanel";
 import { StickerSnapshotListPanel } from "./StickerSnapshotListPanel";
@@ -40,7 +40,7 @@ export const StickerContextMenuLayer = () => {
             return undefined;
         }
 
-        return graphStore.units.find((unit) => unit.id === targetStickerId);
+        return stickerStore.stickers.find((unit) => unit.id === targetStickerId);
     });
 
     const referenceActionLabel = createMemo(() => {
@@ -49,7 +49,7 @@ export const StickerContextMenuLayer = () => {
             return "设置坂考";
         }
 
-        return graphStore.referenceLibrary.some((entry) => entry.sourceStickerId === target.id)
+        return stickerStore.referenceLibrary.some((entry) => entry.sourceStickerId === target.id)
             ? "坖消坂考"
             : "设置坂考";
     });
@@ -57,9 +57,9 @@ export const StickerContextMenuLayer = () => {
     const activeSubmenuEntries = createMemo(() => {
         switch (stickerContextMenuController.state.activeSubmenu) {
             case "recycleBin":
-                return graphStore.recycleBin;
+                return stickerStore.recycleBin;
             case "referenceLibrary":
-                return graphStore.referenceLibrary;
+                return stickerStore.referenceLibrary;
             default:
                 return [];
         }
@@ -81,8 +81,8 @@ export const StickerContextMenuLayer = () => {
             return;
         }
 
-        graphStore.setRecycleBin(addRecycleBinEntry(graphStore.recycleBin, captureFrozenStickerSnapshot(target)));
-        graphStore.actions.removeUnit(target.id);
+        stickerStore.setRecycleBin(addRecycleBinEntry(stickerStore.recycleBin, captureFrozenStickerSnapshot(target)));
+        stickerStore.actions.removeSticker(target.id);
         uiActions.clearStickerHistory(target.id);
         selectionActions.clear();
         uiActions.hideStickerToolbar();
@@ -110,7 +110,7 @@ export const StickerContextMenuLayer = () => {
     };
 
     const handleClearRecycleBin = () => {
-        graphStore.setRecycleBin([]);
+        stickerStore.setRecycleBin([]);
         closeMenu();
         persistSession();
     };
@@ -122,11 +122,11 @@ export const StickerContextMenuLayer = () => {
             return;
         }
 
-        if (graphStore.referenceLibrary.some((entry) => entry.sourceStickerId === target.id)) {
-            graphStore.setReferenceLibrary(cancelReferenceEntry(graphStore.referenceLibrary, target.id));
+        if (stickerStore.referenceLibrary.some((entry) => entry.sourceStickerId === target.id)) {
+            stickerStore.setReferenceLibrary(cancelReferenceEntry(stickerStore.referenceLibrary, target.id));
         } else {
-            graphStore.setReferenceLibrary(
-                setReferenceEntry(graphStore.referenceLibrary, captureFrozenStickerSnapshot(target)),
+            stickerStore.setReferenceLibrary(
+                setReferenceEntry(stickerStore.referenceLibrary, captureFrozenStickerSnapshot(target)),
             );
         }
 
@@ -135,16 +135,16 @@ export const StickerContextMenuLayer = () => {
     };
 
     const handleClearReferenceLibrary = () => {
-        graphStore.setReferenceLibrary([]);
+        stickerStore.setReferenceLibrary([]);
         closeMenu();
         persistSession();
     };
 
     const handleRecycleRestore = (entryId: string) => {
-        const result = restoreRecycleBinEntry(graphStore.recycleBin, entryId, menuMouse());
+        const result = restoreRecycleBinEntry(stickerStore.recycleBin, entryId, menuMouse());
 
-        graphStore.setRecycleBin(result.entries);
-        graphStore.actions.addUnit(result.restored);
+        stickerStore.setRecycleBin(result.entries);
+        stickerStore.actions.addSticker(result.restored);
         uiActions.hideStickerToolbar();
         selectionActions.set([result.restored.id]);
         closeMenu();
@@ -152,14 +152,14 @@ export const StickerContextMenuLayer = () => {
     };
 
     const handleRecycleDelete = (entryId: string) => {
-        graphStore.setRecycleBin(removeFrozenStickerEntry(graphStore.recycleBin, entryId));
+        stickerStore.setRecycleBin(removeFrozenStickerEntry(stickerStore.recycleBin, entryId));
         persistSession();
     };
 
     const handleReferenceCopy = (entryId: string) => {
-        const copied = copyReferenceEntry(graphStore.referenceLibrary, entryId, menuMouse());
+        const copied = copyReferenceEntry(stickerStore.referenceLibrary, entryId, menuMouse());
 
-        graphStore.actions.addUnit(copied);
+        stickerStore.actions.addSticker(copied);
         uiActions.hideStickerToolbar();
         selectionActions.set([copied.id]);
         closeMenu();
@@ -167,7 +167,7 @@ export const StickerContextMenuLayer = () => {
     };
 
     const handleReferenceRemove = (entryId: string) => {
-        graphStore.setReferenceLibrary(removeFrozenStickerEntry(graphStore.referenceLibrary, entryId));
+        stickerStore.setReferenceLibrary(removeFrozenStickerEntry(stickerStore.referenceLibrary, entryId));
         persistSession();
     };
 

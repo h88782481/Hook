@@ -1,11 +1,11 @@
 import { Component, For, Show } from "solid-js";
 
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { activeStickerGroupId, selectionActions, uiActions } from "../store/uiStore";
 import { syncService } from "../services/syncService";
 
 export const StickerGroupBar: Component = () => {
-    const groups = () => graphStore.stickerGroups;
+    const groups = () => stickerStore.stickerGroups;
 
     return (
         <Show when={groups().length > 0}>
@@ -48,7 +48,7 @@ export const StickerGroupBar: Component = () => {
                             if (!current) return;
                             const nextName = window.prompt("重命名贴图组", current.name)?.trim();
                             if (!nextName || nextName === current.name) return;
-                            graphStore.actions.addOrUpdateStickerGroup({
+                            stickerStore.actions.addOrUpdateStickerGroup({
                                 ...current,
                                 name: nextName,
                             });
@@ -67,7 +67,7 @@ export const StickerGroupBar: Component = () => {
                             if (!group) return;
                             const confirmed = window.confirm(`删除贴图组“${group.name}”？组内贴图会变成未分组。`);
                             if (!confirmed) return;
-                            graphStore.actions.deleteStickerGroup(groupId);
+                            stickerStore.actions.deleteStickerGroup(groupId);
                             uiActions.setActiveStickerGroup(null);
                             void syncService.scheduleSessionSync();
                         }}
@@ -84,8 +84,8 @@ export const StickerGroupBar: Component = () => {
                             if (!group) return;
                             const confirmed = window.confirm(`关闭贴图组“${group.name}”？组内贴图会全部关闭。`);
                             if (!confirmed) return;
-                            const removedUnitIds = graphStore.actions.closeStickerGroup(groupId);
-                            removedUnitIds.forEach((id) => uiActions.clearStickerHistory(id));
+                            const removedStickerIds = stickerStore.actions.closeStickerGroup(groupId);
+                            removedStickerIds.forEach((id) => uiActions.clearStickerHistory(id));
                             selectionActions.clear();
                             uiActions.hideStickerToolbar();
                             uiActions.setActiveStickerGroup(null);

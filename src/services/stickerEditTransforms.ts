@@ -5,20 +5,18 @@ import type {
     StickerImageEditState,
     StickerTextAnnotation,
 } from "../types/stickerEditing";
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
 import { scaleStickerAnnotationState } from "./stickerEditPropagation";
+import { scaleStrokeWidth } from "./stickerGeometry";
 
-type StickerFrame = Pick<Unit, "w" | "h">;
+type StickerFrame = Pick<Sticker, "w" | "h">;
 type FlipAxis = "x" | "y";
 
 const getScale = (sourceFrame: StickerFrame, targetFrame: StickerFrame) => ({
     x: sourceFrame.w === 0 ? 1 : targetFrame.w / sourceFrame.w,
     y: sourceFrame.h === 0 ? 1 : targetFrame.h / sourceFrame.h,
 });
-
-const scaleStrokeWidth = (width: number, scaleX: number, scaleY: number) =>
-    width * ((Math.abs(scaleX) + Math.abs(scaleY)) / 2);
 
 const scaleContentEraserStroke = (
     stroke: ContentEraserStroke,
@@ -188,11 +186,11 @@ export const flipStickerImageEditStateForFrame = (
 };
 
 export const scaleStickerEditDataForFrame = (
-    data: Unit["data"],
+    data: Sticker["data"],
     sourceFrame: StickerFrame,
     targetFrame: StickerFrame,
-): Partial<Unit["data"]> => {
-    const updates: Partial<Unit["data"]> = {};
+): Partial<Sticker["data"]> => {
+    const updates: Partial<Sticker["data"]> = {};
 
     const annotationState = scaleStickerAnnotationState(
         data.annotationState,
@@ -216,11 +214,11 @@ export const scaleStickerEditDataForFrame = (
 };
 
 export const flipStickerEditDataForFrame = (
-    data: Unit["data"],
+    data: Sticker["data"],
     frame: StickerFrame,
     axis: FlipAxis,
-): Partial<Unit["data"]> => {
-    const updates: Partial<Unit["data"]> = {};
+): Partial<Sticker["data"]> => {
+    const updates: Partial<Sticker["data"]> = {};
 
     const annotationState = flipStickerAnnotationStateForFrame(data.annotationState, frame, axis);
     if (annotationState) {

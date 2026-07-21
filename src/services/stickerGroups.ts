@@ -1,5 +1,5 @@
 import type { StickerGroup } from "../types/stickerEditing";
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 
 export const upsertStickerGroup = (groups: StickerGroup[], nextGroup: StickerGroup): StickerGroup[] => {
     const existing = groups.find((group) => group.id === nextGroup.id);
@@ -23,13 +23,13 @@ export const toggleStickerGroupLocked = (groups: StickerGroup[], groupId: string
         group.id === groupId ? { ...group, locked: !group.locked } : group,
     );
 
-export const closeStickerGroupMembers = (units: Unit[], groupId: string) => {
-    const removedUnitIds = units
+export const closeStickerGroupMembers = (units: Sticker[], groupId: string) => {
+    const removedStickerIds = units
         .filter((unit) => unit.data.groupId === groupId)
         .map((unit) => unit.id);
 
     return {
-        remainingUnits: units.filter((unit) => unit.data.groupId !== groupId),
-        removedUnitIds,
+        remainingStickers: units.filter((unit) => unit.data.groupId !== groupId),
+        removedStickerIds,
     };
 };

@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Dynamic, Portal } from "solid-js/web";
 
 import { api } from "../services/api";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import {
     activeStickerEditTargetId,
     selectedStickerId,
@@ -25,7 +25,7 @@ import type {
     StickerTextAnnotation,
     StickerTransformMode,
 } from "../types/stickerEditing";
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 import { clamp } from "../utils/math";
 import {
     clampCropRectToStickerBounds,
@@ -186,10 +186,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         void api.debugLogEvent("sticker-wheel-trace", `layer=annotation phase=${phase} unit=${props.unitId} ${detail}`);
     };
 
-    const unit = createMemo(() => graphStore.units.find((item) => item.id === props.unitId));
+    const unit = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
     const group = createMemo(() =>
         unit()?.data.groupId
-            ? graphStore.stickerGroups.find((item) => item.id === unit()!.data.groupId)
+            ? stickerStore.stickerGroups.find((item) => item.id === unit()!.data.groupId)
             : undefined,
     );
     const annotationState = createMemo(
@@ -333,36 +333,36 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         return annotationState().elements.map((annotation) => replacements.get(annotation.id) ?? annotation);
     };
 
-    const patchUnitDataLocally = (patch: Partial<Unit["data"]>) => {
-        graphStore.actions.updateUnitData(props.unitId, patch);
+    const patchStickerDataLocally = (patch: Partial<Sticker["data"]>) => {
+        stickerStore.actions.updateStickerData(props.unitId, patch);
     };
 
     const propagateStickerEditFromCurrentUnit = () => {
-        graphStore.actions.propagateStickerEditsFrom(props.unitId);
+        stickerStore.actions.propagateStickerEditsFrom(props.unitId);
     };
 
-    const patchUnitData = async (
-        patch: Partial<Unit["data"]>,
+    const patchStickerData = async (
+        patch: Partial<Sticker["data"]>,
         options: { propagateEdit?: boolean; markLocalEdit?: boolean } = {},
     ) => {
         if (options.propagateEdit) {
-            graphStore.actions.updateStickerEditData(props.unitId, patch, {
+            stickerStore.actions.updateStickerEditData(props.unitId, patch, {
                 markLocalEdit: options.markLocalEdit,
             });
             propagateStickerEditFromCurrentUnit();
         } else {
-            patchUnitDataLocally(patch);
+            patchStickerDataLocally(patch);
         }
         await syncService.scheduleSessionSync();
     };
 
     const rememberCurrentState = (includeImageData = false) => {
-        const currentUnit = unit();
-        if (!currentUnit) return;
+        const currentSticker = unit();
+        if (!currentSticker) return;
         uiActions.pushStickerHistory(
             props.unitId,
             captureStickerEditSnapshot(
-                currentUnit,
+                currentSticker,
                 includeImageData ? { includeImageData: true } : undefined,
             ),
         );
@@ -478,7 +478,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
 
     const commitAnnotation = async (annotation: StickerAnnotation, nextSerialCounter?: number) => {
         rememberCurrentState();
-        await patchUnitData({
+        await patchStickerData({
             annotationState: {
                 elements: [...annotationState().elements, annotation],
                 serialCounter: nextSerialCounter ?? annotationState().serialCounter,
@@ -546,7 +546,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 return;
             }
             rememberCurrentState();
-            await patchUnitData({
+            await patchStickerData({
                 annotationState: updateTextAnnotationById(annotationState(), draft.annotationId, text),
             }, { propagateEdit: true });
             uiActions.setSelectedStickerAnnotation(draft.annotationId);
@@ -630,7 +630,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             }
 
             liveRasterizedAnnotationEraseLayerSrc = nextLayerSrc;
-            patchUnitDataLocally({
+            patchStickerDataLocally({
                 rasterizedAnnotationLayerSrc: nextLayerSrc,
                 previewSrc,
                 filePath: undefined,
@@ -638,10 +638,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         });
 
     const beginLiveRasterizedAnnotationErase = (point: StickerPoint) => {
-        const currentUnit = unit();
-        const layerSrc = currentUnit?.data.rasterizedAnnotationLayerSrc;
-        const baseLayerSrc = currentUnit?.data.src || currentUnit?.data.previewSrc;
-        if (!currentUnit || !layerSrc || !baseLayerSrc) return false;
+        const currentSticker = unit();
+        const layerSrc = currentSticker?.data.rasterizedAnnotationLayerSrc;
+        const baseLayerSrc = currentSticker?.data.src || currentSticker?.data.previewSrc;
+        if (!currentSticker || !layerSrc || !baseLayerSrc) return false;
 
         liveRasterizedAnnotationEraseLayerSrc = layerSrc;
         liveRasterizedAnnotationEraseBaseLayerSrc = baseLayerSrc;
@@ -660,7 +660,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         liveRasterizedAnnotationEraseBaseLayerSrc = null;
         liveRasterizedAnnotationEraseHistoryCaptured = false;
         if (shouldSync) {
-            graphStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
+            stickerStore.actions.updateStickerEditData(props.unitId, {}, { markLocalEdit: true });
             propagateStickerEditFromCurrentUnit();
             await syncService.scheduleSessionSync();
         }
@@ -668,9 +668,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     };
 
     const commitContentErase = async (stroke: ContentEraserStroke) => {
-        const currentUnit = unit();
-        const layerSrc = currentUnit?.data.rasterizedAnnotationLayerSrc;
-        if (!currentUnit || stroke.points.length < 1) return false;
+        const currentSticker = unit();
+        const layerSrc = currentSticker?.data.rasterizedAnnotationLayerSrc;
+        if (!currentSticker || stroke.points.length < 1) return false;
 
         // The erase pipeline loads images and reads canvases back via toDataURL,
         // either of which can reject (decode failure, tainted canvas, missing
@@ -678,7 +678,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         // outer catch, so guard it here: on failure log and abort instead of
         // letting the rejection surface as an "uncaught client exception".
         try {
-            const baseLayerSrc = await renderStickerBaseLayer(currentUnit);
+            const baseLayerSrc = await renderStickerBaseLayer(currentSticker);
             rememberCurrentState(true);
 
             if (!layerSrc) {
@@ -687,7 +687,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                     size: { w: props.width, h: props.height },
                     stroke,
                 });
-                await patchUnitData({
+                await patchStickerData({
                     src: nextBaseLayerSrc,
                     previewSrc: nextBaseLayerSrc,
                     filePath: undefined,
@@ -703,7 +703,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 stroke,
             });
 
-            await patchUnitData({
+            await patchStickerData({
                 src: next.baseLayerSrc,
                 previewSrc: next.previewSrc,
                 rasterizedAnnotationLayerSrc: next.rasterizedAnnotationLayerSrc,
@@ -763,7 +763,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             liveContentEraseBaseLayerSrc = next.baseLayerSrc;
             liveContentEraseRasterizedAnnotationLayerSrc =
                 next.rasterizedAnnotationLayerSrc ?? null;
-            patchUnitDataLocally({
+            patchStickerDataLocally({
                 src: next.baseLayerSrc,
                 previewSrc: next.previewSrc,
                 filePath: undefined,
@@ -773,22 +773,22 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         });
 
     const beginLiveContentErase = async (point: StickerPoint) => {
-        const currentUnit = unit();
-        if (!currentUnit) return false;
+        const currentSticker = unit();
+        if (!currentSticker) return false;
         // Flatten the base image + any rasterized annotation layer into a single
         // base so erasing removes whatever is visible at that pixel, matching the
         // committed behavior. renderStickerBaseLayer can reject (decode/taint), so
         // guard it.
         let baseLayerSrc: string;
         try {
-            baseLayerSrc = await renderStickerBaseLayer(currentUnit);
+            baseLayerSrc = await renderStickerBaseLayer(currentSticker);
         } catch (error) {
             console.error("[Hook] Failed to start live content erase", error);
             return false;
         }
         liveContentEraseBaseLayerSrc = baseLayerSrc;
         liveContentEraseRasterizedAnnotationLayerSrc =
-            currentUnit.data.rasterizedAnnotationLayerSrc ?? null;
+            currentSticker.data.rasterizedAnnotationLayerSrc ?? null;
         liveContentEraseHistoryCaptured = false;
         contentEraseQueue.begin();
         void applyLiveContentErase([point]);
@@ -808,7 +808,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (shouldSync && finalSrc) {
             // Promote the locally-patched result through the propagation + sync
             // path so downstream units and persistence pick up the erased image.
-            await patchUnitData({
+            await patchStickerData({
                 src: finalSrc,
                 previewSrc: finalRasterizedAnnotationLayerSrc
                     ? await composeRasterizedStickerPreview(
@@ -1080,7 +1080,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (transform) {
             rememberCurrentState();
             const nextElements = buildTransformPreviewAnnotations(transform);
-            await patchUnitData({
+            await patchStickerData({
                 annotationState: {
                     ...annotationState(),
                     elements: nextElements,
@@ -1096,7 +1096,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             const nextElements = annotationState().elements.map((annotation) =>
                 annotation.id === reshape.annotationId ? nextLine : annotation,
             );
-            await patchUnitData({
+            await patchStickerData({
                 annotationState: {
                     ...annotationState(),
                     elements: nextElements,
@@ -1112,7 +1112,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             const nextElements = annotationState().elements.map((annotation) =>
                 annotation.id === resize.annotationId ? resized : annotation,
             );
-            await patchUnitData({
+            await patchStickerData({
                 annotationState: {
                     ...annotationState(),
                     elements: nextElements,
@@ -1132,7 +1132,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                         : annotation,
                 );
                 rememberCurrentState();
-                await patchUnitData({
+                await patchStickerData({
                     annotationState: {
                         ...annotationState(),
                         elements: nextElements,
@@ -1173,8 +1173,8 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                     imageEditState(),
                     rect,
                 );
-                graphStore.actions.updateUnit(props.unitId, nextCrop.unitRect);
-                await patchUnitData({
+                stickerStore.actions.updateSticker(props.unitId, nextCrop.unitRect);
+                await patchStickerData({
                     imageEditState: {
                         ...imageEditState(),
                         contentEraseStrokes: imageEditState().contentEraseStrokes,
@@ -1705,7 +1705,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         const replacements = new Map(transformed.map((annotation) => [annotation.id, annotation]));
 
         rememberCurrentState();
-        await patchUnitData({
+        await patchStickerData({
             annotationState: {
                 ...annotationState(),
                 elements: annotationState().elements.map((annotation) => replacements.get(annotation.id) ?? annotation),

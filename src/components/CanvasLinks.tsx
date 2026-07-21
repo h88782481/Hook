@@ -1,5 +1,5 @@
 import { Component, createMemo, For, Show } from "solid-js";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import {
     linkingState,
     mousePos,
@@ -8,14 +8,14 @@ import {
     layoutTick,
     isCleanView
 } from "../store/uiStore";
-import { calculatePortY } from "../utils/graphUtils";
+import { calculatePortY } from "../utils/stickerPortUtils";
 
 export const CanvasLinks: Component = () => {
     const renderPaths = createMemo(() => {
         layoutTick();
 
-        const list = graphStore.units;
-        const currentLinks = graphStore.links;
+        const list = stickerStore.stickers;
+        const currentLinks = stickerStore.links;
         const dPositions = multiDragPositions();
 
         if (isCleanView()) {
@@ -85,8 +85,8 @@ export const CanvasLinks: Component = () => {
 
         <Show when={hoveringLink().sourceUnitId && hoveringLink().targetUnitId && !isCleanView()}>
             {(() => {
-                const sFrom = graphStore.units.find(u => u.id === hoveringLink().sourceUnitId);
-                const sTo = graphStore.units.find(u => u.id === hoveringLink().targetUnitId);
+                const sFrom = stickerStore.stickers.find(u => u.id === hoveringLink().sourceUnitId);
+                const sTo = stickerStore.stickers.find(u => u.id === hoveringLink().targetUnitId);
                 if (sFrom && sTo) {
                     return (
                         <>

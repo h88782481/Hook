@@ -3902,7 +3902,7 @@ dependencies = [
 name = "scap-targets"
 version = "0.1.0"
 dependencies = [
- "image 0.24.9",
+ "image 0.25.10",
  "serde",
  "tracing",
  "windows 0.60.0",

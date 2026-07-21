@@ -1,6 +1,6 @@
 import { createEmptyAnnotationState, createEmptyImageEditState } from "./stickerEditing";
 import type { StickerAnnotationState } from "../types/stickerEditing";
-import type { Unit } from "../types/unit";
+import type { Sticker } from "../types/stickerModel";
 
 export type StickerRasterizeScope = "selected" | "all";
 
@@ -11,7 +11,7 @@ export interface RasterizedStickerLayerSources {
 }
 
 export const getRasterizableAnnotationIds = (
-    unit: Unit,
+    unit: Sticker,
     scope: StickerRasterizeScope,
     selectedAnnotationIdOrIds: string | string[] | null,
 ): string[] => {
@@ -48,10 +48,10 @@ export const getRasterizableAnnotationIds = (
 };
 
 export const createRasterizedStickerData = (
-    unit: Unit,
+    unit: Sticker,
     sources: RasterizedStickerLayerSources,
     annotationIds: string[],
-): Partial<Unit["data"]> => {
+): Partial<Sticker["data"]> => {
     const rasterizedIdSet = new Set(annotationIds);
     const annotationState: StickerAnnotationState =
         unit.data.annotationState || createEmptyAnnotationState();

@@ -1,7 +1,7 @@
 import { onMount, onCleanup } from "solid-js";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
-import { STICKER_DEFAULT_PORTS } from "../types/unit";
+import { createSticker } from "../types/stickerModel";
 
 const SUPPORTED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"];
 
@@ -61,11 +61,11 @@ export function useFileDrop() {
                 const mx = e.clientX;
                 const my = e.clientY;
 
-                const allUnits = graphStore.units;
+                const allStickers = stickerStore.stickers;
                 let hitUnitId: string | null = null;
 
-                for (let i = allUnits.length - 1; i >= 0; i--) {
-                    const u = allUnits[i];
+                for (let i = allStickers.length - 1; i >= 0; i--) {
+                    const u = allStickers[i];
                     if (!u.data.minified &&
                         mx >= u.x && mx <= u.x + u.w &&
                         my >= u.y && my <= u.y + u.h) {
@@ -75,7 +75,7 @@ export function useFileDrop() {
                 }
 
                 if (hitUnitId) {
-                    graphStore.actions.updateUnitData(hitUnitId, {
+                    stickerStore.actions.updateStickerData(hitUnitId, {
                         previewSrc: base64Src,
                     });
 
@@ -85,22 +85,18 @@ export function useFileDrop() {
                     return;
                 }
 
-                const newUnit = {
-                    id: crypto.randomUUID(),
-                    type: "sticker" as const,
+                const newSticker = createSticker({
                     x: mx - 100,
                     y: my - 100,
                     w: 200,
                     h: 200,
-                    inputs: [...STICKER_DEFAULT_PORTS.inputs],
-                    outputs: [...STICKER_DEFAULT_PORTS.outputs],
                     data: {
                         src: base64Src,
                         minified: false,
                     },
-                };
+                });
 
-                graphStore.actions.addUnit(newUnit);
+                stickerStore.actions.addSticker(newSticker);
                 void syncService.updateBackendRects();
             } catch (error) {
                 console.error("File Drop Failed:", error);

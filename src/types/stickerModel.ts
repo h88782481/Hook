@@ -12,7 +12,7 @@ export interface Port {
     label?: string;
 }
 
-export interface UnitData {
+export interface StickerData {
     src?: string;
     minified?: boolean;
     savedRect?: { x: number; y: number; w: number; h: number };
@@ -38,20 +38,19 @@ export interface StickerEditPropagationState {
     /** Set by direct user edits; upstream annotation edits no longer overwrite this sticker. */
     locallyEdited?: boolean;
     revision?: number;
-    upstreamSourceUnitId?: string;
+    upstreamSourceStickerId?: string;
     upstreamSourceRevision?: number;
 }
 
-export interface Unit {
+export interface Sticker {
     id: string;
-    type: "sticker";
 
     x: number;
     y: number;
     w: number;
     h: number;
 
-    data: UnitData;
+    data: StickerData;
 
     inputs: Port[];
     outputs: Port[];
@@ -80,10 +79,10 @@ export interface SessionSticker {
     opacityMini?: number | null;
     filePath?: string | null;
     rasterizedAnnotationLayerSrc?: string | null;
-    annotationState?: UnitData["annotationState"] | null;
-    imageEditState?: UnitData["imageEditState"] | null;
+    annotationState?: StickerData["annotationState"] | null;
+    imageEditState?: StickerData["imageEditState"] | null;
     groupId?: string | null;
-    captureMeta?: UnitData["captureMeta"] | null;
+    captureMeta?: StickerData["captureMeta"] | null;
 }
 
 export interface SessionLink {
@@ -107,3 +106,21 @@ export const STICKER_DEFAULT_PORTS = {
     inputs: [{ id: "image", type: "image" as const, direction: "input" as const, label: "Image" }],
     outputs: [{ id: "output_image", type: "image" as const, direction: "output" as const, label: "Image" }],
 };
+
+export const createSticker = (params: {
+    id?: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    data?: StickerData;
+}): Sticker => ({
+    id: params.id ?? crypto.randomUUID(),
+    x: params.x,
+    y: params.y,
+    w: params.w,
+    h: params.h,
+    inputs: [...STICKER_DEFAULT_PORTS.inputs],
+    outputs: [...STICKER_DEFAULT_PORTS.outputs],
+    data: params.data ?? {},
+});

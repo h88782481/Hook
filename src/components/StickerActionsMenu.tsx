@@ -1,12 +1,12 @@
 import { Component } from "solid-js";
 
-interface UnitActionsMenuProps {
-  unitId: string;
+interface StickerActionsMenuProps {
+  stickerId: string;
   expanded: boolean;
   onToggleExpand: () => void;
 }
 
-export const UnitActionsMenu: Component<UnitActionsMenuProps> = (props) => {
+export const StickerActionsMenu: Component<StickerActionsMenuProps> = (props) => {
   return (
     <div
         class="hook-actions-shell h-[50px] min-h-[50px] w-full z-10 relative flex overflow-hidden"
@@ -25,7 +25,7 @@ export const UnitActionsMenu: Component<UnitActionsMenuProps> = (props) => {
                     class="font-bold text-[10px] uppercase tracking-widest text-shadow-sm whitespace-nowrap truncate"
                     style={{ color: "inherit" }}
                 >
-                    Image <span class="opacity-50 ml-0.5">#{props.unitId.slice(-4)}</span>
+                    Image <span class="opacity-50 ml-0.5">#{props.stickerId.slice(-4)}</span>
                 </span>
             </div>
         </div>

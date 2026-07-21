@@ -1,5 +1,5 @@
 import { createStore, unwrap } from "solid-js/store";
-import { Unit, Link } from "../types/unit";
+import { Sticker, Link } from "../types/stickerModel";
 import type { StickerGroup } from "../types/stickerEditing";
 import type { StickerEditSnapshot } from "../services/stickerHistory";
 import type { FrozenStickerEntry } from "../services/stickerSnapshot";
@@ -16,29 +16,29 @@ import {
     upsertStickerGroup,
 } from "../services/stickerGroups";
 
-const [units, setUnits] = createStore<Unit[]>([]);
+const [stickers, setStickers] = createStore<Sticker[]>([]);
 const [links, setLinks] = createStore<Link[]>([]);
 const [stickerGroups, setStickerGroups] = createStore<StickerGroup[]>([]);
 const [recycleBin, setRecycleBin] = createStore<FrozenStickerEntry[]>([]);
 const [referenceLibrary, setReferenceLibrary] = createStore<FrozenStickerEntry[]>([]);
 
-const addUnit = (unit: Unit) => {
-    setUnits((prev) => [...prev, unit]);
+const addSticker = (sticker: Sticker) => {
+    setStickers((prev) => [...prev, sticker]);
 };
 
-const removeUnit = (id: string) => {
-    setUnits((prev) => prev.filter((u) => u.id !== id));
+const removeSticker = (id: string) => {
+    setStickers((prev) => prev.filter((u) => u.id !== id));
     setLinks((prev) => prev.filter((l) => l.fromUnitId !== id && l.toUnitId !== id));
 };
 
-const updateUnit = (id: string, updates: Partial<Unit>) => {
-    setUnits(
+const updateSticker = (id: string, updates: Partial<Sticker>) => {
+    setStickers(
         (u) => u.id === id,
         (prev) => ({ ...prev, ...updates }),
     );
 };
 
-const updateUnitData = (id: string, updates: Partial<Unit["data"]>) => {
+const updateStickerData = (id: string, updates: Partial<Sticker["data"]>) => {
     const shouldInvalidateDragOutFilePath =
         !Object.prototype.hasOwnProperty.call(updates, "dragOutFilePath") &&
         (
@@ -53,7 +53,7 @@ const updateUnitData = (id: string, updates: Partial<Unit["data"]>) => {
         ? { ...updates, dragOutFilePath: undefined }
         : updates;
 
-    setUnits(
+    setStickers(
         (u) => u.id === id,
         "data",
         (prev) => ({ ...prev, ...nextUpdates }),
@@ -62,38 +62,38 @@ const updateUnitData = (id: string, updates: Partial<Unit["data"]>) => {
 
 const updateStickerEditData = (
     id: string,
-    updates: Partial<Unit["data"]>,
+    updates: Partial<Sticker["data"]>,
     options: { markLocalEdit?: boolean } = {},
 ) => {
-    const unit = units.find((item) => item.id === id);
-    const nextUpdates: Partial<Unit["data"]> = { ...updates };
+    const sticker = stickers.find((item) => item.id === id);
+    const nextUpdates: Partial<Sticker["data"]> = { ...updates };
 
     if (options.markLocalEdit !== false) {
         nextUpdates.stickerEditPropagation = markStickerEditPropagationLocally(
-            unit?.data.stickerEditPropagation,
+            sticker?.data.stickerEditPropagation,
         );
     }
 
-    updateUnitData(id, nextUpdates);
+    updateStickerData(id, nextUpdates);
 };
 
 const resizeStickerFrame = (
     id: string,
-    frame: Pick<Unit, "x" | "y" | "w" | "h">,
+    frame: Pick<Sticker, "x" | "y" | "w" | "h">,
     options: { propagate?: boolean } = {},
 ) => {
-    const unit = units.find((item) => item.id === id);
-    if (!unit) {
-        updateUnit(id, frame);
+    const sticker = stickers.find((item) => item.id === id);
+    if (!sticker) {
+        updateSticker(id, frame);
         return;
     }
 
     const editUpdates = scaleStickerEditDataForFrame(
-        unwrap(unit.data),
-        { w: unit.w, h: unit.h },
+        unwrap(sticker.data),
+        { w: sticker.w, h: sticker.h },
         frame,
     );
-    updateUnit(id, frame);
+    updateSticker(id, frame);
     if (Object.keys(editUpdates).length > 0) {
         updateStickerEditData(id, editUpdates, { markLocalEdit: false });
     }
@@ -102,29 +102,29 @@ const resizeStickerFrame = (
     }
 };
 
-const propagateStickerEditsFrom = (sourceUnitId: string) => {
+const propagateStickerEditsFrom = (sourceStickerId: string) => {
     const patches = buildStickerEditPropagationPatches({
-        units: unwrap(units),
+        stickers: unwrap(stickers),
         links: unwrap(links),
-        sourceUnitId,
+        sourceStickerId,
     });
     patches.forEach((patch) => {
-        updateUnitData(patch.unitId, patch.data);
+        updateStickerData(patch.stickerId, patch.data);
     });
     return patches;
 };
 
 const updateStickerWindowState = (
     id: string,
-    frame: Pick<Unit, "x" | "y" | "w" | "h">,
-    data: Partial<Unit["data"]>,
+    frame: Pick<Sticker, "x" | "y" | "w" | "h">,
+    data: Partial<Sticker["data"]>,
 ) => {
-    updateUnit(id, frame);
-    updateUnitData(id, data);
+    updateSticker(id, frame);
+    updateStickerData(id, data);
 };
 
 const restoreStickerEditSnapshot = (id: string, snapshot: StickerEditSnapshot) => {
-    updateUnit(id, snapshot.unitRect);
+    updateSticker(id, snapshot.unitRect);
     updateStickerEditData(
         id,
         {
@@ -144,8 +144,8 @@ const deleteStickerGroup = (groupId: string) => {
     setStickerGroups((prev) => removeStickerGroup(prev, groupId));
 };
 
-const setUnitGroup = (unitId: string, groupId: string | undefined) => {
-    updateUnitData(unitId, { groupId });
+const setStickerGroup = (stickerId: string, groupId: string | undefined) => {
+    updateStickerData(stickerId, { groupId });
 };
 
 const setGroupHidden = (groupId: string) => {
@@ -157,10 +157,10 @@ const setGroupLocked = (groupId: string) => {
 };
 
 const closeStickerGroup = (groupId: string) => {
-    const { removedUnitIds } = closeStickerGroupMembers(units, groupId);
-    removedUnitIds.forEach((id) => removeUnit(id));
+    const { removedStickerIds } = closeStickerGroupMembers(stickers, groupId);
+    removedStickerIds.forEach((id) => removeSticker(id));
     setStickerGroups((prev) => removeStickerGroup(prev, groupId));
-    return removedUnitIds;
+    return removedStickerIds;
 };
 
 const addLink = (link: Link) => {
@@ -171,22 +171,22 @@ const removeLink = (id: string) => {
     setLinks((prev) => prev.filter((l) => l.id !== id));
 };
 
-export const graphStore = {
-    units,
+export const stickerStore = {
+    stickers,
     links,
     stickerGroups,
     recycleBin,
     referenceLibrary,
-    setUnits,
+    setStickers,
     setLinks,
     setStickerGroups,
     setRecycleBin,
     setReferenceLibrary,
     actions: {
-        addUnit,
-        removeUnit,
-        updateUnit,
-        updateUnitData,
+        addSticker,
+        removeSticker,
+        updateSticker,
+        updateStickerData,
         updateStickerEditData,
         resizeStickerFrame,
         propagateStickerEditsFrom,
@@ -194,7 +194,7 @@ export const graphStore = {
         restoreStickerEditSnapshot,
         addOrUpdateStickerGroup,
         deleteStickerGroup,
-        setUnitGroup,
+        setStickerGroup,
         setGroupHidden,
         setGroupLocked,
         closeStickerGroup,

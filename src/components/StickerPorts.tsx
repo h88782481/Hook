@@ -1,9 +1,9 @@
 import { Component, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { Unit } from "../types/unit";
+import { Sticker } from "../types/stickerModel";
 
-interface UnitPortsProps {
-  unit: Unit;
+interface StickerPortsProps {
+  unit: Sticker;
   portsLayer?: HTMLElement;
   isCleanView: boolean;
 
@@ -17,11 +17,10 @@ interface UnitPortsProps {
   onLinkMove?: (portId: string, e: MouseEvent) => void;
 }
 
-export const UnitPorts: Component<UnitPortsProps> = (props) => {
+export const StickerPorts: Component<StickerPortsProps> = (props) => {
   const isMinified = () => !!props.unit.data.minified;
-
-  const getInputs = () => [{ name: "image", label: "Image", type: "image" }];
-  const getOutputs = () => [{ name: "output_image", label: "Image", type: "image" }];
+  const getInputs = () => props.unit.inputs;
+  const getOutputs = () => props.unit.outputs;
 
   return (
         <Show when={props.portsLayer && !props.isCleanView}>
@@ -48,16 +47,16 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                                     <div
                                         class="absolute -left-[6px] w-3 h-3 rounded-full bg-[var(--primary)] border border-white/40 pointer-events-auto cursor-crosshair z-20"
                                         style={{ top: `${top()}px`, transform: "translateY(-50%)" }}
-                                        title={port.label || port.name}
+                                        title={port.label || port.id}
                                         onMouseDown={(e) => {
                                             e.stopPropagation();
                                             if (props.onLinkMove) {
-                                                props.onLinkMove(port.name, e);
+                                                props.onLinkMove(port.id, e);
                                             }
                                         }}
                                         onMouseUp={(e) => {
                                             e.stopPropagation();
-                                            props.onLinkDrop(port.name);
+                                            props.onLinkDrop(port.id);
                                         }}
                                     />
                                 );
@@ -76,11 +75,11 @@ export const UnitPorts: Component<UnitPortsProps> = (props) => {
                                     <div
                                         class="absolute -right-[6px] w-3 h-3 rounded-full bg-[var(--accent-blue)] border border-white/40 pointer-events-auto cursor-crosshair z-20"
                                         style={{ top: `${top()}px`, transform: "translateY(-50%)" }}
-                                        title={port.label || port.name}
+                                        title={port.label || port.id}
                                         onMouseDown={(e) => {
                                             e.stopPropagation();
                                             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                            props.onLinkStart(port.name, rect.left + rect.width / 2, rect.top + rect.height / 2);
+                                            props.onLinkStart(port.id, rect.left + rect.width / 2, rect.top + rect.height / 2);
                                         }}
                                     />
                                 );

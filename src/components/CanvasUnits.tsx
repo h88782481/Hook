@@ -1,6 +1,6 @@
 import { Component, For, onCleanup } from "solid-js";
-import { UnitView } from "./UnitView";
-import { graphStore } from "../store/graphStore";
+import { StickerView } from "./StickerView";
+import { stickerStore } from "../store/stickerStore";
 import {
     selectionActions,
     unitUiState,
@@ -39,7 +39,7 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
 
         stickerResizeSyncTimer = window.setTimeout(() => {
             stickerResizeSyncTimer = null;
-            graphStore.actions.propagateStickerEditsFrom(unitId);
+            stickerStore.actions.propagateStickerEditsFrom(unitId);
             void syncService.scheduleSessionSync();
         }, STICKER_RESIZE_SYNC_DEBOUNCE_MS);
     };
@@ -67,18 +67,18 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
     });
 
     return (
-      <For each={graphStore.units.filter((unit) => {
+      <For each={stickerStore.stickers.filter((unit) => {
           const activeGroup = activeStickerGroupId();
           if (activeGroup && unit.data.groupId !== activeGroup) {
               return false;
           }
           const group = unit.data.groupId
-              ? graphStore.stickerGroups.find((item) => item.id === unit.data.groupId)
+              ? stickerStore.stickerGroups.find((item) => item.id === unit.data.groupId)
               : undefined;
           return !group?.hidden;
       })}>{(u) => {
           return (
-          <UnitView
+          <StickerView
               // State
               unit={u}
               multiDragPositions={multiDragPositions()}
@@ -106,21 +106,21 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
 
               // Resizing
               onResize={(nextFrame) => {
-                  graphStore.actions.resizeStickerFrame(u.id, nextFrame, { propagate: false });
+                  stickerStore.actions.resizeStickerFrame(u.id, nextFrame, { propagate: false });
                   scheduleStickerResizeSync(u.id);
               }}
               onOpacityChange={(val) => {
                   if (u.data.minified) {
-                      graphStore.actions.updateUnitData(u.id, { opacityMini: val });
+                      stickerStore.actions.updateStickerData(u.id, { opacityMini: val });
                   } else {
-                      graphStore.actions.updateUnitData(u.id, { opacityNormal: val });
+                      stickerStore.actions.updateStickerData(u.id, { opacityNormal: val });
                   }
                   scheduleStickerAppearanceSync();
               }}
 
               // Data Resolution
-              connectedPorts={graphStore.links.filter(l => l.toUnitId === u.id).map(l => l.toPortId)}
-              connectedLinks={graphStore.links.filter(l => l.toUnitId === u.id)}
+              connectedPorts={stickerStore.links.filter(l => l.toUnitId === u.id).map(l => l.toPortId)}
+              connectedLinks={stickerStore.links.filter(l => l.toUnitId === u.id)}
               resolveUnitImage={props.resolveUnitImage}
           />
           );

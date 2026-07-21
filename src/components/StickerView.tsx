@@ -1,6 +1,6 @@
 import { Component, For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import {
   activeStickerEditTargetId,
   draggingStickerId,
@@ -13,11 +13,11 @@ import {
   stickerToolSettings,
   uiActions,
 } from "../store/uiStore";
-import { Unit, Link } from "../types/unit";
+import { Sticker, Link } from "../types/stickerModel";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import { computeMinifiedStickerAnnotationViewport, computeMinifiedStickerViewport } from "../services/stickerEditing";
 import { StickerSidePanel } from "./StickerSidePanel";
-import { UnitPorts } from "./UnitPorts";
+import { StickerPorts } from "./StickerPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
@@ -31,7 +31,7 @@ import { clamp } from "../utils/math";
 const globalScrollRegistry: Record<string, number> = {};
 
 interface Props {
-  unit: Unit;
+  unit: Sticker;
   isSelected: boolean;
   showActions: boolean;
   showSidePanel: boolean;
@@ -43,7 +43,7 @@ interface Props {
   onLinkMove?: (portId: string, e: MouseEvent) => void; // NEW: Re-linking (Optional)
   onLinkHover: (targetId: string | null) => void; // NEW: Visualization feedback
   onRendered: (id: string, dataUrl: string) => void;
-  onResize: (nextFrame: Pick<Unit, "x" | "y" | "w" | "h">) => void; // NEW: Ctrl+Wheel Resize with Pivot
+  onResize: (nextFrame: Pick<Sticker, "x" | "y" | "w" | "h">) => void; // NEW: Ctrl+Wheel Resize with Pivot
   onOpacityChange: (opacity: number) => void; // NEW: Alt+Wheel Opacity
   resolveUnitImage?: (unitId: string) => string | undefined; // NEW: Helper to resolve referenced images
 
@@ -53,7 +53,7 @@ interface Props {
   portsLayer?: HTMLElement; // NEW: Global Layer for Z-independent ports
 }
 
-export const UnitView: Component<Props> = (props) => {
+export const StickerView: Component<Props> = (props) => {
   let unitContainerRef: HTMLDivElement | undefined;
   let nativeStickerDragStart:
       | {
@@ -82,8 +82,8 @@ export const UnitView: Component<Props> = (props) => {
       void api.debugLogEvent("sticker-wheel-trace", `layer=unit phase=${phase} unit=${props.unit.id} ${detail}`);
   };
 
-  const liveUnit = () => graphStore.units.find((unit) => unit.id === props.unit.id) || props.unit;
-  const isMinified = () => !!liveUnit().data.minified;
+  const liveSticker = () => stickerStore.stickers.find((unit) => unit.id === props.unit.id) || props.unit;
+  const isMinified = () => !!liveSticker().data.minified;
   const hasSelectedExistingAnnotations = () =>
       selectedStickerAnnotationIds.length > 0 || selectedStickerAnnotationId() !== null;
   const shouldBlockContainerMouseDown = () => {
@@ -111,13 +111,13 @@ export const UnitView: Component<Props> = (props) => {
           return props.multiDragPositions[props.unit.id];
       }
 
-      const unit = liveUnit();
+      const unit = liveSticker();
       return { x: unit.x, y: unit.y };
   };
 
   const style = () => {
     const { x, y } = currentPos();
-    const unit = liveUnit();
+    const unit = liveSticker();
 
     return {
         left: `${x}px`,
@@ -138,9 +138,9 @@ export const UnitView: Component<Props> = (props) => {
   };
 
   const getOpacity = () => isMinified()
-      ? (liveUnit().data.opacityMini ?? 0.9)
-      : (liveUnit().data.opacityNormal ?? 1);
-  const getImageEditState = () => liveUnit().data.imageEditState;
+      ? (liveSticker().data.opacityMini ?? 0.9)
+      : (liveSticker().data.opacityNormal ?? 1);
+  const getImageEditState = () => liveSticker().data.imageEditState;
   const getCornerRadius = () => getImageEditState()?.cornerRadius ?? 0;
   const getImageBorderWidth = () => getImageEditState()?.borderWidth ?? 0;
   const getImageBorderColor = () => getImageEditState()?.borderColor ?? "transparent";
@@ -153,15 +153,15 @@ export const UnitView: Component<Props> = (props) => {
   };
   const getMinifiedViewport = () =>
       computeMinifiedStickerViewport(
-          liveUnit().data.savedRect,
-          liveUnit().data.cropOffset,
+          liveSticker().data.savedRect,
+          liveSticker().data.cropOffset,
           getImageEditState(),
       );
   const getMinifiedAnnotationViewport = () =>
       computeMinifiedStickerAnnotationViewport(
-          { w: liveUnit().w, h: liveUnit().h },
-          liveUnit().data.savedRect,
-          liveUnit().data.cropOffset,
+          { w: liveSticker().w, h: liveSticker().h },
+          liveSticker().data.savedRect,
+          liveSticker().data.cropOffset,
       );
 
   // === PORT LOGIC ===
@@ -187,17 +187,17 @@ export const UnitView: Component<Props> = (props) => {
           }
       }
       if (!resolvedSrc) {
-          resolvedSrc = liveUnit().data.previewSrc || liveUnit().data.src || "";
+          resolvedSrc = liveSticker().data.previewSrc || liveSticker().data.src || "";
       }
       return normalizeImageSourceForDisplay(resolvedSrc) || "";
   };
   const baseImageSrc = () =>
-      liveUnit().data.rasterizedAnnotationLayerSrc
-          ? normalizeImageSourceForDisplay(liveUnit().data.src || displaySrc()) || ""
+      liveSticker().data.rasterizedAnnotationLayerSrc
+          ? normalizeImageSourceForDisplay(liveSticker().data.src || displaySrc()) || ""
           : displaySrc();
   const fileBackedFallbacksInFlight = new Set<string>();
   const handleFileBackedImageLoadError = async () => {
-      const unit = liveUnit();
+      const unit = liveSticker();
       const filePath = unit.data.filePath;
       if (!filePath || unit.data.previewSrc?.startsWith("data:")) {
           return;
@@ -209,11 +209,11 @@ export const UnitView: Component<Props> = (props) => {
       fileBackedFallbacksInFlight.add(unit.id);
       try {
           const fallbackSrc = await api.readImageFromPath(filePath);
-          graphStore.actions.updateUnitData(props.unit.id, {
+          stickerStore.actions.updateStickerData(props.unit.id, {
               previewSrc: fallbackSrc,
           });
       } catch (error) {
-          console.warn("[UnitView] Failed to load file-backed image fallback", error);
+          console.warn("[StickerView] Failed to load file-backed image fallback", error);
       } finally {
           fileBackedFallbacksInFlight.delete(unit.id);
       }
@@ -289,7 +289,7 @@ export const UnitView: Component<Props> = (props) => {
   };
 
   const resolveExistingNativeDragFilePath = () => {
-      const unit = liveUnit();
+      const unit = liveSticker();
       if (unit.data.dragOutFilePath) {
           return unit.data.dragOutFilePath;
       }
@@ -315,7 +315,7 @@ export const UnitView: Component<Props> = (props) => {
 
       nativeStickerDragInFlight = true;
       try {
-          const unit = liveUnit();
+          const unit = liveSticker();
           const existingDragPath = resolveExistingNativeDragFilePath();
           const useExistingPath = typeof existingDragPath === "string" && existingDragPath.length > 0;
           void api.debugLogEvent(
@@ -339,7 +339,7 @@ export const UnitView: Component<Props> = (props) => {
                    );
                })();
           if (!useExistingPath) {
-              graphStore.actions.updateUnitData(props.unit.id, {
+              stickerStore.actions.updateStickerData(props.unit.id, {
                   dragOutFilePath: path,
               });
           }
@@ -526,12 +526,12 @@ export const UnitView: Component<Props> = (props) => {
                 `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${isMinified()} activeEditTarget=${activeStickerEditTargetId() ?? "null"} selectedAnnotationCount=${selectedStickerAnnotationIds.length} primaryAnnotation=${selectedStickerAnnotationId() ?? "null"} deltaY=${e.deltaY}`,
             );
             if (isMinified()) return;
-            const currentUnit = liveUnit();
+            const currentSticker = liveSticker();
 
             const rect = e.currentTarget.getBoundingClientRect();
             // Calculate scale of the view (in case canvas is zoomed)
             // If rect.width is 0 (hidden), safe fallback
-            const viewScale = currentUnit.w > 0 ? rect.width / currentUnit.w : 1;
+            const viewScale = currentSticker.w > 0 ? rect.width / currentSticker.w : 1;
 
             // Mouse position relative to unit corner (in World Units)
             const relX = (e.clientX - rect.left) / viewScale;
@@ -540,35 +540,35 @@ export const UnitView: Component<Props> = (props) => {
             // Browser wheel direction: deltaY < 0 means wheel-up. Wheel-up should zoom in.
             const scaleFactor = clamp(Math.exp(-e.deltaY * 0.001), 0.5, 1.5);
 
-            const newW = Math.max(24, currentUnit.w * scaleFactor);
-            const newH = Math.max(24, currentUnit.h * scaleFactor);
+            const newW = Math.max(24, currentSticker.w * scaleFactor);
+            const newH = Math.max(24, currentSticker.h * scaleFactor);
 
             // Calculate actual effective scale applied (in case of clamping)
-            const effectiveScaleW = currentUnit.w > 0 ? newW / currentUnit.w : 1;
-            const effectiveScaleH = currentUnit.h > 0 ? newH / currentUnit.h : 1;
+            const effectiveScaleW = currentSticker.w > 0 ? newW / currentSticker.w : 1;
+            const effectiveScaleH = currentSticker.h > 0 ? newH / currentSticker.h : 1;
 
             // New Position: Adjusted to keep the point under mouse stationary
             // NewUnitX = MouseX_World - (RelX_World * NewScale)
             // But MouseX_World = UnitX + RelX_World
             // So NewUnitX = UnitX + RelX_World - RelX_World * NewScale
             //             = UnitX + RelX_World * (1 - NewScale)
-            const newX = currentUnit.x + relX * (1 - effectiveScaleW);
-            const newY = currentUnit.y + relY * (1 - effectiveScaleH);
+            const newX = currentSticker.x + relX * (1 - effectiveScaleW);
+            const newY = currentSticker.y + relY * (1 - effectiveScaleH);
             const nextFrame = { x: newX, y: newY, w: newW, h: newH };
 
             logWheelEvent(
                 "ctrl-resize",
-                `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${currentUnit.data.minified ?? false} relX=${relX.toFixed(2)} relY=${relY.toFixed(2)} nextW=${newW.toFixed(2)} nextH=${newH.toFixed(2)} nextX=${newX.toFixed(2)} nextY=${newY.toFixed(2)}`,
+                `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${currentSticker.data.minified ?? false} relX=${relX.toFixed(2)} relY=${relY.toFixed(2)} nextW=${newW.toFixed(2)} nextH=${newH.toFixed(2)} nextX=${newX.toFixed(2)} nextY=${newY.toFixed(2)}`,
             );
             props.onResize(nextFrame);
         } else if (e.altKey) {
             e.preventDefault();
             e.stopPropagation();
 
-            const currentUnit = liveUnit();
-            const currentOp = currentUnit.data.minified
-                ? (currentUnit.data.opacityMini ?? 0.9)
-                : (currentUnit.data.opacityNormal ?? 1.0);
+            const currentSticker = liveSticker();
+            const currentOp = currentSticker.data.minified
+                ? (currentSticker.data.opacityMini ?? 0.9)
+                : (currentSticker.data.opacityNormal ?? 1.0);
 
             // Step 0.05 per scroll click
             const delta = -e.deltaY * 0.001;
@@ -576,7 +576,7 @@ export const UnitView: Component<Props> = (props) => {
 
             logWheelEvent(
                 "alt-opacity",
-                `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${currentUnit.data.minified ?? false} currentOpacity=${currentOp.toFixed(3)} nextOpacity=${newOp.toFixed(3)} deltaY=${e.deltaY}`,
+                `ctrl=${e.ctrlKey} alt=${e.altKey} shift=${e.shiftKey} minified=${currentSticker.data.minified ?? false} currentOpacity=${currentOp.toFixed(3)} nextOpacity=${newOp.toFixed(3)} deltaY=${e.deltaY}`,
             );
             props.onOpacityChange(newOp);
         }
@@ -615,7 +615,7 @@ export const UnitView: Component<Props> = (props) => {
                 </Portal>
             )}
         </Show>
-        <UnitPorts
+        <StickerPorts
             unit={props.unit}
             portsLayer={props.portsLayer}
             isCleanView={isCleanView()}
@@ -789,7 +789,7 @@ export const UnitView: Component<Props> = (props) => {
                 })()}
             />
 
-            <Show when={liveUnit().data.rasterizedAnnotationLayerSrc}>
+            <Show when={liveSticker().data.rasterizedAnnotationLayerSrc}>
                 {(layerSrc) => (
                     <div
                         class="sticker-rasterized-annotation-layer-viewport absolute"

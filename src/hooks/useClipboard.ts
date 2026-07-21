@@ -1,9 +1,9 @@
 import { unwrap } from "solid-js/store";
 import { api } from "../services/api";
-import { STICKER_DEFAULT_PORTS, Unit } from "../types/unit";
+import { createSticker } from "../types/stickerModel";
 import { mousePos, selectedStickerId, selectedStickerAnnotationId, clipboard, setClipboard, ClipboardData, selectionActions, uiActions } from "../store/uiStore";
 import { logger } from "../services/logger";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
 import { renderStickerComposite } from "../services/stickerExport";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
@@ -18,13 +18,13 @@ export function useClipboard() {
         const mp = mousePos();
 
         if (id) {
-            const unit = graphStore.units.find(u => u.id === id);
+            const unit = stickerStore.stickers.find(u => u.id === id);
             if (unit) {
                 if (annotationId && unit.data.annotationState) {
                     const duplicated = duplicateAnnotationById(unit.data.annotationState, annotationId);
                     if (duplicated.createdAnnotationId) {
                         uiActions.pushStickerHistory(id, captureStickerEditSnapshot(unit));
-                        graphStore.actions.updateUnitData(id, {
+                        stickerStore.actions.updateStickerData(id, {
                             annotationState: {
                                 ...unit.data.annotationState,
                                 elements: duplicated.elements,
@@ -168,7 +168,7 @@ export function useClipboard() {
     const handleSave = async () => {
         const id = selectedStickerId();
         if (!id) return;
-        const unit = graphStore.units.find((candidate) => candidate.id === id);
+        const unit = stickerStore.stickers.find((candidate) => candidate.id === id);
         if (!unit) return;
 
         try {
@@ -188,18 +188,18 @@ export function useClipboard() {
     const isMouseInsideOriginal = (clip: ClipboardData, mx: number, my: number) => {
         // Try to find the original unit to get its CURRENT position
         // This handles cases where the user moved the node after copying
-        const currentUnit = graphStore.units.find(u => u.id === clip.originalId);
+        const currentSticker = stickerStore.stickers.find(u => u.id === clip.originalId);
 
         let targetX = clip.originalX;
         let targetY = clip.originalY;
         let targetW = clip.w;
         let targetH = clip.h;
 
-        if (currentUnit) {
-            targetX = currentUnit.x;
-            targetY = currentUnit.y;
-            targetW = currentUnit.w;
-            targetH = currentUnit.h;
+        if (currentSticker) {
+            targetX = currentSticker.x;
+            targetY = currentSticker.y;
+            targetW = currentSticker.w;
+            targetH = currentSticker.h;
         }
 
         return (mx >= targetX && mx <= targetX + targetW &&
@@ -251,15 +251,11 @@ export function useClipboard() {
         }
 
         // Create Unit
-        const newUnit: Unit = {
-            id: crypto.randomUUID(),
-            type: 'sticker',
+        const newSticker = createSticker({
             x: newX,
             y: newY,
             w: clip.w,
             h: clip.h,
-            inputs: [...STICKER_DEFAULT_PORTS.inputs],
-            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: clip.src,
                 minified: clip.minified,
@@ -275,11 +271,11 @@ export function useClipboard() {
                 dragOutFilePath: clip.dragOutFilePath,
                 groupId: clip.groupId,
                 captureMeta: clip.captureMeta,
-            }
-        };
+            },
+        });
 
-        graphStore.actions.addUnit(newUnit);
-        selectionActions.set([newUnit.id]);
+        stickerStore.actions.addSticker(newSticker);
+        selectionActions.set([newSticker.id]);
         syncService.updateBackendRects();
 
         // Debug Logs
@@ -293,7 +289,7 @@ export function useClipboard() {
         const nextClip: ClipboardData = {
             ...clip,
             // Update Anchor to the new unit
-            originalId: newUnit.id,
+            originalId: newSticker.id,
             originalX: newX,
             originalY: newY,
             // Prepare next cascade step relative to THIS unit
@@ -306,23 +302,19 @@ export function useClipboard() {
 
     const createImageUnit = (base64: string, mpOverride?: {x: number, y: number}) => {
         const mp = mpOverride || mousePos();
-        const newUnit: Unit = {
-            id: crypto.randomUUID(),
-            type: 'sticker',
+        const newSticker = createSticker({
             x: mp.x,
             y: mp.y,
             w: 300,
             h: 300,
-            inputs: [...STICKER_DEFAULT_PORTS.inputs],
-            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: base64,
-                minified: false
-            }
-        };
-        graphStore.actions.addUnit(newUnit);
+                minified: false,
+            },
+        });
+        stickerStore.actions.addSticker(newSticker);
         syncService.updateBackendRects();
-        return newUnit.id;
+        return newSticker.id;
     };
 
     return { handlePaste, handleCopy, handleSave, createImageUnit };

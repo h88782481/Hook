@@ -6,7 +6,7 @@ import { clamp } from "../utils/math";
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 export type LineEndpointHandle = "start" | "end";
 
-const pointToSegmentDistance = (point: StickerPoint, start: StickerPoint, end: StickerPoint) => {
+export const pointToSegmentDistance = (point: StickerPoint, start: StickerPoint, end: StickerPoint) => {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     if (dx === 0 && dy === 0) {
@@ -21,6 +21,9 @@ const pointToSegmentDistance = (point: StickerPoint, start: StickerPoint, end: S
     const projY = start.y + t * dy;
     return Math.hypot(point.x - projX, point.y - projY);
 };
+
+export const scaleStrokeWidth = (width: number, scaleX: number, scaleY: number) =>
+    width * ((Math.abs(scaleX) + Math.abs(scaleY)) / 2);
 
 const isPointInEllipse = (point: StickerPoint, x: number, y: number, w: number, h: number) => {
     const rx = w / 2;
@@ -397,9 +400,6 @@ export interface AnnotationScale {
 
 const DEFAULT_TEXT_FONT_SIZE = 18;
 const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;
-
-const scaleStrokeWidth = (width: number, scaleX: number, scaleY: number) =>
-    width * ((Math.abs(scaleX) + Math.abs(scaleY)) / 2);
 
 const getPointCloudBounds = (
     points: StickerPoint[] | undefined,

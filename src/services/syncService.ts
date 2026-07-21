@@ -1,12 +1,12 @@
 import { api } from "./api";
-import { graphStore } from "../store/graphStore";
-import type { Link } from "../types/unit";
+import { stickerStore } from "../store/stickerStore";
+import type { Link } from "../types/stickerModel";
 import { extraRects } from "./uiRegistry";
 import type { BootProfile } from "./bootProfile";
 import type { StickerGroup } from "../types/stickerEditing";
 import {
-    sessionStickerToUnit,
-    unitToSessionSticker,
+    sessionStickerToSticker,
+    stickerToSessionSticker,
 } from "./stickerSnapshot";
 
 const mapLinkToSessionLink = (link: Link) => ({
@@ -76,11 +76,11 @@ class SyncScheduler {
 
 const executeSyncCycle = async () => {
     await api.saveSession(
-        graphStore.units.map((unit) => unitToSessionSticker(unit, { normalizePreview: true })),
-        graphStore.links.map(mapLinkToSessionLink),
-        graphStore.stickerGroups.map(mapGroupToSessionGroup),
-        graphStore.recycleBin.map((entry) => entry),
-        graphStore.referenceLibrary.map((entry) => entry),
+        stickerStore.stickers.map((unit) => stickerToSessionSticker(unit, { normalizePreview: true })),
+        stickerStore.links.map(mapLinkToSessionLink),
+        stickerStore.stickerGroups.map(mapGroupToSessionGroup),
+        stickerStore.recycleBin.map((entry) => entry),
+        stickerStore.referenceLibrary.map((entry) => entry),
     );
 };
 
@@ -90,7 +90,7 @@ export const syncService = {
     updateBackendRects: async () => {
         const dpr = window.devicePixelRatio || 1;
 
-        const rects = graphStore.units.map((u) => ({
+        const rects = stickerStore.stickers.map((u) => ({
             id: u.id,
             x: Math.round(u.x * dpr),
             y: Math.round(u.y * dpr),
@@ -122,8 +122,8 @@ export const syncService = {
         try {
             const sessionData = await api.loadSession();
             if (sessionData) {
-                const loadedUnits = sessionData.stickers.map(sessionStickerToUnit);
-                const loadedUnitIds = new Set(loadedUnits.map((unit) => unit.id));
+                const loadedStickers = sessionData.stickers.map(sessionStickerToSticker);
+                const loadedUnitIds = new Set(loadedStickers.map((unit) => unit.id));
                 const loadedLinks = sessionData.links
                     .filter((link) => loadedUnitIds.has(link.fromUnitId) && loadedUnitIds.has(link.toUnitId))
                     .map((link) => ({
@@ -134,14 +134,14 @@ export const syncService = {
                         toPortId: link.toPortId,
                     }));
 
-                graphStore.setUnits(loadedUnits);
-                graphStore.setLinks(loadedLinks);
-                graphStore.setStickerGroups(sessionData.groups as StickerGroup[]);
-                graphStore.setRecycleBin(sessionData.recycleBin as any);
-                graphStore.setReferenceLibrary(sessionData.referenceLibrary as any);
+                stickerStore.setStickers(loadedStickers);
+                stickerStore.setLinks(loadedLinks);
+                stickerStore.setStickerGroups(sessionData.groups as StickerGroup[]);
+                stickerStore.setRecycleBin(sessionData.recycleBin as any);
+                stickerStore.setReferenceLibrary(sessionData.referenceLibrary as any);
 
                 syncService.updateBackendRects();
-                if (bootProfile?.initialUiMode === "overlay" && loadedUnits.length > 0) {
+                if (bootProfile?.initialUiMode === "overlay" && loadedStickers.length > 0) {
                     await api.setMouseMonitorActive(true);
                     await syncService.updateBackendRects();
                 }

@@ -1,8 +1,6 @@
 import { createSignal } from "solid-js";
 import type { PinRect } from "../types/pinRect";
 
-export type { PinRect };
-
 // Global signal to track active overlay rects (Logic Pixels)
 const [extraRects, setExtraRects] = createSignal<PinRect[]>([]);
 

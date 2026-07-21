@@ -1,10 +1,10 @@
-import { Unit } from "../types/unit";
+import { Sticker } from "../types/stickerModel";
 
 /**
- * Calculates the Y position of a port on a unit.
+ * Calculates the Y position of a port on a sticker.
  * Stickers expose a single image input/output.
  */
-export const calculatePortY = (u: Unit, _portName: string, _isInput: boolean): number => {
+export const calculatePortY = (u: Sticker, _portName: string, _isInput: boolean): number => {
     const index = 0;
     const count = 1;
 

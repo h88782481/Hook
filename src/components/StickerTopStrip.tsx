@@ -11,7 +11,7 @@ import {
     computeStickerTopStripLayout,
     STICKER_TOP_STRIP_HEIGHT,
 } from "../services/stickerTopStripLayout";
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import type { StickerRasterizeScope } from "../services/stickerRasterize";
 import { rasterizeStickerAnnotationsForUnit } from "../services/stickerRasterizeActions";
@@ -565,7 +565,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         () => historyActionOptions.find((item) => item.mode === currentHistoryAction()) ?? historyActionOptions[0],
     );
     const isHistoryEnabled = createMemo(() => (currentHistoryAction() === "undo" ? canUndo() : canRedo()));
-    const currentUnit = createMemo(() => graphStore.units.find((item) => item.id === props.unitId));
+    const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.unitId));
     const selectedAnnotationIds = createMemo(() => {
         if (selectedStickerAnnotationIds.length > 0) {
             return [...selectedStickerAnnotationIds];
@@ -575,7 +575,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const selectedExistingAnnotationType = createMemo<StickerAnnotation["type"] | null>(() => {
         const annotationIds = selectedAnnotationIds();
         if (annotationIds.length !== 1) return null;
-        const annotation = currentUnit()?.data.annotationState?.elements.find((item) => item.id === annotationIds[0]);
+        const annotation = currentSticker()?.data.annotationState?.elements.find((item) => item.id === annotationIds[0]);
         return annotation?.type ?? null;
     });
     const propertyBarTool = createMemo(() => {
@@ -610,13 +610,13 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     );
     const draggingThisSticker = createMemo(() => draggingStickerId() === props.unitId);
     const canRasterizeSelected = createMemo(() => {
-        const unit = currentUnit();
+        const unit = currentSticker();
         if (!unit) return false;
 
         const existingIds = new Set(unit.data.annotationState?.elements.map((annotation) => annotation.id) || []);
         return selectedAnnotationIds().some((annotationId) => existingIds.has(annotationId));
     });
-    const canRasterizeAll = createMemo(() => (currentUnit()?.data.annotationState?.elements.length || 0) > 0);
+    const canRasterizeAll = createMemo(() => (currentSticker()?.data.annotationState?.elements.length || 0) > 0);
     const isRasterizeEnabled = createMemo(() =>
         currentRasterizeScope() === "selected" ? canRasterizeSelected() : canRasterizeAll(),
     );
@@ -652,13 +652,13 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
     const applySnapshot = async (snapshot: ReturnType<typeof captureStickerEditSnapshot> | undefined) => {
         if (!snapshot) return;
-        graphStore.actions.restoreStickerEditSnapshot(props.unitId, snapshot);
-        graphStore.actions.propagateStickerEditsFrom(props.unitId);
+        stickerStore.actions.restoreStickerEditSnapshot(props.unitId, snapshot);
+        stickerStore.actions.propagateStickerEditsFrom(props.unitId);
         await syncService.scheduleSessionSync();
     };
 
     const runHistoryAction = async (mode: HistoryActionMode) => {
-        const unit = currentUnit();
+        const unit = currentSticker();
         if (!unit) return;
 
         if (mode === "undo") {
@@ -676,7 +676,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     };
 
     const runRasterizeAction = async (scope: StickerRasterizeScope) => {
-        const unit = currentUnit();
+        const unit = currentSticker();
         if (!unit) return;
 
         // The rasterize pipeline loads images and reads canvases back via
@@ -686,7 +686,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         try {
             const rasterized = await rasterizeStickerAnnotationsForUnit({
                 unitId: props.unitId,
-                currentUnit: unit,
+                currentSticker: unit,
                 scope,
                 selectedAnnotationId: selectedStickerAnnotationId(),
                 selectedAnnotationIds: selectedAnnotationIds(),

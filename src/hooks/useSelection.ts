@@ -16,9 +16,9 @@ import {
 } from "../store/uiStore";
 import { createThumbnailDataUrl } from "../services/historyModel";
 
-import { graphStore } from "../store/graphStore";
+import { stickerStore } from "../store/stickerStore";
 import { syncService } from "../services/syncService";
-import { STICKER_DEFAULT_PORTS, Unit } from "../types/unit";
+import { createSticker } from "../types/stickerModel";
 import {
     CaptureRect,
     createCaptureMeta,
@@ -42,7 +42,7 @@ import {
 
 let lastPreciseRequestTime = 0;
 let isPreciseRequestPending = false;
-let cachedUnitRects: {id: string, x: number, y: number, w: number, h: number}[] = [];
+let cachedStickerRects: {id: string, x: number, y: number, w: number, h: number}[] = [];
 
 const resolveCaptureResponseSrc = (response: ManualLongCaptureFrame) => {
     if (response.filePath) {
@@ -80,7 +80,7 @@ export function useSelection() {
         setIsSelecting(false);
         setIsBoxSelecting(false);
         setCaptureMode("region");
-        cachedUnitRects = [];
+        cachedStickerRects = [];
     };
 
     const stopAutoLongCaptureTimer = () => {
@@ -92,7 +92,7 @@ export function useSelection() {
 
     const restorePostCaptureInteractivity = async () => {
         await api.setOverlayClickThrough(true);
-        if (graphStore.units.length > 0) {
+        if (stickerStore.stickers.length > 0) {
             await api.setMouseMonitorActive(true);
             await syncService.updateBackendRects();
         }
@@ -109,15 +109,11 @@ export function useSelection() {
         const cssW = response.width / dpr;
         const cssH = response.height / dpr;
 
-        const newUnit: Unit = {
-            id: crypto.randomUUID(),
-            type: 'sticker',
+        const newSticker = createSticker({
             x: origin.x,
             y: origin.y,
             w: cssW,
             h: cssH,
-            inputs: [...STICKER_DEFAULT_PORTS.inputs],
-            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: resolveCaptureResponseSrc(response),
                 filePath: response.filePath ?? undefined,
@@ -125,11 +121,11 @@ export function useSelection() {
                 opacityMini: 0.9,
                 minified: false,
                 captureMeta: createCaptureMeta(mode, rect, scrollAxis),
-            }
-        };
+            },
+        });
 
-        graphStore.actions.addUnit(newUnit);
-        selectionActions.set([newUnit.id]);
+        stickerStore.actions.addSticker(newSticker);
+        selectionActions.set([newSticker.id]);
         await syncService.updateBackendRects();
         void syncService.scheduleSessionSync();
         await api.debugLogEvent("selection-capture-success", `cssW=${cssW} cssH=${cssH}`);
@@ -138,10 +134,10 @@ export function useSelection() {
         // Non-blocking: a thumbnail failure must never break the capture flow.
         void (async () => {
             try {
-                const thumb = await createThumbnailDataUrl(newUnit.data.src ?? "");
+                const thumb = await createThumbnailDataUrl(newSticker.data.src ?? "");
                 if (!thumb.thumbnail) return;
                 uiActions.recordScreenshotHistory({
-                    id: newUnit.id,
+                    id: newSticker.id,
                     thumbnail: thumb.thumbnail,
                     width: response.width,
                     height: response.height,
@@ -645,7 +641,7 @@ export function useSelection() {
          }
 
          // Cache Geometry
-         cachedUnitRects = graphStore.units.map(u => ({
+         cachedStickerRects = stickerStore.stickers.map(u => ({
              id: u.id, x: u.x, y: u.y, w: u.w, h: u.h
          }));
     };
@@ -735,7 +731,7 @@ export function useSelection() {
              const newSelection: string[] = [];
 
              // Iterate cached rects for performance
-             for (const u of cachedUnitRects) {
+             for (const u of cachedStickerRects) {
                  const uR = u.x + u.w;
                  const uB = u.y + u.h;
                  // AABB Intersection check
@@ -769,7 +765,7 @@ export function useSelection() {
             setIsBoxSelecting(false);
             setSelectionRect(null);
             setStartPos(null);
-            cachedUnitRects = [];
+            cachedStickerRects = [];
             return;
         }
 
@@ -785,7 +781,7 @@ export function useSelection() {
             void api.debugLogEvent("selection-end-small", `w=${rect.w} h=${rect.h}`);
             resetSelection();
             await api.setOverlayClickThrough(true);
-            if (graphStore.units.length > 0) {
+            if (stickerStore.stickers.length > 0) {
                 await api.setMouseMonitorActive(true);
                 await syncService.updateBackendRects();
             }
@@ -829,7 +825,7 @@ export function useSelection() {
                 if (isLongCapture) {
                     resetSelection();
                     await api.setOverlayClickThrough(true);
-                    if (graphStore.units.length > 0) {
+                    if (stickerStore.stickers.length > 0) {
                         await api.setMouseMonitorActive(true);
                         await syncService.updateBackendRects();
                     }
