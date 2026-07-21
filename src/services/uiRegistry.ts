@@ -46,27 +46,4 @@ export const removeRect = (id: string) => {
     });
 };
 
-// PORT OFFSETS REGISTRY (UnitID -> PortName -> {x, y} relative to Unit)
-// This avoids DOM thrashing/lag during drag by caching the relative position.
-const [portOffsets, setPortOffsets] = createSignal<Record<string, Record<string, {x: number, y: number}>>>({});
-
-export const updatePortOffset = (unitId: string, portName: string, offset: {x: number, y: number}) => {
-    setPortOffsets(prev => {
-        const unitMap = prev[unitId] || {};
-        // Optimization: Don't update if same (avoid signal thrashing)
-        if (unitMap[portName] && Math.abs(unitMap[portName].x - offset.x) < 0.1 && Math.abs(unitMap[portName].y - offset.y) < 0.1) {
-            return prev;
-        }
-        return {
-            ...prev,
-            [unitId]: {
-                ...unitMap,
-                [portName]: offset
-            }
-        };
-    });
-};
-
-export { portOffsets };
-
 export { extraRects };

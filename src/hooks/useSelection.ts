@@ -18,7 +18,7 @@ import { createThumbnailDataUrl } from "../services/historyModel";
 
 import { graphStore } from "../store/graphStore";
 import { syncService } from "../services/syncService";
-import { Unit } from "../types/unit";
+import { STICKER_DEFAULT_PORTS, Unit } from "../types/unit";
 import {
     CaptureRect,
     createCaptureMeta,
@@ -116,9 +116,8 @@ export function useSelection() {
             y: origin.y,
             w: cssW,
             h: cssH,
-            params: {},
-            inputs: [],
-            outputs: [],
+            inputs: [...STICKER_DEFAULT_PORTS.inputs],
+            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: resolveCaptureResponseSrc(response),
                 filePath: response.filePath ?? undefined,

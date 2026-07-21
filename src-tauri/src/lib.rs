@@ -2416,7 +2416,6 @@ pub struct StickerData {
     pub crop_offset: Option<SimplePoint>,
     pub opacity_normal: Option<f64>,
     pub opacity_mini: Option<f64>,
-    pub params: Option<serde_json::Value>, // Store params as JSON value
     #[serde(rename = "filePath")]
     pub file_path: Option<String>,
     #[serde(rename = "previewSrc")]
@@ -2455,11 +2454,8 @@ pub struct FrozenStickerEntry {
 pub struct SessionData {
     pub stickers: Vec<StickerData>,
     pub links: Vec<LinkData>,
-    #[serde(default)]
     pub groups: Vec<serde_json::Value>,
-    #[serde(default)]
     pub recycle_bin: Vec<FrozenStickerEntry>,
-    #[serde(default)]
     pub reference_library: Vec<FrozenStickerEntry>,
 }
 
@@ -2742,9 +2738,9 @@ fn save_session(
     app: tauri::AppHandle,
     stickers: Vec<StickerData>,
     links: Vec<LinkData>,
-    groups: Option<Vec<serde_json::Value>>,
-    recycle_bin: Option<Vec<FrozenStickerEntry>>,
-    reference_library: Option<Vec<FrozenStickerEntry>>,
+    groups: Vec<serde_json::Value>,
+    recycle_bin: Vec<FrozenStickerEntry>,
+    reference_library: Vec<FrozenStickerEntry>,
 ) -> Result<(), String> {
     let app_dir = effective_app_data_dir(&app)?;
     if !app_dir.exists() {
@@ -2794,13 +2790,12 @@ fn save_session(
         }
     }
 
-    // Save as SessionData with both stickers and links
     let session_data = SessionData {
         stickers: processed_stickers,
-        links: links,
-        groups: groups.unwrap_or_default(),
-        recycle_bin: recycle_bin.unwrap_or_default(),
-        reference_library: reference_library.unwrap_or_default(),
+        links,
+        groups,
+        recycle_bin,
+        reference_library,
     };
 
     let session_file = app_dir.join("session.json");

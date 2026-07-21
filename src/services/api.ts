@@ -33,9 +33,9 @@ export interface CaptureRegionOptions {
 export interface SessionData {
     stickers: SessionSticker[];
     links: SessionLink[];
-    groups?: SessionGroup[];
-    recycleBin?: FrozenStickerEntry[];
-    referenceLibrary?: FrozenStickerEntry[];
+    groups: SessionGroup[];
+    recycleBin: FrozenStickerEntry[];
+    referenceLibrary: FrozenStickerEntry[];
 }
 
 export interface PreciseSelectionResult {
@@ -98,13 +98,19 @@ const loadBrowserPreviewSession = (): SessionData => {
             return { stickers: [], links: [], groups: [], recycleBin: [], referenceLibrary: [] };
         }
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed?.stickers) && Array.isArray(parsed?.links)) {
+        if (
+            Array.isArray(parsed?.stickers) &&
+            Array.isArray(parsed?.links) &&
+            Array.isArray(parsed?.groups) &&
+            Array.isArray(parsed?.recycleBin) &&
+            Array.isArray(parsed?.referenceLibrary)
+        ) {
             return {
                 stickers: parsed.stickers,
                 links: parsed.links,
-                groups: Array.isArray(parsed?.groups) ? parsed.groups : [],
-                recycleBin: Array.isArray(parsed?.recycleBin) ? parsed.recycleBin : [],
-                referenceLibrary: Array.isArray(parsed?.referenceLibrary) ? parsed.referenceLibrary : [],
+                groups: parsed.groups,
+                recycleBin: parsed.recycleBin,
+                referenceLibrary: parsed.referenceLibrary,
             } as SessionData;
         }
     } catch (error) {
@@ -126,9 +132,9 @@ const trimBrowserSessionValue = (
 const compactBrowserPreviewSession = (
     stickers: SessionSticker[],
     links: SessionLink[],
-    groups: SessionGroup[] = [],
-    recycleBin: FrozenStickerEntry[] = [],
-    referenceLibrary: FrozenStickerEntry[] = [],
+    groups: SessionGroup[],
+    recycleBin: FrozenStickerEntry[],
+    referenceLibrary: FrozenStickerEntry[],
 ): SessionData => ({
     stickers: stickers.map((sticker) => ({
         ...sticker,
@@ -145,9 +151,9 @@ const compactBrowserPreviewSession = (
 const saveBrowserPreviewSession = (
     stickers: SessionSticker[],
     links: SessionLink[],
-    groups: SessionGroup[] = [],
-    recycleBin: FrozenStickerEntry[] = [],
-    referenceLibrary: FrozenStickerEntry[] = [],
+    groups: SessionGroup[],
+    recycleBin: FrozenStickerEntry[],
+    referenceLibrary: FrozenStickerEntry[],
 ) => {
     try {
         window.localStorage.setItem(
@@ -186,11 +192,11 @@ export const api = {
         safeInvoke("load_session", undefined, loadBrowserPreviewSession, false),
 
     saveSession: (
-        stickers: any[],
-        links: any[],
-        groups: any[] = [],
-        recycleBin: FrozenStickerEntry[] = [],
-        referenceLibrary: FrozenStickerEntry[] = [],
+        stickers: SessionSticker[],
+        links: SessionLink[],
+        groups: SessionGroup[],
+        recycleBin: FrozenStickerEntry[],
+        referenceLibrary: FrozenStickerEntry[],
     ): Promise<void> =>
         safeInvoke(
             "save_session",

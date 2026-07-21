@@ -1,6 +1,6 @@
 import { unwrap } from "solid-js/store";
 import { api } from "../services/api";
-import { Unit, Link, UnitData } from "../types/unit";
+import { STICKER_DEFAULT_PORTS, Unit } from "../types/unit";
 import { mousePos, selectedStickerId, selectedStickerAnnotationId, setSelectedStickerId, clipboard, setClipboard, ClipboardData, uiActions } from "../store/uiStore";
 import { logger } from "../services/logger";
 import { graphStore } from "../store/graphStore";
@@ -92,7 +92,6 @@ export function useClipboard() {
                         );
                         logger.info(`Copied to smart system clipboard as image/file: ${path}`);
                     } else {
-                        // If no image, fallback to JSON text for node data
                         await navigator.clipboard.writeText(JSON.stringify(nextClipState));
                     }
                 } catch (e) {
@@ -140,11 +139,6 @@ export function useClipboard() {
                     if (data.src && (data.w || data.h)) {
                         pasteClipboardData(data, mp);
                         return;
-                    }
-                    // Fallback: Check for Array (New/ComfyUI format)
-                    else if (Array.isArray(data)) {
-                         pasteNodes(data, [], mp); // Pass MP explicitly
-                         return;
                     }
                 } catch (e) {
                     // Not JSON
@@ -264,9 +258,8 @@ export function useClipboard() {
             y: newY,
             w: clip.w,
             h: clip.h,
-            params: {},
-            inputs: [],
-            outputs: [],
+            inputs: [...STICKER_DEFAULT_PORTS.inputs],
+            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: clip.src,
                 minified: clip.minified,
@@ -311,45 +304,6 @@ export function useClipboard() {
         logger.debug("Updated Clipboard Anchor:", { id: nextClip.originalId, nextCascade: { x: nextClip.nextCascadeX, y: nextClip.nextCascadeY } });
     };
 
-    const pasteNodes = (nodes: any[], links: any[] = [], mpOverride?: {x: number, y: number}) => {
-         const idMap: Record<string, string> = {};
-         const mp = mpOverride || mousePos();
-
-         let minX = Infinity, minY = Infinity;
-         nodes.forEach(n => {
-             if (n.x < minX) minX = n.x;
-             if (n.y < minY) minY = n.y;
-         });
-
-         const newUnits: Unit[] = nodes.map(n => {
-             const newId = crypto.randomUUID();
-             idMap[n.id] = newId;
-             return {
-                 ...n,
-                 id: newId,
-                 x: mp.x + (n.x - minX),
-                 y: mp.y + (n.y - minY),
-                 params: {},
-             };
-         });
-
-         const newLinks: Link[] = links.map(l => ({
-            id: crypto.randomUUID(),
-            fromUnitId: idMap[l.fromUnitId] || l.fromUnitId,
-            fromPortId: l.fromPortId,
-            toUnitId: idMap[l.toUnitId] || l.toUnitId,
-            toPortId: l.toPortId
-        })).filter(l => idMap[l.fromUnitId] && idMap[l.toUnitId]);
-
-         newUnits.forEach(u => graphStore.actions.addUnit(u));
-         newLinks.forEach(l => graphStore.actions.addLink(l));
-
-         if (newUnits.length > 0) setSelectedStickerId(newUnits[newUnits.length-1].id);
-
-         syncService.updateBackendRects();
-         syncService.scheduleSessionSync();
-    }
-
     const createImageUnit = (base64: string, mpOverride?: {x: number, y: number}) => {
         const mp = mpOverride || mousePos();
         const newUnit: Unit = {
@@ -359,9 +313,8 @@ export function useClipboard() {
             y: mp.y,
             w: 300,
             h: 300,
-            params: {},
-            inputs: [],
-            outputs: [],
+            inputs: [...STICKER_DEFAULT_PORTS.inputs],
+            outputs: [...STICKER_DEFAULT_PORTS.outputs],
             data: {
                 src: base64,
                 minified: false

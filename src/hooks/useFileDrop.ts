@@ -1,6 +1,7 @@
 import { onMount, onCleanup } from "solid-js";
 import { graphStore } from "../store/graphStore";
 import { syncService } from "../services/syncService";
+import { STICKER_DEFAULT_PORTS } from "../types/unit";
 
 const SUPPORTED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"];
 
@@ -91,9 +92,8 @@ export function useFileDrop() {
                     y: my - 100,
                     w: 200,
                     h: 200,
-                    params: {},
-                    inputs: [],
-                    outputs: [],
+                    inputs: [...STICKER_DEFAULT_PORTS.inputs],
+                    outputs: [...STICKER_DEFAULT_PORTS.outputs],
                     data: {
                         src: base64Src,
                         minified: false,

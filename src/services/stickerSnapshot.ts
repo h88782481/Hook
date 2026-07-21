@@ -1,5 +1,5 @@
 import { unwrap } from "solid-js/store";
-import type { Unit } from "../types/unit";
+import { STICKER_DEFAULT_PORTS, type Unit } from "../types/unit";
 
 export interface FrozenStickerSessionSnapshot {
     id: string;
@@ -63,9 +63,8 @@ export const instantiateStickerFromFrozenSnapshot = (
     y: mouse.y + 50,
     w: entry.snapshot.w,
     h: entry.snapshot.h,
-    params: {},
-    inputs: [{ id: "image", type: "image", direction: "input", label: "Image" }],
-    outputs: [{ id: "output_image", type: "image", direction: "output", label: "Image" }],
+    inputs: [...STICKER_DEFAULT_PORTS.inputs],
+    outputs: [...STICKER_DEFAULT_PORTS.outputs],
     data: {
         src: entry.snapshot.src,
         minified: entry.snapshot.minified,

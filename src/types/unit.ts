@@ -52,8 +52,6 @@ export interface Unit {
     h: number;
 
     data: UnitData;
-    /** Always empty for stickers; retained for session JSON round-trip with Rust. */
-    params: Record<string, unknown>;
 
     inputs: Port[];
     outputs: Port[];
@@ -80,7 +78,6 @@ export interface SessionSticker {
     cropOffset?: { x: number; y: number } | null;
     opacityNormal?: number | null;
     opacityMini?: number | null;
-    params?: Record<string, unknown> | null;
     filePath?: string | null;
     rasterizedAnnotationLayerSrc?: string | null;
     annotationState?: UnitData["annotationState"] | null;

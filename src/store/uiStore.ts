@@ -71,8 +71,7 @@ export const selectionActions = {
         setSelectedUnitIds(ids);
         if (ids.length === 1) setSelectedStickerId(ids[0]);
         else if (ids.length === 0) setSelectedStickerId(null);
-        // If multiple, maybe keep the last one as "primary" or "focused"?
-        // For now, let's say the last added is the "active" one for params panel etc.
+        // If multiple, keep the last one as the focused/active sticker.
         if (ids.length > 0) setSelectedStickerId(ids[ids.length - 1]);
     },
     isSelected: (id: string) => selectedUnitIds.includes(id)

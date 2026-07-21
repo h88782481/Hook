@@ -25,7 +25,7 @@ export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
   };
 
   return (
-    <div class="hook-terminal-shell hook-params-shell absolute left-full top-0 ml-2 z-20 flex w-[220px] flex-col overflow-hidden">
+    <div class="hook-terminal-shell absolute left-full top-0 ml-2 z-20 flex w-[220px] flex-col overflow-hidden">
       <UnitActionsMenu
         unitId={props.unit.id}
         expanded={expanded()}

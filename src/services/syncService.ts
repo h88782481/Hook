@@ -13,7 +13,6 @@ const mapSessionStickerToUnit = (sticker: any): Unit => ({
     y: sticker.y,
     w: sticker.w,
     h: sticker.h,
-    params: {},
     inputs: STICKER_DEFAULT_PORTS.inputs,
     outputs: STICKER_DEFAULT_PORTS.outputs,
     data: {
@@ -45,7 +44,6 @@ const mapUnitToSessionSticker = (unit: Unit) => ({
     cropOffset: unit.data.cropOffset || null,
     opacityNormal: unit.data.opacityNormal ?? 1,
     opacityMini: unit.data.opacityMini ?? 0.9,
-    params: {},
     filePath: unit.data.filePath || null,
     previewSrc: normalizePreviewSrc(unit) || null,
     rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc || null,
@@ -168,11 +166,11 @@ export const syncService = {
         try {
             const sessionData = await api.loadSession();
             if (sessionData) {
-                const loadedUnits = (sessionData.stickers || []).map(mapSessionStickerToUnit);
+                const loadedUnits = sessionData.stickers.map(mapSessionStickerToUnit);
                 const loadedUnitIds = new Set(loadedUnits.map((unit) => unit.id));
-                const loadedLinks = (sessionData.links || [])
-                    .filter((link: any) => loadedUnitIds.has(link.fromUnitId) && loadedUnitIds.has(link.toUnitId))
-                    .map((link: any) => ({
+                const loadedLinks = sessionData.links
+                    .filter((link) => loadedUnitIds.has(link.fromUnitId) && loadedUnitIds.has(link.toUnitId))
+                    .map((link) => ({
                         id: link.id,
                         fromUnitId: link.fromUnitId,
                         fromPortId: link.fromPortId,
@@ -182,9 +180,9 @@ export const syncService = {
 
                 graphStore.setUnits(loadedUnits);
                 graphStore.setLinks(loadedLinks);
-                graphStore.setStickerGroups((sessionData.groups || []) as StickerGroup[]);
-                graphStore.setRecycleBin((sessionData.recycleBin || []) as any);
-                graphStore.setReferenceLibrary((sessionData.referenceLibrary || []) as any);
+                graphStore.setStickerGroups(sessionData.groups as StickerGroup[]);
+                graphStore.setRecycleBin(sessionData.recycleBin as any);
+                graphStore.setReferenceLibrary(sessionData.referenceLibrary as any);
 
                 syncService.updateBackendRects();
                 if (bootProfile?.initialUiMode === "overlay" && loadedUnits.length > 0) {

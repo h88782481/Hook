@@ -14,7 +14,7 @@ import {
   uiActions,
 } from "../store/uiStore";
 import { Unit, Link } from "../types/unit";
-import { addOrUpdateRect, removeRect, updatePortOffset } from "../services/uiRegistry";
+import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import { computeMinifiedStickerAnnotationViewport, computeMinifiedStickerViewport } from "../services/stickerEditing";
 import { StickerSidePanel } from "./StickerSidePanel";
 import { UnitPorts } from "./UnitPorts";
@@ -451,79 +451,6 @@ export const UnitView: Component<Props> = (props) => {
   onCleanup(() => {
       detachPendingNativeDragListeners();
   });
-
-  const getPortColor = (type: string, isHover: boolean) => {
-      // Type-based colors (Tailwind classes or CSS variables?)
-      // We need to return a class string for the background color.
-      // Default: Zinc (Gray)
-
-      const t = type.toLowerCase();
-
-      // Color Mapping
-      // Image -> Green (Emerald)
-      // File -> Blue
-      // Text/String -> Yellow/Amber
-      // Number/Int/Float -> Violet/Purple
-      // Boolean -> Red/Rose
-      // Model/Latents -> Pink/Fuchsia
-
-      if (t.includes('image') || t === 'mask') return isHover ? "bg-emerald-400" : "bg-emerald-600";
-      if (t.includes('file')) return isHover ? "bg-blue-400" : "bg-blue-600";
-      if (t === 'string' || t === 'text') return isHover ? "bg-amber-400" : "bg-amber-600";
-      if (t === 'number' || t === 'int' || t === 'float') return isHover ? "bg-violet-400" : "bg-violet-600";
-      if (t === 'boolean' || t === 'bool') return isHover ? "bg-rose-400" : "bg-rose-600";
-      if (t === 'model' || t === 'latents' || t === 'vae') return isHover ? "bg-fuchsia-400" : "bg-fuchsia-600";
-
-      // Default
-      return isHover ? "bg-zinc-400" : "bg-zinc-600";
-  };
-
-  // NEW: Helper to register Panel Port Offsets for stable linking
-  const registerPanelPort = (el: HTMLElement, portName: string) => {
-      const update = () => {
-          if (!el.isConnected) return; // Cleanup check
-          const unit = el.closest('.unit-container');
-          if (!unit) return;
-
-          const rPort = el.getBoundingClientRect();
-          const rUnit = unit.getBoundingClientRect();
-
-          // Calculate Center Relative to Unit Top-Left
-          const relX = (rPort.left + rPort.width/2) - rUnit.left;
-          const relY = (rPort.top + rPort.height/2) - rUnit.top;
-
-          // Check for NaN or crazy values
-          if (isNaN(relX) || isNaN(relY)) return;
-
-          updatePortOffset(props.unit.id, portName, {x: relX, y: relY});
-      };
-
-      // Run immediately and after short delay (for layout settlement)
-      update();
-      requestAnimationFrame(update);
-      setTimeout(update, 50); // Fallback for delayed rendering
-  };
-
-
-  // Register active panels for click-through prevention (One-Stop Solution)
-
-    // FIX: Re-calculate Panel Port Offsets when Unit Resizes (Fit Frame / Drag)
-    createEffect(() => {
-        // Dependencies
-        const w = props.unit.w;
-        const h = props.unit.h;
-
-        // We need to wait for DOM Reflow, similar to registerPanelPort logic
-        if (unitContainerRef) {
-            requestAnimationFrame(() => {
-                const ports = unitContainerRef?.querySelectorAll('[data-panel-port="true"]');
-                ports?.forEach((el) => {
-                    const name = el.getAttribute('data-port-name');
-                    if (name) registerPanelPort(el as HTMLElement, name);
-                });
-            });
-        }
-    });
 
   createEffect(() => {
        const u = props.unit;
