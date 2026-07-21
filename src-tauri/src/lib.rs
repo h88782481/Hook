@@ -297,7 +297,6 @@ const MAX_IMAGE_PIXELS: u64 = 100_000_000;
 // Vec of frames that are each decoded to a full bitmap. Without an aggregate cap
 // a caller can submit thousands of max-size frames and exhaust memory. This caps
 // the frame count; combined with the per-frame pixel limit it bounds peak memory.
-const MAX_STITCH_FRAME_COUNT: usize = 512;
 const CLIPBOARD_CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 const CLIPBOARD_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
 const CLIPBOARD_CACHE_TARGET_BYTES: u64 = 128 * 1024 * 1024;
@@ -2631,103 +2630,6 @@ async fn get_precise_selection(
     {
         Ok(None)
     }
-}
-
-#[tauri::command]
-async fn analyze_long_capture_pair(
-    previous: String,
-    current: String,
-    axis: Option<long_capture::LongCaptureAxis>,
-    direction: Option<long_capture::LongCaptureDirection>,
-    max_scan: Option<u32>,
-    min_overlap_px: Option<u32>,
-    min_new_content_px: Option<u32>,
-) -> Result<long_capture::LongCaptureOverlapAnalysis, String> {
-    let started_at = std::time::Instant::now();
-    let analysis = long_capture::analyze_long_capture_pair_data_urls(
-        &previous,
-        &current,
-        long_capture::LongCaptureAnalyzeOptions {
-            axis,
-            direction,
-            max_scan,
-            min_overlap_px,
-            min_new_content_px,
-        },
-    )
-    .map_err(|error| error.to_string())?;
-    append_runtime_log_line(&format!(
-        "analyze_long_capture_pair_metrics :: elapsed_ms={} previous_chars={} current_chars={} status={:?} axis={:?} direction={:?} overlap_px={} append_px={} confidence={:.3}",
-        started_at.elapsed().as_millis(),
-        previous.len(),
-        current.len(),
-        analysis.status,
-        analysis.axis,
-        analysis.direction,
-        analysis.overlap_px,
-        analysis.append_px,
-        analysis.confidence
-    ));
-    Ok(analysis)
-}
-
-#[tauri::command]
-async fn stitch_long_capture_frames(
-    frames: Vec<String>,
-    axis: Option<long_capture::LongCaptureAxis>,
-    direction: Option<long_capture::LongCaptureDirection>,
-    max_scan: Option<u32>,
-    min_overlap_px: Option<u32>,
-) -> Result<CaptureResponse, String> {
-    let started_at = std::time::Instant::now();
-    let input_frame_count = frames.len();
-    if input_frame_count > MAX_STITCH_FRAME_COUNT {
-        return Err(format!(
-            "Too many frames to stitch: {} exceeds limit of {}",
-            input_frame_count, MAX_STITCH_FRAME_COUNT
-        ));
-    }
-    let stitched = long_capture::stitch_long_capture_frame_data_urls(
-        &frames,
-        long_capture::LongCaptureStitchOptions {
-            axis,
-            direction,
-            max_scan,
-            min_overlap_px,
-        },
-    )
-    .map_err(|error| error.to_string())?;
-
-    let width = stitched.width();
-    let height = stitched.height();
-    let mut bytes = Vec::new();
-    let dynamic_image = image::DynamicImage::ImageRgb8(stitched);
-    dynamic_image
-        .write_to(
-            &mut std::io::Cursor::new(&mut bytes),
-            image::ImageFormat::Png,
-        )
-        .map_err(|error| error.to_string())?;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    append_runtime_log_line(&format!(
-        "stitch_long_capture_frames_metrics :: elapsed_ms={} frames={} axis={:?} direction={:?} png_bytes={} encoded_bytes={} width={} height={}",
-        started_at.elapsed().as_millis(),
-        input_frame_count,
-        axis,
-        direction,
-        bytes.len(),
-        b64.len(),
-        width,
-        height
-    ));
-
-    Ok(CaptureResponse {
-        base64: format!("data:image/png;base64,{}", b64),
-        width,
-        height,
-        file_path: None,
-        file_url: None,
-    })
 }
 
 #[tauri::command]
@@ -5127,8 +5029,6 @@ pub fn run() {
             trigger_capture_mode,
             append_runtime_log,
             get_precise_selection,
-            analyze_long_capture_pair,
-            stitch_long_capture_frames,
             start_long_capture_session,
             sample_long_capture_session,
             finish_long_capture_session,

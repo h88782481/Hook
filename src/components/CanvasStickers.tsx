@@ -119,7 +119,6 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
               }}
 
               // Data Resolution
-              connectedPorts={stickerStore.links.filter(l => l.toStickerId === u.id).map(l => l.toPortId)}
               connectedLinks={stickerStore.links.filter(l => l.toStickerId === u.id)}
               resolveLinkedImage={props.resolveLinkedImage}
           />

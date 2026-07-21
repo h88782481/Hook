@@ -1,0 +1,2 @@
+export const DEFAULT_TEXT_FONT_SIZE = 18;
+export const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;

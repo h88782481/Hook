@@ -1,6 +1,7 @@
 import { unwrap } from "solid-js/store";
 import type { StickerAnnotation, StickerPoint } from "../types/stickerEditing";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
+import { DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_WIDTH_FACTOR } from "./stickerTextDefaults";
 import { clamp } from "../utils/math";
 
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
@@ -410,9 +411,6 @@ export const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: n
             ? undefined
             : scaleStrokeWidth(style.cornerRadius, scaleX, scaleY),
 });
-
-const DEFAULT_TEXT_FONT_SIZE = 18;
-const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;
 
 const getPointCloudBounds = (
     points: StickerPoint[] | undefined,

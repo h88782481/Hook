@@ -35,7 +35,7 @@ export function useLinking(options: UseLinkingOptions = {}) {
                 console.log("Re-linking (Moving) from input:", portId, "Source:", sourceSticker.id);
 
                 const startX = sourceSticker.x + sourceSticker.w + (sourceSticker.data.minified ? 0 : 6);
-                const startY = calculatePortY(sourceSticker, link.fromPortId, false);
+                const startY = calculatePortY(sourceSticker);
 
                 // 2. Remove existing link using Action
                 stickerStore.actions.removeLink(link.id);

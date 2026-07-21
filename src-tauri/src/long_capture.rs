@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use base64::Engine as _;
 use image::{imageops, RgbImage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -72,15 +71,6 @@ struct CandidateAnalysis {
     mean_diff: f64,
     texture_score: f64,
     content_ratio: f64,
-}
-
-fn decode_frame_data_url(frame: &str) -> Result<RgbImage> {
-    let payload = frame
-        .split_once(',')
-        .map(|(_, payload)| payload)
-        .unwrap_or(frame);
-    let bytes = base64::engine::general_purpose::STANDARD.decode(payload)?;
-    Ok(image::load_from_memory(&bytes)?.to_rgb8())
 }
 
 fn default_edge_ignore(cross_len: u32) -> u32 {
@@ -1702,18 +1692,6 @@ pub fn analyze_long_capture_pair_images(
             confidence: 0.0,
             seam_px: 0,
         })
-}
-
-pub fn analyze_long_capture_pair_data_urls(
-    previous: &str,
-    current: &str,
-    options: LongCaptureAnalyzeOptions,
-) -> Result<LongCaptureOverlapAnalysis> {
-    let previous = decode_frame_data_url(previous)?;
-    let current = decode_frame_data_url(current)?;
-    Ok(analyze_long_capture_pair_images(
-        &previous, &current, options,
-    ))
 }
 
 fn frame_axis_len(frame: &RgbImage, axis: LongCaptureAxis) -> i64 {
@@ -3966,19 +3944,4 @@ pub fn stitch_long_capture_frames_with_analyses(
         }
     }
     Ok(stitched)
-}
-
-pub fn stitch_long_capture_frame_data_urls(
-    frames: &[String],
-    options: LongCaptureStitchOptions,
-) -> Result<RgbImage> {
-    if frames.is_empty() {
-        return Err(anyhow!("No frames to stitch"));
-    }
-
-    let decoded_frames = frames
-        .iter()
-        .map(|frame| decode_frame_data_url(frame))
-        .collect::<Result<Vec<_>>>()?;
-    stitch_long_capture_frames(&decoded_frames, options)
 }

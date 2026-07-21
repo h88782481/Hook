@@ -26,7 +26,6 @@ import {
     shouldDrainAutoLongCaptureBeforeFinish,
     resolveAutoLongCaptureBurstBudget,
     resolveAutoLongCaptureBurstPollInterval,
-    resolveAutoLongCapturePollInterval,
     resolveAutoLongCaptureSessionPollInterval,
     resolveAutoLongCaptureWheelPollInterval,
     shouldLogAutoLongCaptureFrame,
@@ -35,7 +34,6 @@ import {
     AutoLongCaptureOptions,
     LongCaptureAxis,
     LongCaptureDirection,
-    LongCaptureOverlapAnalysis,
     ManualLongCaptureFrame,
     isLongCaptureMode,
 } from "../services/captureState";
@@ -52,7 +50,6 @@ const resolveCaptureResponseSrc = (response: ManualLongCaptureFrame) => {
 };
 
 export function useSelection() {
-    let autoLongCaptureFrames: ManualLongCaptureFrame[] = [];
     let autoLongCaptureRect: CaptureRect | null = null;
     let autoLongCaptureOrigin: { x: number; y: number } | null = null;
     let autoLongCaptureOptions: AutoLongCaptureOptions | null = null;
@@ -149,21 +146,6 @@ export function useSelection() {
         })();
     };
 
-    const describeLongCaptureAnalysis = (analysis: LongCaptureOverlapAnalysis) => {
-        switch (analysis.status) {
-            case "good":
-                return "已保留新画面，请继续慢速滚动";
-            case "weak":
-                return "已保留新画面，请继续慢速滚动";
-            case "duplicate":
-                return "等待页面滚动，重复画面已忽略";
-            case "too_small_motion":
-                return "滚动距离较小，继续慢速滚动";
-            case "no_overlap":
-                return "正在录制画面，完成后统一拼接";
-        }
-    };
-
     const describeLongCaptureRecordingStatus = (
         status: "recorded" | "duplicate",
     ) => {
@@ -176,16 +158,17 @@ export function useSelection() {
     };
 
     const updateAutoLongCaptureSession = (
-        analysis: Partial<Pick<LongCaptureOverlapAnalysis, "axis" | "direction" | "confidence">> & {
+        analysis: {
+            axis?: LongCaptureAxis;
+            direction?: LongCaptureDirection;
+            confidence?: number;
             message?: string;
             duplicateCount?: number;
         },
     ) => {
         setLongCaptureSession((session) => session && {
             ...session,
-            frameCount: autoLongCaptureBackendSessionId
-                ? autoLongCaptureBackendFrameCount
-                : autoLongCaptureFrames.length,
+            frameCount: autoLongCaptureBackendFrameCount,
             duplicateCount: analysis.duplicateCount ?? autoLongCaptureBackendDuplicateCount,
             axis: analysis.axis ?? autoLongCaptureAxis,
             direction: analysis.direction ?? autoLongCaptureDirection,
@@ -322,91 +305,39 @@ export function useSelection() {
         autoLongCaptureBusySessionId = sessionId;
         try {
             const backendSessionId = autoLongCaptureBackendSessionId;
-            if (backendSessionId) {
-                const response = await api.sampleLongCaptureSession(backendSessionId);
-                if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
-                autoLongCaptureBackendFrameCount = response.frameCount;
-                autoLongCaptureBackendDuplicateCount = response.duplicateCount;
-                autoLongCaptureAxis = response.axis ?? autoLongCaptureAxis;
-                autoLongCaptureDirection = response.direction ?? autoLongCaptureDirection;
-                setAutoLongCaptureNextPollInterval(
-                    resolveAutoLongCaptureSessionPollInterval(autoLongCaptureOptions, response.status),
+            if (!backendSessionId) {
+                await api.debugLogEvent(
+                    "auto-long-capture-missing-backend-session",
+                    `session=${sessionId}`,
                 );
-                const now = Date.now();
-                if (shouldUpdateAutoLongCaptureStatus(autoLongCaptureOptions, now, autoLongCaptureLastStatusUpdateAtMs)) {
-                    autoLongCaptureLastStatusUpdateAtMs = now;
-                    updateAutoLongCaptureSession({
-                        axis: autoLongCaptureAxis,
-                        direction: autoLongCaptureDirection,
-                        duplicateCount: response.duplicateCount,
-                        message: describeLongCaptureRecordingStatus(response.status),
-                    });
-                }
-                if (shouldLogAutoLongCaptureFrame(autoLongCaptureOptions, now, autoLongCaptureLastFrameLogAtMs)) {
-                    autoLongCaptureLastFrameLogAtMs = now;
-                    void api.debugLogEvent(
-                        "auto-long-capture-frame",
-                        `session=${autoLongCaptureBackendSessionId} count=${autoLongCaptureBackendFrameCount} duplicates=${response.duplicateCount} recorded=${response.recorded} status=${response.status}`,
-                    );
-                }
-            } else {
-                const rect = autoLongCaptureRect;
-                const options = autoLongCaptureOptions;
-                const frame = await api.captureRegion(
-                    Math.round(rect.x),
-                    Math.round(rect.y),
-                    Math.round(rect.w),
-                    Math.round(rect.h),
-                );
+                return;
+            }
 
-                if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
-
-                const previous = autoLongCaptureFrames[autoLongCaptureFrames.length - 1];
-                if (!previous) {
-                    autoLongCaptureFrames = [frame];
-                    setAutoLongCaptureNextPollInterval(
-                        resolveAutoLongCapturePollInterval(autoLongCaptureOptions),
-                    );
-                    updateAutoLongCaptureSession({ message: "已捕获首帧，开始自动扫描" });
-                    await api.debugLogEvent("auto-long-capture-frame", `count=${autoLongCaptureFrames.length} first=true`);
-                    return;
-                }
-
-                const analysis = await api.analyzeLongCapturePair(previous.base64, frame.base64, {
+            const response = await api.sampleLongCaptureSession(backendSessionId);
+            if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
+            autoLongCaptureBackendFrameCount = response.frameCount;
+            autoLongCaptureBackendDuplicateCount = response.duplicateCount;
+            autoLongCaptureAxis = response.axis ?? autoLongCaptureAxis;
+            autoLongCaptureDirection = response.direction ?? autoLongCaptureDirection;
+            setAutoLongCaptureNextPollInterval(
+                resolveAutoLongCaptureSessionPollInterval(autoLongCaptureOptions, response.status),
+            );
+            const now = Date.now();
+            if (shouldUpdateAutoLongCaptureStatus(autoLongCaptureOptions, now, autoLongCaptureLastStatusUpdateAtMs)) {
+                autoLongCaptureLastStatusUpdateAtMs = now;
+                updateAutoLongCaptureSession({
                     axis: autoLongCaptureAxis,
-                    direction: undefined,
-                    maxScan: options.maxScan,
-                    minOverlapPx: options.minOverlapPx,
-                    minNewContentPx: options.minNewContentPx,
+                    direction: autoLongCaptureDirection,
+                    duplicateCount: response.duplicateCount,
+                    message: describeLongCaptureRecordingStatus(response.status),
                 });
-
-                if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
-                setAutoLongCaptureNextPollInterval(
-                    resolveAutoLongCapturePollInterval(autoLongCaptureOptions, analysis),
+            }
+            if (shouldLogAutoLongCaptureFrame(autoLongCaptureOptions, now, autoLongCaptureLastFrameLogAtMs)) {
+                autoLongCaptureLastFrameLogAtMs = now;
+                void api.debugLogEvent(
+                    "auto-long-capture-frame",
+                    `session=${autoLongCaptureBackendSessionId} count=${autoLongCaptureBackendFrameCount} duplicates=${response.duplicateCount} recorded=${response.recorded} status=${response.status}`,
                 );
-
-                if (analysis.status === "good" || analysis.status === "weak") {
-                    autoLongCaptureAxis = analysis.axis ?? autoLongCaptureAxis;
-                    autoLongCaptureDirection = analysis.direction ?? autoLongCaptureDirection;
-                    autoLongCaptureFrames = [...autoLongCaptureFrames, frame];
-                    updateAutoLongCaptureSession({
-                        axis: autoLongCaptureAxis,
-                        direction: autoLongCaptureDirection,
-                        confidence: analysis.confidence,
-                        message: describeLongCaptureAnalysis(analysis),
-                    });
-                    await api.debugLogEvent(
-                        "auto-long-capture-frame",
-                        `count=${autoLongCaptureFrames.length} axis=${autoLongCaptureAxis ?? "unknown"} direction=${autoLongCaptureDirection ?? "unknown"} overlap=${analysis.overlapPx} confidence=${analysis.confidence.toFixed(3)}`,
-                    );
-                } else {
-                    updateAutoLongCaptureSession({
-                        axis: analysis.axis,
-                        direction: analysis.direction,
-                        confidence: analysis.confidence,
-                        message: describeLongCaptureAnalysis(analysis),
-                    });
-                }
             }
         } catch (error) {
             await api.debugLogEvent("auto-long-capture-frame-failed", error instanceof Error ? error.message : String(error));
@@ -428,7 +359,6 @@ export function useSelection() {
         const sessionId = autoLongCaptureSessionId;
         autoLongCaptureBusySessionId = null;
         autoLongCaptureFinishing = false;
-        autoLongCaptureFrames = [];
         autoLongCaptureRect = rect;
         autoLongCaptureOrigin = origin;
         autoLongCaptureOptions = createAutoLongCaptureOptions(rect);
@@ -480,6 +410,15 @@ export function useSelection() {
                 "auto-long-capture-backend-start-failed",
                 error instanceof Error ? error.message : String(error),
             );
+            setLongCaptureSession(null);
+            resetSelection();
+            try {
+                await api.setOverlayCaptureExclusion(false);
+            } catch {
+                // ignore restore failure during abort
+            }
+            await restorePostCaptureInteractivity();
+            return;
         }
         await sampleAutoLongCaptureFrame(sessionId);
     };
@@ -494,11 +433,9 @@ export function useSelection() {
         const sessionId = autoLongCaptureSessionId;
         const rect = autoLongCaptureRect;
         const origin = autoLongCaptureOrigin;
-        const options = autoLongCaptureOptions;
         await drainAutoLongCaptureBeforeFinish(sessionId);
         const axis = autoLongCaptureAxis;
         const direction = autoLongCaptureDirection;
-        const framesSnapshot = [...autoLongCaptureFrames];
         const backendSessionId = autoLongCaptureBackendSessionId;
 
         autoLongCaptureFinishing = true;
@@ -510,29 +447,15 @@ export function useSelection() {
         });
 
         try {
-            if (backendSessionId) {
-                const response = await api.finishLongCaptureSession(backendSessionId);
-                await addCaptureSticker(response, rect, origin, "long-vertical", axis);
-            } else if (framesSnapshot.length === 0) {
+            if (!backendSessionId) {
                 await api.debugLogEvent("auto-long-capture-finish-empty", `session=${sessionId}`);
                 return false;
-            } else {
-                const response = framesSnapshot.length === 1
-                    ? framesSnapshot[0]
-                    : await api.stitchLongCaptureFrames(
-                        framesSnapshot.map((frame) => frame.base64),
-                        {
-                            axis,
-                            direction: undefined,
-                            maxScan: options.maxScan,
-                            minOverlapPx: options.minOverlapPx,
-                        },
-                    );
-                await addCaptureSticker(response, rect, origin, "long-vertical", axis);
             }
+            const response = await api.finishLongCaptureSession(backendSessionId);
+            await addCaptureSticker(response, rect, origin, "long-vertical", axis);
             await api.debugLogEvent(
                 "auto-long-capture-finish",
-                `frames=${backendSessionId ? autoLongCaptureBackendFrameCount : framesSnapshot.length} duplicates=${autoLongCaptureBackendDuplicateCount} axis=${axis ?? "unknown"} direction=${direction ?? "unknown"}`,
+                `frames=${autoLongCaptureBackendFrameCount} duplicates=${autoLongCaptureBackendDuplicateCount} axis=${axis ?? "unknown"} direction=${direction ?? "unknown"}`,
             );
         } catch (error) {
             await api.debugLogEvent("auto-long-capture-finish-failed", error instanceof Error ? error.message : String(error));
@@ -542,7 +465,6 @@ export function useSelection() {
             }
             autoLongCaptureBusySessionId = null;
             autoLongCaptureFinishing = false;
-            autoLongCaptureFrames = [];
             autoLongCaptureRect = null;
             autoLongCaptureOrigin = null;
             autoLongCaptureOptions = null;
@@ -580,7 +502,6 @@ export function useSelection() {
         autoLongCaptureBusySessionId = null;
         autoLongCaptureFinishing = false;
         stopAutoLongCaptureTimer();
-        autoLongCaptureFrames = [];
         autoLongCaptureRect = null;
         autoLongCaptureOrigin = null;
         autoLongCaptureOptions = null;

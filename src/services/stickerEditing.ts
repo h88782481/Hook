@@ -8,8 +8,13 @@ import type {
     StickerToolSettings,
 } from "../types/stickerEditing";
 import { clamp } from "../utils/math";
+import {
+    TRANSPARENT_COLOR,
+    isTransparentColor,
+    normalizePaletteColor,
+} from "../utils/colorUtils";
 
-const TRANSPARENT_STICKER_COLOR = "transparent";
+export const TRANSPARENT_STICKER_COLOR = TRANSPARENT_COLOR;
 
 // Highlighter strokes render as a single translucent wash. The opacity is
 // applied once at the layer level (one <g>/offscreen composite) rather than
@@ -348,54 +353,9 @@ export const computeRestoredCropFrame = (
 export const getEffectiveStickerColor = (colors: StickerColorState, preferSampled = false) =>
     preferSampled && colors.sampledColor ? colors.sampledColor : colors.activeColor;
 
-// Return the alpha (0-1) encoded in a sticker color, or 1 when none is present.
-// Supports the literal "transparent" (=0), 8-digit #RRGGBBAA, and treats 3/6-digit
-// hex (and any other opaque value) as fully opaque.
-const getStickerColorAlpha = (color: string | undefined): number => {
-    if (!color) return 0;
-    const trimmed = color.trim().toLowerCase();
-    if (trimmed === TRANSPARENT_STICKER_COLOR) return 0;
-    const hex = trimmed.replace(/^#/, "");
-    if (/^[0-9a-f]{8}$/.test(hex)) {
-        return parseInt(hex.slice(6, 8), 16) / 255;
-    }
-    return 1;
-};
+export const isTransparentStickerColor = isTransparentColor;
 
-export const isTransparentStickerColor = (color: string | undefined) =>
-    !color ||
-    color.trim().toLowerCase() === TRANSPARENT_STICKER_COLOR ||
-    getStickerColorAlpha(color) === 0;
-
-export const normalizeStickerPaletteColor = (color: string) => {
-    const trimmed = color.trim();
-    if (!trimmed) return null;
-    if (trimmed.toLowerCase() === TRANSPARENT_STICKER_COLOR) {
-        return TRANSPARENT_STICKER_COLOR;
-    }
-
-    const normalized = trimmed.replace(/^#/, "");
-    if (/^[0-9a-fA-F]{3}$/.test(normalized)) {
-        return `#${normalized
-            .split("")
-            .map((part) => `${part}${part}`)
-            .join("")
-            .toLowerCase()}`;
-    }
-    if (/^[0-9a-fA-F]{6}$/.test(normalized)) {
-        return `#${normalized.toLowerCase()}`;
-    }
-    if (/^[0-9a-fA-F]{8}$/.test(normalized)) {
-        const hex = normalized.toLowerCase();
-        // Convert fully transparent hex colors to "transparent" string
-        const alpha = parseInt(hex.slice(6, 8), 16);
-        if (alpha === 0) {
-            return TRANSPARENT_STICKER_COLOR;
-        }
-        return `#${hex}`;
-    }
-    return null;
-};
+export const normalizeStickerPaletteColor = normalizePaletteColor;
 
 export const addStickerPaletteColor = (palette: string[], color: string) => {
     const normalized = normalizeStickerPaletteColor(color);

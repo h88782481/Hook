@@ -1,6 +1,7 @@
 import { Component, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Sticker } from "../types/stickerModel";
+import { calculatePortOffsetY, MINIFIED_PORT_BOX } from "../utils/stickerPortUtils";
 
 interface StickerPortsProps {
   unit: Sticker;
@@ -21,6 +22,7 @@ export const StickerPorts: Component<StickerPortsProps> = (props) => {
   const isMinified = () => !!props.unit.data.minified;
   const getInputs = () => props.unit.inputs;
   const getOutputs = () => props.unit.outputs;
+  const portBoxHeight = () => (isMinified() ? MINIFIED_PORT_BOX : props.height);
 
   return (
         <Show when={props.portsLayer && !props.isCleanView}>
@@ -30,19 +32,18 @@ export const StickerPorts: Component<StickerPortsProps> = (props) => {
                         style={{
                             left: `${props.x}px`,
                             top: `${props.y}px`,
-                            width: `${isMinified() ? 60 : props.width}px`,
-                            height: `${isMinified() ? 60 : props.height}px`,
+                            width: `${isMinified() ? MINIFIED_PORT_BOX : props.width}px`,
+                            height: `${portBoxHeight()}px`,
                         }}
                     >
                         <For each={getInputs()}>
                             {(port, index) => {
-                                const top = () => {
-                                    if (isMinified()) {
-                                        const step = 60 / getInputs().length;
-                                        return index() * step + step / 2;
-                                    }
-                                    return 36 + index() * 36;
-                                };
+                                const top = () => calculatePortOffsetY(
+                                    isMinified(),
+                                    portBoxHeight(),
+                                    index(),
+                                    getInputs().length,
+                                );
                                 return (
                                     <div
                                         class="absolute -left-[6px] w-3 h-3 rounded-full bg-[var(--primary)] border border-white/40 pointer-events-auto cursor-crosshair z-20"
@@ -64,13 +65,12 @@ export const StickerPorts: Component<StickerPortsProps> = (props) => {
                         </For>
                         <For each={getOutputs()}>
                             {(port, index) => {
-                                const top = () => {
-                                    if (isMinified()) {
-                                        const step = 60 / getOutputs().length;
-                                        return index() * step + step / 2;
-                                    }
-                                    return 36 + index() * 36;
-                                };
+                                const top = () => calculatePortOffsetY(
+                                    isMinified(),
+                                    portBoxHeight(),
+                                    index(),
+                                    getOutputs().length,
+                                );
                                 return (
                                     <div
                                         class="absolute -right-[6px] w-3 h-3 rounded-full bg-[var(--accent-blue)] border border-white/40 pointer-events-auto cursor-crosshair z-20"

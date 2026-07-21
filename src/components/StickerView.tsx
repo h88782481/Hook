@@ -25,7 +25,7 @@ import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
 import { renderStickerComposite } from "../services/stickerExport";
-import { clamp } from "../utils/math";
+import { clamp, wheelZoomScaleFactor } from "../utils/math";
 
 // GLOBAL STATE: Persist scroll positions across re-renders
 const globalScrollRegistry: Record<string, number> = {};
@@ -48,7 +48,6 @@ interface Props {
   resolveLinkedImage?: (stickerId: string) => string | undefined; // NEW: Helper to resolve referenced images
 
   multiDragPositions?: Record<string, {x: number; y: number}> | null; // Multi-Drag State
-  connectedPorts?: string[]; // List of connected INPUT ports
   connectedLinks?: Link[]; // NEW: Full Links for resolving upstream units
   portsLayer?: HTMLElement; // NEW: Global Layer for Z-independent ports
 }
@@ -537,7 +536,7 @@ export const StickerView: Component<Props> = (props) => {
             const relY = (e.clientY - rect.top) / viewScale;
 
             // Browser wheel direction: deltaY < 0 means wheel-up. Wheel-up should zoom in.
-            const scaleFactor = clamp(Math.exp(-e.deltaY * 0.001), 0.5, 1.5);
+            const scaleFactor = wheelZoomScaleFactor(e.deltaY);
 
             const newW = Math.max(24, currentSticker.w * scaleFactor);
             const newH = Math.max(24, currentSticker.h * scaleFactor);

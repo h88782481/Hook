@@ -9,12 +9,10 @@ import type {
 import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
 import { scaleAnnotationStyle, scaleStrokeWidth } from "./stickerGeometry";
+import { DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_WIDTH_FACTOR } from "./stickerTextDefaults";
 
 export type StickerFrame = Pick<Sticker, "w" | "h">;
 export type FlipAxis = "x" | "y";
-
-const DEFAULT_TEXT_FONT_SIZE = 18;
-const DEFAULT_TEXT_WIDTH_FACTOR = 0.6;
 
 /** Scale an annotation in sticker-local coordinates, with optional translation. */
 export const scaleAnnotation = (

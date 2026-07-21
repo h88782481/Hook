@@ -6,7 +6,6 @@ import type { SessionSticker, SessionLink, SessionGroup } from "../types/sticker
 import type {
     LongCaptureAxis,
     LongCaptureDirection,
-    LongCaptureOverlapAnalysis,
 } from "./captureState";
 
 export interface CaptureResponse {
@@ -15,10 +14,6 @@ export interface CaptureResponse {
     height: number;
     filePath?: string | null;
     fileUrl?: string | null;
-}
-
-export interface CaptureRegionOptions {
-    compositionOverlayAlpha?: number;
 }
 
 export interface SessionData {
@@ -176,53 +171,15 @@ export const api = {
         y: number,
         w: number,
         h: number,
-        options?: CaptureRegionOptions,
     ): Promise<CaptureResponse> => {
-        console.log("[API] captureRegion called with:", { x, y, w, h, options });
+        console.log("[API] captureRegion called with:", { x, y, w, h });
         return safeInvoke("capture_region", {
             x,
             y,
             w,
             h,
-            compositionOverlayAlpha: options?.compositionOverlayAlpha,
         });
     },
-    analyzeLongCapturePair: (
-        previous: string,
-        current: string,
-        options?: {
-            axis?: LongCaptureAxis;
-            direction?: LongCaptureDirection;
-            maxScan?: number;
-            minOverlapPx?: number;
-            minNewContentPx?: number;
-        },
-    ): Promise<LongCaptureOverlapAnalysis> =>
-        safeInvoke("analyze_long_capture_pair", {
-            previous,
-            current,
-            axis: options?.axis,
-            direction: options?.direction,
-            maxScan: options?.maxScan,
-            minOverlapPx: options?.minOverlapPx,
-            minNewContentPx: options?.minNewContentPx,
-        }),
-    stitchLongCaptureFrames: (
-        frames: string[],
-        options?: {
-            axis?: LongCaptureAxis;
-            direction?: LongCaptureDirection;
-            maxScan?: number;
-            minOverlapPx?: number;
-        },
-    ): Promise<CaptureResponse> =>
-        safeInvoke("stitch_long_capture_frames", {
-            frames,
-            axis: options?.axis,
-            direction: options?.direction,
-            maxScan: options?.maxScan,
-            minOverlapPx: options?.minOverlapPx,
-        }),
     startLongCaptureSession: (
         rect: { x: number; y: number; w: number; h: number },
         axis?: LongCaptureAxis,

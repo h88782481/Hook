@@ -3,6 +3,7 @@ import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } 
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import { syncService } from "../services/syncService";
 import { clamp } from "../utils/math";
+import { hexToRgba, rgbaToHex } from "../utils/colorUtils";
 
 const COLOR_PICKER_RECT_ID = "color-picker-popup";
 const COLOR_PICKER_RECT_NAME = "COLOR_PICKER";
@@ -17,47 +18,6 @@ interface ColorPickerProps {
     defaultPalette?: string[];
     onPickFromScreen?: () => void;
 }
-
-const hexToRgb = (hex: string): { r: number; g: number; b: number; a: number } => {
-    if (!hex || typeof hex !== "string") {
-        return { r: 255, g: 0, b: 0, a: 1 };
-    }
-    // Literal "transparent": keep a neutral hue but zero alpha so opening a
-    // transparent slot shows a transparent (not opaque-red) starting color.
-    if (hex.trim().toLowerCase() === "transparent") {
-        return { r: 255, g: 0, b: 0, a: 0 };
-    }
-    const parseByte = (str: string, fallback: number) => {
-        const parsed = parseInt(str, 16);
-        return Number.isNaN(parsed) ? fallback : parsed;
-    };
-    const cleaned = hex.replace("#", "");
-    if (cleaned.length === 8) {
-        return {
-            r: parseByte(cleaned.substring(0, 2), 0),
-            g: parseByte(cleaned.substring(2, 4), 0),
-            b: parseByte(cleaned.substring(4, 6), 0),
-            a: parseByte(cleaned.substring(6, 8), 255) / 255,
-        };
-    }
-    if (cleaned.length === 6) {
-        return {
-            r: parseByte(cleaned.substring(0, 2), 0),
-            g: parseByte(cleaned.substring(2, 4), 0),
-            b: parseByte(cleaned.substring(4, 6), 0),
-            a: 1,
-        };
-    }
-    return { r: 255, g: 0, b: 0, a: 1 };
-};
-
-const rgbToHex = (r: number, g: number, b: number, a: number): string => {
-    const toHex = (n: number) => Math.round(n).toString(16).padStart(2, "0");
-    if (a < 1) {
-        return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(a * 255)}`;
-    }
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-};
 
 const rgbToHsv = (r: number, g: number, b: number): { h: number; s: number; v: number } => {
     const rNorm = r / 255;
@@ -118,7 +78,7 @@ interface ColorPickerPropsExtended extends ColorPickerProps {
 }
 
 export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
-    const initial = hexToRgb(props.value);
+    const initial = hexToRgba(props.value);
     const initialHsv = rgbToHsv(initial.r, initial.g, initial.b);
 
     const [hue, setHue] = createSignal(initialHsv.h);
@@ -138,7 +98,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
 
     const currentColor = () => {
         const rgb = hsvToRgb(hue(), saturation(), value());
-        return rgbToHex(rgb.r, rgb.g, rgb.b, alpha());
+        return rgbaToHex(rgb.r, rgb.g, rgb.b, alpha());
     };
 
     const isValidHex = (hex: string) => {
@@ -147,7 +107,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
     };
 
     const loadColor = (hex: string) => {
-        const parsed = hexToRgb(hex);
+        const parsed = hexToRgba(hex);
         const hsv = rgbToHsv(parsed.r, parsed.g, parsed.b);
         // Grayscale (and fully transparent) inputs have an undefined hue; keep the
         // current hue so the handle doesn't jump to red and the user's hue is kept.

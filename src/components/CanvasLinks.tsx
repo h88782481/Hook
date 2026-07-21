@@ -36,8 +36,8 @@ export const CanvasLinks: Component = () => {
                  ? { ...sTo, x: dPositions[sTo.id].x, y: dPositions[sTo.id].y }
                  : sTo;
 
-             const bodyY1 = calculatePortY(currFrom, link.fromPortId, false);
-             const bodyY2 = calculatePortY(currTo, link.toPortId, true);
+             const bodyY1 = calculatePortY(currFrom);
+             const bodyY2 = calculatePortY(currTo);
              const bodyX1 = currFrom.x + currFrom.w + (currFrom.data.minified ? 4 : 6);
              const bodyX2 = currTo.x - (currTo.data.minified ? 4 : 6);
 

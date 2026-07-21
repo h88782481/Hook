@@ -34,7 +34,6 @@ export interface ManualLongCaptureFrame {
 
 export type LongCaptureAxis = "vertical" | "horizontal";
 export type LongCaptureDirection = "down" | "up" | "right" | "left";
-export type LongCaptureAnalysisStatus = "duplicate" | "too_small_motion" | "good" | "weak" | "no_overlap";
 
 export interface AutoLongCaptureOptions {
     maxScan: number;
@@ -53,17 +52,6 @@ export interface AutoLongCaptureOptions {
     statusUpdateIntervalMs: number;
     finishDrainTimeoutMs: number;
     finishDrainRecentWheelWindowMs: number;
-}
-
-export interface LongCaptureOverlapAnalysis {
-    status: LongCaptureAnalysisStatus;
-    axis?: LongCaptureAxis;
-    direction?: LongCaptureDirection;
-    overlapPx: number;
-    cropStartPx: number;
-    appendPx: number;
-    confidence: number;
-    seamPx: number;
 }
 
 export type CaptureSelectionStartState =
@@ -132,26 +120,6 @@ export const createCaptureMeta = (
     },
     scrollAxis: isLongCaptureMode(mode) ? (scrollAxis ?? "vertical") : undefined,
 });
-
-export const resolveAutoLongCapturePollInterval = (
-    options: AutoLongCaptureOptions,
-    analysis?: Pick<LongCaptureOverlapAnalysis, "status" | "appendPx"> | null,
-): number => {
-    if (!analysis) return options.pollIntervalMs;
-
-    switch (analysis.status) {
-        case "duplicate":
-        case "too_small_motion":
-        case "no_overlap":
-            return options.minPollIntervalMs;
-        case "weak":
-            return options.pollIntervalMs;
-        case "good":
-            return analysis.appendPx >= 48
-                ? options.maxPollIntervalMs
-                : Math.min(options.maxPollIntervalMs, options.pollIntervalMs + 20);
-    }
-};
 
 export const resolveAutoLongCaptureSessionPollInterval = (
     options: AutoLongCaptureOptions,

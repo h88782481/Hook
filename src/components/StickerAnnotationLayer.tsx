@@ -26,7 +26,7 @@ import type {
     StickerTransformMode,
 } from "../types/stickerEditing";
 import type { Sticker } from "../types/stickerModel";
-import { clamp } from "../utils/math";
+import { clamp, wheelZoomScaleFactor } from "../utils/math";
 import {
     clampCropRectToStickerBounds,
     clampShapeRectToStickerBounds,
@@ -1696,7 +1696,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             `ctrl=${event.ctrlKey} alt=${event.altKey} shift=${event.shiftKey} transformMode=${transformMode} annotationIds=${annotationIds.join(",")} targetCount=${targetAnnotations.length} deltaY=${deltaY}`,
         );
 
-        const scaleFactor = clamp(Math.exp(-deltaY * 0.001), 0.5, 1.5);
+        const scaleFactor = wheelZoomScaleFactor(deltaY);
         const scale = { x: scaleFactor, y: scaleFactor };
         const transformed =
             event.shiftKey && targetAnnotations.length > 1
