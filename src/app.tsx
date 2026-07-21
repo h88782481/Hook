@@ -451,7 +451,7 @@ export default function App() {
       }
       if (!stickerId) return;
       const selectedUnit = graphStore.units.find((unit) => unit.id === stickerId);
-      if (selectedUnit?.type !== "sticker") return;
+      if (!selectedUnit) return;
 
       if (activeStickerEditTargetId() === stickerId) {
           uiActions.hideStickerToolbar();
@@ -479,7 +479,7 @@ export default function App() {
       const id = selectedStickerId();
       if (!id) return;
       const unit = graphStore.units.find((item) => item.id === id);
-      if (!unit || unit.type !== "sticker") return;
+      if (!unit) return;
 
       const current = captureStickerEditSnapshot(unit, { includeImageData: true });
       const snapshot =
@@ -498,7 +498,7 @@ export default function App() {
       const stickerId = selectedStickerId();
       if (annotationId && stickerId) {
           const activeUnit = graphStore.units.find((unit) => unit.id === stickerId);
-          if (activeUnit?.type === "sticker" && activeUnit.data.annotationState) {
+          if (activeUnit?.data.annotationState) {
               uiActions.pushStickerHistory(stickerId, captureStickerEditSnapshot(activeUnit));
               graphStore.actions.updateStickerEditData(stickerId, {
                   annotationState: removeAnnotationById(activeUnit.data.annotationState, annotationId),
@@ -520,7 +520,7 @@ export default function App() {
       if (ids.length > 0) {
           const recycleEntries = ids
               .map((id) => graphStore.units.find((unit) => unit.id === id))
-              .filter((unit): unit is Unit => !!unit && unit.type === "sticker")
+              .filter((unit): unit is Unit => !!unit)
               .map((unit) => captureFrozenStickerSnapshot(unit));
 
           if (recycleEntries.length > 0) {
@@ -643,10 +643,10 @@ export default function App() {
                   scheduleOverlayHitTestRefresh();
               }
           },
-          onToggleParams: () => {
+          onToggleSidePanel: () => {
               const id = selectedStickerId();
               if (id) {
-                  uiActions.toggleParams(id);
+                  uiActions.toggleSidePanel(id);
                   scheduleOverlayHitTestRefresh();
               }
           },
@@ -1123,7 +1123,7 @@ export default function App() {
 
       startDrag(e, id, (clickedId) => {
           const clickedUnit = graphStore.units.find((unit) => unit.id === clickedId);
-          if (clickedUnit?.type !== "sticker" || activeStickerEditTargetId() !== clickedId) {
+          if (!clickedUnit || activeStickerEditTargetId() !== clickedId) {
               uiActions.hideStickerToolbar();
           }
           // Handle Click (No Drag)
@@ -1183,7 +1183,7 @@ export default function App() {
                         padding: "16px",
                     }}
                 >
-                    {"render-error (click 重试 to recover)\n\n" + detail}
+                    {"render-error (click ?? to recover)\n\n" + detail}
                     <div style={{ "margin-top": "12px" }}>
                         <button
                             type="button"
@@ -1195,7 +1195,7 @@ export default function App() {
                             }}
                             onClick={reset}
                         >
-                            重试
+                            ??
                         </button>
                     </div>
                 </div>
@@ -1262,12 +1262,12 @@ export default function App() {
         <Show when={longCaptureSession()}>
             {(session) => (
                 <div class="hook-terminal-shell hook-terminal-shell--strong hook-capture-status-shell absolute right-5 top-5 z-[120] px-4 py-3 text-xs pointer-events-none">
-                    <div class="hook-capture-status-title mb-1 text-sm font-semibold">长截图录制中</div>
-                    <div>已保留 {session().frameCount} 帧</div>
-                    <div>已忽略 {session().duplicateCount ?? 0} 张重复画面</div>
-                    <div>方向 {session().axis ?? "自动检测"}</div>
-                    <div class="hook-capture-status-copy mt-1">{session().lastMessage ?? "请慢速向下滚动，Hook 会录制非重复画面，完成后统一拼接"}</div>
-                    <div class="hook-capture-status-shortcut mt-2">Enter/Ctrl+3 完成，Esc 取消</div>
+                    <div class="hook-capture-status-title mb-1 text-sm font-semibold">??????</div>
+                    <div>??? {session().frameCount} ?</div>
+                    <div>??? {session().duplicateCount ?? 0} ?????</div>
+                    <div>?? {session().axis ?? "????"}</div>
+                    <div class="hook-capture-status-copy mt-1">{session().lastMessage ?? "????????Hook ????????????????"}</div>
+                    <div class="hook-capture-status-shortcut mt-2">Enter/Ctrl+3 ???Esc ??</div>
                 </div>
             )}
         </Show>

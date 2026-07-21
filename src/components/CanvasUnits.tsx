@@ -88,7 +88,7 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
 
               // UI State (Show/Hide panels)
               showActions={(unitUiState[u.id]?.showActions || false) && !u.data.minified}
-              showParams={(unitUiState[u.id]?.showParams || false) && !u.data.minified}
+              showSidePanel={(unitUiState[u.id]?.showSidePanel || false) && !u.data.minified}
 
               // Setup
               portsLayer={props.portsLayerRef}

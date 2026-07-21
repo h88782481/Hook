@@ -40,18 +40,18 @@ export const StickerContextMenuLayer = () => {
             return undefined;
         }
 
-        return graphStore.units.find((unit) => unit.id === targetStickerId && unit.type === "sticker");
+        return graphStore.units.find((unit) => unit.id === targetStickerId);
     });
 
     const referenceActionLabel = createMemo(() => {
         const target = targetSticker();
         if (!target) {
-            return "设置参考";
+            return "设置坂考";
         }
 
         return graphStore.referenceLibrary.some((entry) => entry.sourceStickerId === target.id)
-            ? "取消参考"
-            : "设置参考";
+            ? "坖消坂考"
+            : "设置坂考";
     });
 
     const activeSubmenuEntries = createMemo(() => {

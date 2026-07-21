@@ -4,11 +4,11 @@ import { UnitActionsMenu } from "./UnitActionsMenu";
 import { graphStore } from "../store/graphStore";
 import { syncService } from "../services/syncService";
 
-interface UnitParamsPanelProps {
+interface StickerSidePanelProps {
   unit: Unit;
 }
 
-export const UnitParamsPanel: Component<UnitParamsPanelProps> = (props) => {
+export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
   const [expanded, setExpanded] = createSignal(false);
 
   const acceptsUpstreamStickerEditPropagation = () =>

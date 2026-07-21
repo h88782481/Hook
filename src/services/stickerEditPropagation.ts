@@ -396,7 +396,7 @@ export const buildStickerEditPropagationPatches = ({
 
     const visit = (fromUnitId: string) => {
         const sourceUnit = workingUnits.get(fromUnitId);
-        if (!sourceUnit || sourceUnit.type !== "sticker") return;
+        if (!sourceUnit) return;
 
         const outgoingLinks = links.filter((link) => link.fromUnitId === fromUnitId);
         outgoingLinks.forEach((link) => {
@@ -405,7 +405,7 @@ export const buildStickerEditPropagationPatches = ({
             visitedEdges.add(edgeKey);
 
             const targetUnit = workingUnits.get(link.toUnitId);
-            if (!targetUnit || targetUnit.type !== "sticker") return;
+            if (!targetUnit) return;
             if (!shouldAcceptUpstreamStickerEdit(targetUnit)) return;
 
             const annotationState = mapStickerAnnotationStateToContainedFrame(

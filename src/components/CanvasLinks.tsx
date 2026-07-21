@@ -68,8 +68,8 @@ export const CanvasLinks: Component = () => {
              };
 
              // Check if "Panel" is actually visible (Params enabled AND Not Minified)
-             const showFrom = unitUiState[currFrom.id]?.showParams && !currFrom.data.minified;
-             const showTo = unitUiState[currTo.id]?.showParams && !currTo.data.minified;
+             const showFrom = unitUiState[currFrom.id]?.showSidePanel && !currFrom.data.minified;
+             const showTo = unitUiState[currTo.id]?.showSidePanel && !currTo.data.minified;
 
              // Determine Effective Endpoints for the Dashed Line
              // If panel is open -> use panel coords. If closed -> fallback to body coords.

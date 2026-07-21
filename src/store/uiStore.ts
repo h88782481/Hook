@@ -149,19 +149,9 @@ export const [hoveringLink, setHoveringLink] = createSignal<{sourceUnitId: strin
 // Mouse Tracking
 export const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
 
-export const [globalAddNodeMenu, setGlobalAddNodeMenu] = createSignal<{
-    visible: boolean;
-    x: number;
-    y: number;
-}>({
-    visible: false,
-    x: 0,
-    y: 0,
-});
-
 // Unit-Specific UI State (e.g. Panels open/close)
 // Key: Unit ID
-export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showParams: boolean }>>({});
+export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showSidePanel: boolean }>>({});
 
 
 // Clipboard paste cascade state
@@ -238,11 +228,11 @@ export const uiActions = {
             return { ...prev, showActions: !current };
         });
     },
-    // Helper to toggle params panel safely
-    toggleParams: (id: string) => {
+    // Helper to toggle sticker side panel safely
+    toggleSidePanel: (id: string) => {
         setUnitUiState(id, (prev) => {
-            const current = prev?.showParams ?? false;
-            return { ...prev, showParams: !current };
+            const current = prev?.showSidePanel ?? false;
+            return { ...prev, showSidePanel: !current };
         });
     },
     closeActions: (id: string) => {
@@ -251,27 +241,21 @@ export const uiActions = {
             showActions: false,
         }));
     },
-    openParams: (id: string) => {
-        setUnitUiState(id, (prev) => ({
-            ...prev,
-            showParams: true,
-        }));
-    },
     closePopups: (id: string) => {
         setUnitUiState(id, (prev) => ({
             ...prev,
             showActions: false,
-            showParams: false,
+            showSidePanel: false,
         }));
     },
     closeAllPopups: () => {
-        // Collapse every unit's action/param popups. Iterate the keys currently
+        // Collapse every unit's action/side popups. Iterate the keys currently
         // present in the store rather than leaving this as a no-op.
         Object.keys(unitUiState).forEach((id) => {
             setUnitUiState(id, (prev) => ({
                 ...prev,
                 showActions: false,
-                showParams: false,
+                showSidePanel: false,
             }));
         });
     },

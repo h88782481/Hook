@@ -7,7 +7,7 @@ import type {
 
 export interface Port {
     id: string;
-    type: "image" | "text" | "number" | "boolean" | "any";
+    type: "image";
     direction: "input" | "output";
     label?: string;
 }

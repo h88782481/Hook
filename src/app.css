@@ -79,9 +79,6 @@ main {
   overflow: hidden;
 }
 
-/* Missing Tailwind Utilities - REMOVED (Handled by Tailwind) */
-
-
 /* Utilities */
 .border-primary {
   border-color: var(--primary);
@@ -99,12 +96,6 @@ main {
   cursor: crosshair;
 }
 
-/* Flexbox Utilities */
-/* Flexbox Utilities - REMOVED (Handled by Tailwind) */
-
-/* Sizing & Text Utilities */
-/* Sizing & Text Utilities - REMOVED (Handled by Tailwind) */
-
 .animate-in {
   animation: zoomIn 0.2s ease-out forwards;
 }
@@ -113,10 +104,6 @@ main {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
-
-/* --- Added Utilities for UI Widgets (replacing JIT) --- */
-
-/* Detailed Utilities - REMOVED (Handled by Tailwind) */
 
 /* Color Utilities (Manual JIT replacements) */
 .bg-transparent { background-color: transparent; }
@@ -138,8 +125,6 @@ main {
 .bg-dimmer {
     background-color: rgba(0, 0, 0, 0.3);
 }
-
-/* Manual Tailwind Polyfills - REMOVED (Handled by Tailwind) */
 
 /* Hook terminal theme primitives */
 .hook-terminal-shell,

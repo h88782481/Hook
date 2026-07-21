@@ -4,7 +4,6 @@ pub mod platform;
 use bounds::*;
 pub use platform::{DisplayIdImpl, DisplayImpl, WindowIdImpl, WindowImpl};
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::str::FromStr;
 
 use crate::bounds::{LogicalPosition, LogicalSize};
@@ -54,10 +53,9 @@ impl Display {
     }
 }
 
-#[derive(Serialize, Deserialize, Type, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct DisplayId(
     #[serde(with = "serde_display_id")]
-    #[specta(type = String)]
     DisplayIdImpl,
 );
 
@@ -154,54 +152,36 @@ impl Window {
     pub fn display_relative_logical_bounds(&self) -> Option<LogicalBounds> {
         let display = self.display()?;
 
-        #[cfg(target_os = "macos")]
-        {
-            let display_logical_bounds = display.raw_handle().logical_bounds()?;
-            let window_logical_bounds = self.raw_handle().logical_bounds()?;
+        let display_physical_bounds = display.raw_handle().physical_bounds()?;
+        let display_logical_size = display.logical_size()?;
+        let window_physical_bounds: PhysicalBounds = self.raw_handle().physical_bounds()?;
 
-            Some(LogicalBounds::new(
-                LogicalPosition::new(
-                    window_logical_bounds.position().x() - display_logical_bounds.position().x(),
-                    window_logical_bounds.position().y() - display_logical_bounds.position().y(),
-                ),
-                window_logical_bounds.size(),
-            ))
-        }
+        let scale = display_logical_size.width() / display_physical_bounds.size().width;
 
-        #[cfg(windows)]
-        {
-            let display_physical_bounds = display.raw_handle().physical_bounds()?;
-            let display_logical_size = display.logical_size()?;
-            let window_physical_bounds: PhysicalBounds = self.raw_handle().physical_bounds()?;
+        let display_relative_physical_bounds = PhysicalBounds::new(
+            PhysicalPosition::new(
+                window_physical_bounds.position().x - display_physical_bounds.position().x,
+                window_physical_bounds.position().y - display_physical_bounds.position().y,
+            ),
+            window_physical_bounds.size(),
+        );
 
-            let scale = display_logical_size.width() / display_physical_bounds.size().width;
-
-            let display_relative_physical_bounds = PhysicalBounds::new(
-                PhysicalPosition::new(
-                    window_physical_bounds.position().x - display_physical_bounds.position().x,
-                    window_physical_bounds.position().y - display_physical_bounds.position().y,
-                ),
-                window_physical_bounds.size(),
-            );
-
-            Some(LogicalBounds::new(
-                LogicalPosition::new(
-                    display_relative_physical_bounds.position().x() * scale,
-                    display_relative_physical_bounds.position().y() * scale,
-                ),
-                LogicalSize::new(
-                    display_relative_physical_bounds.size().width() * scale,
-                    display_relative_physical_bounds.size().height() * scale,
-                ),
-            ))
-        }
+        Some(LogicalBounds::new(
+            LogicalPosition::new(
+                display_relative_physical_bounds.position().x() * scale,
+                display_relative_physical_bounds.position().y() * scale,
+            ),
+            LogicalSize::new(
+                display_relative_physical_bounds.size().width() * scale,
+                display_relative_physical_bounds.size().height() * scale,
+            ),
+        ))
     }
 }
 
-#[derive(Serialize, Deserialize, Type, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct WindowId(
     #[serde(with = "serde_window_id")]
-    #[specta(type = String)]
     WindowIdImpl,
 );
 

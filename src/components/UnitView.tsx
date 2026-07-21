@@ -16,7 +16,7 @@ import {
 import { Unit, Link } from "../types/unit";
 import { addOrUpdateRect, removeRect, updatePortOffset } from "../services/uiRegistry";
 import { computeMinifiedStickerAnnotationViewport, computeMinifiedStickerViewport } from "../services/stickerEditing";
-import { UnitParamsPanel } from "./UnitParamsPanel";
+import { StickerSidePanel } from "./StickerSidePanel";
 import { UnitPorts } from "./UnitPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
@@ -34,7 +34,7 @@ interface Props {
   params: Record<string, any>; // Direct Store reference for reactivity
   isSelected: boolean;
   showActions: boolean;
-  showParams: boolean; // NEW: Toggle state for params
+  showSidePanel: boolean;
   onMouseDown: (e: MouseEvent) => void;
   onDoubleTap: (e: MouseEvent) => void;
   onDelete: () => void;
@@ -87,7 +87,6 @@ export const UnitView: Component<Props> = (props) => {
   const hasSelectedExistingAnnotations = () =>
       selectedStickerAnnotationIds.length > 0 || selectedStickerAnnotationId() !== null;
   const shouldBlockContainerMouseDown = () => {
-      if (props.unit.type !== "sticker") return false;
       if (activeStickerEditTargetId() !== props.unit.id) return false;
       if (stickerToolSettings.domain !== "existing") {
           if (stickerToolSettings.domain === "create") return true;
@@ -98,7 +97,7 @@ export const UnitView: Component<Props> = (props) => {
   };
   const allowContainerMouseDown = () => !shouldBlockContainerMouseDown();
   const handleUnitDoubleClick = (event: MouseEvent) => {
-      if (props.unit.type === "sticker" && !isStickerSurfaceDoubleClickTarget(event.target, event.currentTarget)) {
+      if (!isStickerSurfaceDoubleClickTarget(event.target, event.currentTarget)) {
           event.stopPropagation();
           return;
       }
@@ -422,7 +421,7 @@ export const UnitView: Component<Props> = (props) => {
   };
 
   const handlePendingNativeDragOverlayDown = (event: Event) => {
-      if (props.unit.type !== "sticker" || !isTauriRuntimeAvailable()) return;
+      if (!isTauriRuntimeAvailable()) return;
       const detail = (event as CustomEvent<NativeDragPreflightOverlayPayload>).detail;
       if (!detail?.shiftKey) return;
       const point = overlayPayloadClientPoint(detail);
@@ -441,14 +440,13 @@ export const UnitView: Component<Props> = (props) => {
   };
 
   const handleNativeStickerPointerDownCapture = (event: PointerEvent) => {
-      if (props.unit.type !== "sticker" || !isTauriRuntimeAvailable() || !event.shiftKey) return;
+      if (!isTauriRuntimeAvailable() || !event.shiftKey) return;
       event.preventDefault();
       event.stopPropagation();
       beginPendingHookStickerExportDrag(event.clientX, event.clientY, event.pointerId);
   };
 
   createEffect(() => {
-      if (props.unit.type !== "sticker") return;
       unitContainerRef?.addEventListener("pointerdown", handleNativeStickerPointerDownCapture, true);
       window.addEventListener("hook:overlay-native-drag-preflight-down", handlePendingNativeDragOverlayDown as EventListener, true);
       onCleanup(() => {
@@ -587,7 +585,6 @@ export const UnitView: Component<Props> = (props) => {
         }
       }}
       onContextMenu={(event) => {
-        if (props.unit.type !== "sticker") return;
         event.preventDefault();
         event.stopPropagation();
         if (isSelecting() || longCaptureSession()?.active) return;
@@ -931,39 +928,37 @@ export const UnitView: Component<Props> = (props) => {
                 }} />
             </Show>
 
-            <Show when={props.unit.type === "sticker"}>
-                <div
-                    class="sticker-annotation-layer-viewport absolute"
-                    style={(() => {
-                        const viewport = isMinified()
-                            ? getMinifiedAnnotationViewport()
-                            : {
-                                  width: props.unit.w,
-                                  height: props.unit.h,
-                                  offsetX: 0,
-                                  offsetY: 0,
-                              };
-                        return {
-                            width: `${viewport.width}px`,
-                            height: `${viewport.height}px`,
-                            left: `-${viewport.offsetX}px`,
-                            top: `-${viewport.offsetY}px`,
-                        };
-                    })()}
-                >
-                    <StickerAnnotationLayer
-                        unitId={props.unit.id}
-                        width={isMinified() ? getMinifiedAnnotationViewport().width : props.unit.w}
-                        height={isMinified() ? getMinifiedAnnotationViewport().height : props.unit.h}
-                        imageSrc={displaySrc()}
-                    />
-                </div>
-            </Show>
+            <div
+                class="sticker-annotation-layer-viewport absolute"
+                style={(() => {
+                    const viewport = isMinified()
+                        ? getMinifiedAnnotationViewport()
+                        : {
+                              width: props.unit.w,
+                              height: props.unit.h,
+                              offsetX: 0,
+                              offsetY: 0,
+                          };
+                    return {
+                        width: `${viewport.width}px`,
+                        height: `${viewport.height}px`,
+                        left: `-${viewport.offsetX}px`,
+                        top: `-${viewport.offsetY}px`,
+                    };
+                })()}
+            >
+                <StickerAnnotationLayer
+                    unitId={props.unit.id}
+                    width={isMinified() ? getMinifiedAnnotationViewport().width : props.unit.w}
+                    height={isMinified() ? getMinifiedAnnotationViewport().height : props.unit.h}
+                    imageSrc={displaySrc()}
+                />
+            </div>
 
         </div>
 
         <Show when={!isMinified() && !isCleanView()}>
-            <Show when={props.unit.type === "sticker" && props.isSelected && activeStickerEditTargetId() === props.unit.id}>
+            <Show when={props.isSelected && activeStickerEditTargetId() === props.unit.id}>
                 <StickerTopStrip
                     unitId={props.unit.id}
                     x={currentPos().x}
@@ -988,9 +983,8 @@ export const UnitView: Component<Props> = (props) => {
 
         {/* === INTERACTION LAYER (Floating panels, outside of cropped visual) === */}
 
-        {/* Unit Params Panel */}
-        <Show when={props.showParams}>
-             <UnitParamsPanel
+        <Show when={props.showSidePanel}>
+             <StickerSidePanel
              unit={props.unit}
         />
         </Show>

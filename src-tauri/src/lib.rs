@@ -531,7 +531,7 @@ fn select_sticker_save_path(
     let filter_wide: Vec<u16> = "PNG Image (*.png)\0*.png\0All Files (*.*)\0*.*\0\0"
         .encode_utf16()
         .collect();
-    let title_wide = wide_null("另存为贴图图�?);
+    let title_wide = wide_null("????????);
     let default_extension_wide = wide_null("png");
     let mut file_buffer = vec![0u16; 32768];
     let copy_len = default_filename_wide.len().min(file_buffer.len());
@@ -574,10 +574,10 @@ fn select_sticker_save_path(
 #[cfg(target_os = "windows")]
 fn select_image_open_path() -> Result<Option<PathBuf>, String> {
     let filter_wide: Vec<u16> =
-        "图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0所有文�?(*.*)\0*.*\0\0"
+        "???? (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0?????(*.*)\0*.*\0\0"
             .encode_utf16()
             .collect();
-    let title_wide = wide_null("打开图片进行编辑");
+    let title_wide = wide_null("????????");
     let mut file_buffer = vec![0u16; 32768];
 
     let mut dialog = OPENFILENAMEW::default();
@@ -1684,7 +1684,6 @@ fn set_capture_input_runtime_active(active: bool) {
 }
 
 
-#[tauri::command]
 fn save_sticker_image(app: tauri::AppHandle, base64_image: String) -> Result<String, String> {
     let image_data = decode_base64_image_data(&base64_image)?;
 
@@ -2159,7 +2158,6 @@ fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<String,
     Ok("image clipboard only; file-list paste is Windows-only".to_string())
 }
 
-#[tauri::command]
 fn copy_to_clipboard(base64_image: String) -> Result<(), String> {
     let image_bytes = decode_base64_image_data(&base64_image)?;
 
@@ -5063,12 +5061,10 @@ pub fn run() {
              capture::capture_region,
              update_pin_rects,
              set_mouse_monitor_active,
-             save_sticker_image,
              save_sticker_image_as,
              save_sticker_drag_export,
              save_sticker_drag_export_from_path,
              get_cursor_position,
-            copy_to_clipboard,
             copy_sticker_image_to_smart_clipboard,
             set_capture_input_active,
             save_session,
@@ -5162,11 +5158,11 @@ pub fn run() {
                       append_runtime_log_line("register_ctrle_success");
                 }
 
-                let capture_item = MenuItem::with_id(app, "capture", "截图 (Ctrl+1)", true, None::<&str>)?;
-                let long_capture_item = MenuItem::with_id(app, "long_capture", "长截�?(Ctrl+3)", true, None::<&str>)?;
+                let capture_item = MenuItem::with_id(app, "capture", "?? (Ctrl+1)", true, None::<&str>)?;
+                let long_capture_item = MenuItem::with_id(app, "long_capture", "????(Ctrl+3)", true, None::<&str>)?;
                 let open_image_item =
-                    MenuItem::with_id(app, "open_image", "编辑已有图片�?(Ctrl+O)", true, None::<&str>)?;
-                let quit_item = MenuItem::with_id(app, "quit", "退�?, true, None::<&str>)?;
+                    MenuItem::with_id(app, "open_image", "????????(Ctrl+O)", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "???, true, None::<&str>)?;
                 let tray_menu = Menu::with_items(
                     app,
                     &[&capture_item, &long_capture_item, &open_image_item, &quit_item],

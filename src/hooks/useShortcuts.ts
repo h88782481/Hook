@@ -25,7 +25,7 @@ interface ShortcutHandlers {
 
   // UI Toggles
   onToggleActions?: () => void | Promise<void>;
-  onToggleParams?: () => void | Promise<void>;
+  onToggleSidePanel?: () => void | Promise<void>;
   onToggleStickerToolbar?: () => void | Promise<void>;
   onToggleCleanView?: () => void | Promise<void>;
   onTransformSelect?: () => void | Promise<void>;
@@ -67,7 +67,7 @@ export function useShortcuts(options: UseShortcutsOptions) {
     if (handlers.onCancelStickerEdit) ShortcutManager.register('cancel-sticker-edit', handlers.onCancelStickerEdit);
 
     if (handlers.onToggleActions) ShortcutManager.register('toggle-actions', handlers.onToggleActions);
-    if (handlers.onToggleParams) ShortcutManager.register('toggle-params', handlers.onToggleParams);
+    if (handlers.onToggleSidePanel) ShortcutManager.register('toggle-side-panel', handlers.onToggleSidePanel);
     if (handlers.onToggleStickerToolbar) ShortcutManager.register('toggle-sticker-toolbar', handlers.onToggleStickerToolbar);
     if (handlers.onToggleCleanView) ShortcutManager.register('toggle-clean-view', handlers.onToggleCleanView);
     if (handlers.onTransformSelect) ShortcutManager.register('transform-select', handlers.onTransformSelect);
@@ -135,7 +135,7 @@ export function useShortcuts(options: UseShortcutsOptions) {
       ShortcutManager.unregister('cancel-selection');
       ShortcutManager.unregister('cancel-sticker-edit');
       ShortcutManager.unregister('toggle-actions');
-      ShortcutManager.unregister('toggle-params');
+      ShortcutManager.unregister('toggle-side-panel');
       ShortcutManager.unregister('toggle-sticker-toolbar');
       ShortcutManager.unregister('toggle-clean-view');
       ShortcutManager.unregister('transform-select');

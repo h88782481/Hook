@@ -1,9 +1,7 @@
-#[cfg(target_os = "macos")]
-pub mod macos;
-#[cfg(target_os = "macos")]
-pub use macos::*;
-
 #[cfg(windows)]
 mod win;
 #[cfg(windows)]
 pub use win::*;
+
+#[cfg(not(windows))]
+compile_error!("scap-targets currently supports Windows only (Hook is Windows-first)");

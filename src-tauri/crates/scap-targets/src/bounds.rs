@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct LogicalBounds {
     pub(crate) position: LogicalPosition,
     pub(crate) size: LogicalSize,
@@ -28,7 +27,7 @@ impl LogicalBounds {
     }
 }
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct PhysicalBounds {
     pub(crate) position: PhysicalPosition,
     pub(crate) size: PhysicalSize,
@@ -55,7 +54,7 @@ impl PhysicalBounds {
     }
 }
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LogicalSize {
     pub(crate) width: f64,
     pub(crate) height: f64,
@@ -75,7 +74,7 @@ impl LogicalSize {
     }
 }
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PhysicalSize {
     pub(crate) width: f64,
     pub(crate) height: f64,
@@ -102,7 +101,7 @@ impl PhysicalSize {
     }
 }
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LogicalPosition {
     pub(crate) x: f64,
     pub(crate) y: f64,
@@ -122,7 +121,7 @@ impl LogicalPosition {
     }
 }
 
-#[derive(Clone, Copy, Debug, Type, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct PhysicalPosition {
     pub(crate) x: f64,
     pub(crate) y: f64,

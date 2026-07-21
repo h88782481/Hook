@@ -3902,15 +3902,8 @@ dependencies = [
 name = "scap-targets"
 version = "0.1.0"
 dependencies = [
- "cidre",
- "cocoa 0.26.1",
- "core-foundation 0.10.1",
- "core-graphics 0.24.0",
  "image 0.24.9",
- "objc",
  "serde",
- "specta",
- "tokio",
  "tracing",
  "windows 0.60.0",
 ]
@@ -4314,31 +4307,6 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "specta"
-version = "2.0.0-rc.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ccbb212565d2dc177bc15ecb7b039d66c4490da892436a4eee5b394d620c9bc"
-dependencies = [
- "chrono",
- "serde_json",
- "specta-macros",
- "thiserror 1.0.69",
- "uuid",
-]
-
-[[package]]
-name = "specta-macros"
-version = "2.0.0-rc.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68999d29816965eb9e5201f60aec02a76512139811661a7e8e653abc810b8f72"
-dependencies = [
- "Inflector",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]

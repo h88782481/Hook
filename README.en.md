@@ -39,7 +39,7 @@ Hook focuses on the gap between a screenshot utility and a heavier design tool:
 - you can keep editing and organizing after capture
 - stickers, annotations, and reference images can stay in the same desktop workspace
 - the recycle bin and reference list make assets reusable
-- the node canvas and local capability bridges make it more than an image collector
+- stickers can be linked so annotations propagate for comparison and transfer
 
 ## Core capabilities
 
@@ -51,8 +51,8 @@ Hook focuses on the gap between a screenshot utility and a heavier design tool:
   - crop, border, opacity, raster effects, color pick and copy
   - text, numbering, shapes, brush, highlighter
   - recycle bin and reference list
-- **Desktop workflow canvas**
-  - node graph, links, grouped parameters, sync entry points
+- **Desktop sticker canvas**
+  - sticker links, groups, and session sync
   - editing-oriented top toolbar and context menu
   - local startup helpers and single-instance control
 

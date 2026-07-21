@@ -19,7 +19,7 @@ export function useClipboard() {
 
         if (id) {
             const unit = graphStore.units.find(u => u.id === id);
-            if (unit && unit.type === 'sticker') {
+            if (unit) {
                 if (annotationId && unit.data.annotationState) {
                     const duplicated = duplicateAnnotationById(unit.data.annotationState, annotationId);
                     if (duplicated.createdAnnotationId) {
@@ -175,7 +175,7 @@ export function useClipboard() {
         const id = selectedStickerId();
         if (!id) return;
         const unit = graphStore.units.find((candidate) => candidate.id === id);
-        if (!unit || unit.type !== "sticker") return;
+        if (!unit) return;
 
         try {
             const exportBase64 = await renderStickerComposite(unit);
