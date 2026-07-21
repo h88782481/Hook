@@ -1686,11 +1686,15 @@ export default function App() {
       const capability = u.type === "art" ? graphStore.capabilities.find((item) => item.id === u.artId) : undefined;
       const inputs = u.inputs || (u.type === 'art' ? capability?.inputs || [] : []) || [{ name: 'image' }];
 
-      // Try to find a connected input that provides an image
-      // Priority: 'image', 'input_image', or just the first connected one
-      const link = graphStore.links.find(l =>
-          l.toUnitId === id &&
-          (l.toPortId === 'image' || l.toPortId === 'input_image' || l.toPortId === 'input')
+      // Try to find a connected image input using declared ports.
+      const imageInputNames = new Set(
+          (u.type === "art"
+              ? (capability?.inputs || []).map((input) => input.name)
+              : (u.inputs || []).map((input) => input.id || input.label)
+          ).filter((name): name is string => typeof name === "string" && name.length > 0),
+      );
+      const link = graphStore.links.find(
+          (l) => l.toUnitId === id && (imageInputNames.size === 0 || imageInputNames.has(l.toPortId)),
       );
 
       if (link) {

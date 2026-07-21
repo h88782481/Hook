@@ -46,7 +46,7 @@ pub fn native_cli_execute(
 
     // 1. Read Art Definition to get Command Template
     let config_dir = dirs::config_dir().ok_or("Config dir not found")?;
-    let arts_path = config_dir.join("ArtNexus").join("arts.json");
+    let arts_path = config_dir.join("com.yamiyu.hook").join("arts.json");
     let content = std::fs::read_to_string(&arts_path).map_err(|e| e.to_string())?;
     // We need access to mock_artloom definitions.
     // Since mock_artloom is a module in lib.rs, we can access it via crate::mock_artloom

@@ -75,7 +75,7 @@ Issues, build feedback, and focused improvement suggestions are welcome:
 
 - Issues: <https://github.com/aiaimimi0920/Hook/issues>
 - Local verification: run `npm run verify:local` (typecheck + frontend build). Packaging is handled by GitHub Actions.
-- Public bundle identifier: `com.yamiyu.hook`. Hook keeps compatibility fallbacks for older local data directories created under `io.github.aiaimimi0920.hook` and `com.vmjcv.hook`.
+- Public bundle identifier: `com.yamiyu.hook`.
 
 ## License
 

@@ -10,7 +10,7 @@ use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::CreateMutexW;
 
-pub(crate) const HOOK_SINGLE_INSTANCE_NAME: &str = "Local\\ArtNexus.Hook.SingleInstance";
+pub(crate) const HOOK_SINGLE_INSTANCE_NAME: &str = "Local\\com.yamiyu.hook.SingleInstance";
 
 /// Build the app-wide single-instance mutex name.
 ///

@@ -64,12 +64,6 @@ pub struct ArtDefinition {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution: Option<serde_json::Value>,
-
-    // Legacy fields - made optional for compatibility
-    #[serde(default)]
-    pub input_schema: Option<HashMap<String, String>>,
-    #[serde(default)]
-    pub output_schema: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -216,7 +210,7 @@ fn artloom_ws_url() -> String {
 
 fn load_arts_from_disk() -> Option<Vec<ArtDefinition>> {
     let config_dir = dirs::config_dir()?;
-    let app_dir = config_dir.join("ArtNexus");
+    let app_dir = config_dir.join("com.yamiyu.hook");
     let yaml_path = app_dir.join("arts.yaml");
     let json_path = app_dir.join("arts.json");
 
@@ -1103,16 +1097,7 @@ pub async fn artloom_dispatch_action(
 fn resolve_image_path(uuid: &str) -> Option<String> {
     if let Some(config_dir) = dirs::config_dir() {
         // Known Hook cache locations
-        let candidates = vec![
-            config_dir.join("com.yamiyu.hook").join("images"),
-            config_dir
-                .join("io.github.aiaimimi0920.hook")
-                .join("images"),
-            config_dir.join("com.vmjcv.hook").join("images"),
-            config_dir.join("com.vmjcv.hook-next").join("images"),
-            config_dir.join("Hook").join("images"),
-            config_dir.join("ArtNexus").join("images"),
-        ];
+        let candidates = vec![config_dir.join("com.yamiyu.hook").join("images")];
 
         let extensions = vec!["png", "jpg", "jpeg", "webp"];
 

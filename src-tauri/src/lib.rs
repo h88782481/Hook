@@ -357,68 +357,14 @@ fn default_runtime_log_dir() -> PathBuf {
         .join("logs")
 }
 
-const LEGACY_TAURI_IDENTIFIERS: &[&str] = &["io.github.aiaimimi0920.hook", "com.vmjcv.hook"];
-const APP_DATA_OVERRIDE_ENV: &str = "HOOK_APPDATA_DIR";
-
-fn legacy_app_data_dirs_from_current(current_dir: &Path) -> Vec<PathBuf> {
-    let current_name = current_dir.file_name().and_then(|name| name.to_str());
-    LEGACY_TAURI_IDENTIFIERS
-        .iter()
-        .filter(|identifier| {
-            current_name
-                .map(|name| !name.eq_ignore_ascii_case(identifier))
-                .unwrap_or(true)
-        })
-        .map(|identifier| current_dir.with_file_name(identifier))
-        .collect()
-}
-
-fn app_data_dir_contains_user_state(dir: &Path) -> bool {
-    [
-        "session.json",
-        "history.json",
-        "tool-settings.json",
-        "images",
-        "saved",
-    ]
-    .iter()
-    .any(|entry| dir.join(entry).exists())
-}
-
-fn resolve_effective_app_data_dir(current_dir: &Path) -> PathBuf {
-    for legacy_dir in legacy_app_data_dirs_from_current(current_dir) {
-        if legacy_dir.exists()
-            && (!current_dir.exists()
-                || (!app_data_dir_contains_user_state(current_dir)
-                    && app_data_dir_contains_user_state(&legacy_dir)))
-        {
-            return legacy_dir;
-        }
-    }
-    current_dir.to_path_buf()
-}
-
-fn configured_app_data_dir_override() -> Option<PathBuf> {
-    std::env::var_os(APP_DATA_OVERRIDE_ENV)
+fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if let Some(override_dir) = std::env::var_os("HOOK_APPDATA_DIR")
         .map(PathBuf::from)
         .filter(|path| !path.as_os_str().is_empty())
-}
-
-fn resolve_effective_app_data_dir_from(current_dir: &Path, override_dir: Option<&Path>) -> PathBuf {
-    if let Some(override_dir) = override_dir {
-        return resolve_effective_app_data_dir(override_dir);
+    {
+        return Ok(override_dir);
     }
-
-    resolve_effective_app_data_dir(current_dir)
-}
-
-fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let current_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let override_dir = configured_app_data_dir_override();
-    Ok(resolve_effective_app_data_dir_from(
-        &current_dir,
-        override_dir.as_deref(),
-    ))
+    app.path().app_data_dir().map_err(|e| e.to_string())
 }
 
 const RUNTIME_LOG_QUEUE_CAPACITY: usize = 512;
@@ -3522,23 +3468,8 @@ fn load_session(app: tauri::AppHandle) -> Result<SessionData, String> {
     }
 
     let content = fs::read_to_string(&session_file).map_err(|e| e.to_string())?;
-
-    // Try to parse as SessionData first, fallback to Vec<StickerData> for backwards compatibility
-    let mut session_data: SessionData = match serde_json::from_str(&content) {
-        Ok(data) => data,
-        Err(_) => {
-            // Backwards compatibility: old format was just Vec<StickerData>
-            let stickers: Vec<StickerData> =
-                serde_json::from_str(&content).map_err(|e| e.to_string())?;
-            SessionData {
-                stickers,
-                links: Vec::new(),
-                groups: Vec::new(),
-                recycle_bin: Vec::new(),
-                reference_library: Vec::new(),
-            }
-        }
-    };
+    let mut session_data: SessionData =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     restore_loaded_session_stickers(&mut session_data.stickers);
 

@@ -160,7 +160,7 @@ const normalizeToolProfiles = (
     return next;
 };
 
-const migrateLegacySharedValuesIntoProfiles = (
+const migrateFlatValuesIntoProfiles = (
     settings: StickerToolSettings,
     incoming: Partial<StickerToolSettings> | null | undefined,
 ): StickerCreateToolProfiles => {
@@ -203,36 +203,19 @@ const normalizeModeFields = (
     value: Partial<StickerToolSettings> | null | undefined,
     defaults: StickerToolSettings,
 ) => {
-    const legacyMode = value?.mode;
-    const legacyTool = value?.activeTool;
-    const legacyHighlighterRequested = legacyMode === "highlighter" || legacyTool === "highlighter";
-
     const transformMode = isTransformMode(value?.transformMode)
         ? value.transformMode
-        : isTransformMode(legacyMode)
-          ? legacyMode
-          : defaults.transformMode;
-
-    const legacyCanvasTool =
-        legacyMode === "crop" || legacyTool === "crop"
-            ? "crop"
-            : legacyMode === "content-eraser" || legacyTool === "content-eraser"
-              ? "content-eraser"
-              : null;
+        : defaults.transformMode;
 
     const activeCanvasTool = isCanvasTool(value?.activeCanvasTool)
         ? value.activeCanvasTool
-        : legacyCanvasTool ?? defaults.activeCanvasTool;
+        : defaults.activeCanvasTool;
 
     const activeToolCandidate = isCreateTool(value?.activeTool)
         && value.activeTool !== "crop"
         && value.activeTool !== "content-eraser"
             ? value.activeTool
-            : isCreateTool(legacyMode)
-              && legacyMode !== "crop"
-              && legacyMode !== "content-eraser"
-                ? legacyMode
-                : defaults.activeTool;
+            : defaults.activeTool;
 
     const activeTool = activeToolCandidate === "highlighter"
         ? "brush"
@@ -240,25 +223,14 @@ const normalizeModeFields = (
 
     const domain = isEditingDomain(value?.domain)
         ? value.domain
-        : isTransformMode(legacyMode) || isTransformMode(value?.transformMode)
-          ? "existing"
-          : legacyCanvasTool || isCanvasTool(value?.activeCanvasTool)
-            ? "sticker"
-            : "create";
+        : defaults.domain;
 
-    const resolvedMode =
+    const mode =
         domain === "existing"
             ? transformMode
             : domain === "sticker"
               ? activeCanvasTool
               : activeTool;
-
-    const mode =
-        legacyHighlighterRequested
-            ? resolvedMode
-            : typeof legacyMode === "string"
-              ? legacyMode
-              : resolvedMode;
 
     return {
         domain,
@@ -266,7 +238,10 @@ const normalizeModeFields = (
         transformMode,
         activeCanvasTool,
         activeTool,
-        legacyHighlighterRequested,
+        brushHighlighterEnabled:
+            activeToolCandidate === "highlighter"
+                ? true
+                : value?.brushHighlighterEnabled,
     };
 };
 
@@ -275,7 +250,8 @@ export const normalizeStickerToolSettings = (
 ): StickerToolSettings => {
     const defaults = createDefaultStickerToolSettings();
     const normalizedModeFields = normalizeModeFields(value, defaults);
-    const { legacyHighlighterRequested, ...normalizedSettings } = normalizedModeFields;
+    const { brushHighlighterEnabled: normalizedHighlighter, ...normalizedSettings } =
+        normalizedModeFields;
     const hasIncomingProfiles = !!value?.toolProfiles;
     let next: StickerToolSettings = {
         ...defaults,
@@ -283,9 +259,7 @@ export const normalizeStickerToolSettings = (
         ...normalizedSettings,
         toolProfiles: normalizeToolProfiles(value?.toolProfiles, cloneDefaultToolProfiles()),
         brushHighlighterEnabled:
-            legacyHighlighterRequested
-                ? true
-                : value?.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
+            normalizedHighlighter ?? value?.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
         textFontFamily: normalizeFontFamily(value?.textFontFamily, defaults.textFontFamily),
         serialFontFamily: normalizeFontFamily(value?.serialFontFamily, defaults.serialFontFamily),
     };
@@ -293,11 +267,11 @@ export const normalizeStickerToolSettings = (
     if (!hasIncomingProfiles) {
         next = {
             ...next,
-            toolProfiles: migrateLegacySharedValuesIntoProfiles(next, value),
+            toolProfiles: migrateFlatValuesIntoProfiles(next, value),
         };
     }
 
-    if (legacyHighlighterRequested) {
+    if (normalizedHighlighter) {
         next = {
             ...next,
             brushHighlighterEnabled: true,

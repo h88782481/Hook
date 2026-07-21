@@ -19,38 +19,23 @@ const isImageLikePort = (name?: string, type?: string) => {
 const isNonEmptyString = (value: string | undefined): value is string =>
     typeof value === "string" && value.length > 0;
 
-const mergeLegacyImageInputAliases = (imageInputs: string[], allInputs: string[]) => {
-    const allInputNames = new Set(allInputs.filter(Boolean));
-    const imageInputNames = new Set(imageInputs.filter(Boolean));
-
-    for (const alias of DEFAULT_IMAGE_INPUTS) {
-        if (!allInputNames.has(alias) || imageInputNames.has(alias)) {
-            imageInputNames.add(alias);
-        }
-    }
-
-    return Array.from(imageInputNames);
-};
-
 const getImageInputNames = (unit: Unit, capabilities?: readonly ArtCapability[]) => {
     if (unit.type === "art") {
         const capability = capabilities?.find((item) => item.id === unit.artId);
-        const allInputs = capability?.inputs?.map((input) => input.name).filter(isNonEmptyString) || [];
         const imageInputs =
             capability?.inputs
                 ?.filter((input) => isImageLikePort(input.name, input.type))
                 .map((input) => input.name)
                 .filter(isNonEmptyString) || [];
-        return imageInputs.length > 0 ? mergeLegacyImageInputAliases(imageInputs, allInputs) : DEFAULT_IMAGE_INPUTS;
+        return imageInputs.length > 0 ? imageInputs : DEFAULT_IMAGE_INPUTS;
     }
 
-    const allInputs = unit.inputs?.map((input) => input.id || input.label).filter(isNonEmptyString) || [];
     const unitInputs =
         unit.inputs
             ?.filter((input) => isImageLikePort(input.id || input.label, input.type))
             .map((input) => input.id || input.label)
             .filter(isNonEmptyString) || [];
-    return unitInputs.length > 0 ? mergeLegacyImageInputAliases(unitInputs, allInputs) : ["image"];
+    return unitInputs.length > 0 ? unitInputs : ["image"];
 };
 
 const findConnectedImageInput = (unit: Unit, links: readonly Link[], capabilities?: readonly ArtCapability[]) => {

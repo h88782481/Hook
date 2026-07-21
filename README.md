@@ -72,7 +72,7 @@ Hook 关注的是截图工具和更重型设计工具之间的那段空白：
 
 - Issues：<https://github.com/aiaimimi0920/Hook/issues>
 - 本地校验：运行 `npm run verify:local`（typecheck + 前端构建）。打包由 GitHub Actions 自动完成。
-- 公共包标识符：`com.yamiyu.hook`。为了兼容旧本地数据目录，Hook 仍会回退读取 `io.github.aiaimimi0920.hook` 和 `com.vmjcv.hook`。
+- 公共包标识符：`com.yamiyu.hook`。
 
 ## 许可证
 
