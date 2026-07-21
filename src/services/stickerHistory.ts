@@ -9,7 +9,7 @@ export interface StickerEditSnapshot {
     imageEditState: StickerImageEditState;
     imageData?: Pick<
         Unit["data"],
-        "src" | "previewSrc" | "resultHandle" | "filePath" | "rasterizedAnnotationLayerSrc"
+        "src" | "previewSrc" | "filePath" | "rasterizedAnnotationLayerSrc"
     >;
 }
 
@@ -49,7 +49,6 @@ export const captureStickerEditSnapshot = (
         snapshot.imageData = structuredClone(unwrap({
             src: unit.data.src,
             previewSrc: unit.data.previewSrc,
-            resultHandle: unit.data.resultHandle,
             filePath: unit.data.filePath,
             rasterizedAnnotationLayerSrc: unit.data.rasterizedAnnotationLayerSrc,
         }));

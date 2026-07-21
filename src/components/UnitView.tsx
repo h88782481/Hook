@@ -14,11 +14,9 @@ import {
   uiActions,
 } from "../store/uiStore";
 import { Unit, Link } from "../types/unit";
-import { ArtCapability } from "../services/protocol";
 import { addOrUpdateRect, removeRect, updatePortOffset } from "../services/uiRegistry";
 import { computeMinifiedStickerAnnotationViewport, computeMinifiedStickerViewport } from "../services/stickerEditing";
 import { UnitParamsPanel } from "./UnitParamsPanel";
-import { UnitAddNodeMenu } from "./UnitAddNodeMenu";
 import { UnitPorts } from "./UnitPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
@@ -35,12 +33,6 @@ const globalScrollRegistry: Record<string, number> = {};
 interface Props {
   unit: Unit;
   params: Record<string, any>; // Direct Store reference for reactivity
-  execConfig?: {  // Separate store for execution config (avoids re-render flickering)
-      triggerMode: { upstreamDriven: boolean; paramDriven: boolean };
-      propagation: { listenUpstream: boolean; notifyDownstream: boolean };
-      __expanded: boolean;
-  };
-  capability?: ArtCapability; // Metadata for Art nodes
   isSelected: boolean;
   showActions: boolean;
   showParams: boolean; // NEW: Toggle state for params
@@ -48,7 +40,6 @@ interface Props {
   onParamChange: (propId: string, value: any, isFinal?: boolean) => void;
   onDoubleTap: (e: MouseEvent) => void;
   onDelete: () => void;
-  onAddNode: (artId: string) => void;
   onLinkStart: (propId: string, startX: number, startY: number) => void;
   onLinkDrop: (propId: string) => void; // NEW: Robust Link Completion
   onLinkMove?: (portId: string, e: MouseEvent) => void; // NEW: Re-linking (Optional)
@@ -56,7 +47,6 @@ interface Props {
   onRendered: (id: string, dataUrl: string) => void;
   onResize: (nextFrame: Pick<Unit, "x" | "y" | "w" | "h">) => void; // NEW: Ctrl+Wheel Resize with Pivot
   onOpacityChange: (opacity: number) => void; // NEW: Alt+Wheel Opacity
-  availableArts?: ArtCapability[]; // NEW: List of available arts for the menu
   resolveUnitImage?: (unitId: string) => string | undefined; // NEW: Helper to resolve referenced images
 
   multiDragPositions?: Record<string, {x: number; y: number}> | null; // Multi-Drag State
@@ -107,7 +97,6 @@ export const UnitView: Component<Props> = (props) => {
   // Clear dragging state when params update from backend
 
 
-  const isArt = () => props.unit.type === 'art';
   const liveUnit = () => graphStore.units.find((unit) => unit.id === props.unit.id) || props.unit;
   const isMinified = () => !!liveUnit().data.minified;
   const hasSelectedExistingAnnotations = () =>
@@ -131,17 +120,15 @@ export const UnitView: Component<Props> = (props) => {
       props.onDoubleTap(event);
   };
   const showSelectionBorder = () => true;
-  const getArtErrorMessage = () => liveUnit().data.errorMessage || "Art execution failed";
 
-  // Dynamic Style for the container
   const currentPos = () => {
-    // Check Multi-Drag (Unified)
-    if (draggingStickerId() && props.multiDragPositions && props.multiDragPositions[props.unit.id]) {
-        return props.multiDragPositions[props.unit.id];
-    }
+      // Check Multi-Drag (Unified)
+      if (draggingStickerId() && props.multiDragPositions && props.multiDragPositions[props.unit.id]) {
+          return props.multiDragPositions[props.unit.id];
+      }
 
-    const unit = liveUnit();
-    return { x: unit.x, y: unit.y };
+      const unit = liveUnit();
+      return { x: unit.x, y: unit.y };
   };
 
   const style = () => {
@@ -194,60 +181,14 @@ export const UnitView: Component<Props> = (props) => {
       );
 
   // === PORT LOGIC ===
-  // Derive ports from capability if available, or default
-  const getInputs = () => {
-      // Stickers NOW support Input (Override Mode)
-      if (!isArt()) {
-           return [{ name: "image", label: "Image", type: "image", description: "Input image source" }];
-      }
-      if (props.capability?.inputs) return props.capability.inputs;
-      // Default Art Input (single image if not specified)
-      return [{ name: "input_image", label: "Input", type: "image" }];
-  };
-
-  // Synthetic Params for Image Units (Source Mode logic)
-  const derivedParams = () => {
-      // Art Units use their defined params
-      if (isArt()) return props.capability?.params || [];
-
-      // Image Units: Params are now rendered INLINE with Inputs for cleaner UI
-      // So we return empty here to avoid duplication in the Param List
-      return [];
-  };
-
-  const getOutputs = () => {
-      // Stickers NOW support Output (Pass-through)
-      if (!isArt()) {
-           return [{ name: "output_image", label: "Image", type: "image" }];
-      }
-      if (props.capability?.outputs) return props.capability.outputs;
-      // All nodes output Image by default currently
-      return [{ name: "output_image", label: "Image", type: "image" }];
-  };
-
-  // === VISIBILITY HELPERS ===
-  // If portVisibility is undefined, assume visible.
-  // If defined, check key. If key missing, assume visible (opt-out list) OR hidden (opt-in)?
-  // User says: "specify... so that large screenshot has only 1 input".
-  // This sounds like defaults might be "Show everything", but user wants to hide some.
+  const getInputs = () => [{ name: "image", label: "Image", type: "image", description: "Input image source" }];
+  const derivedParams = () => [];
+  const getOutputs = () => [{ name: "output_image", label: "Image", type: "image" }];
   const isPortVisible = (portName: string) => {
-      // 1. User Override (Highest Priority)
       const userVis = props.unit.data.portVisibility?.[portName];
       if (typeof userVis === 'boolean') return userVis;
-
-      // 2. Backend Default (Medium Priority)
-      // Check inputs
-      const inputDef = props.capability?.inputs?.find(p => p.name === portName);
-      if (inputDef && inputDef.defaultVisible !== undefined) return inputDef.defaultVisible;
-
-      // Check outputs
-      const outputDef = props.capability?.outputs?.find(p => p.name === portName);
-      if (outputDef && outputDef.defaultVisible !== undefined) return outputDef.defaultVisible;
-
-      // 3. Global Default (Fallback) -> TRUE (Show all by default)
       return true;
   };
-
   const getVisibleInputs = () => getInputs().filter(p => isPortVisible(p.name));
   const getVisibleOutputs = () => getOutputs().filter(p => isPortVisible(p.name));
 
@@ -261,7 +202,7 @@ export const UnitView: Component<Props> = (props) => {
   const displaySrc = () => {
       let resolvedSrc: string | undefined;
       // Check for Manual Override in Image Units
-      if (!isArt()) {
+      {
           // Check if Image Input is explicitly disabled
           const isImageDisabled = props.unit.params["image"] === DISABLED_PREFIX;
 
@@ -383,9 +324,7 @@ export const UnitView: Component<Props> = (props) => {
   };
 
   const buildNativeStickerDragFilenameHint = () => {
-      let label = props.unit.type === "art" && props.capability?.label
-          ? props.capability.label
-          : "image";
+      let label = "image";
       label = label.toLowerCase().replace(/[^a-z0-9]/g, "");
       const suffix = props.unit.id.slice(-4);
       return `${label || "image"}_${suffix}`;
@@ -670,7 +609,7 @@ export const UnitView: Component<Props> = (props) => {
 
   return (
     <div
-      class={`unit-container ${props.isSelected ? "selected" : ""} ${isArt() ? "art-node" : "sticker-node"} ${isMinified() ? "minified" : ""}`}
+      class={`unit-container ${props.isSelected ? "selected" : ""} "sticker-node" ${isMinified() ? "minified" : ""}`}
       style={style()}
 
       ref={unitContainerRef}
@@ -795,7 +734,6 @@ export const UnitView: Component<Props> = (props) => {
         </Show>
         <UnitPorts
             unit={props.unit}
-            capability={props.capability}
             portsLayer={props.portsLayer}
             isCleanView={isCleanView()}
 
@@ -859,9 +797,7 @@ export const UnitView: Component<Props> = (props) => {
 
                     // Construct Filename: label_suffix_count.png
                     // 1. Get Base Label (e.g. "Pixelate" or "Image")
-                    let label = props.unit.type === 'art' && props.capability?.label
-                        ? props.capability.label
-                        : "image";
+                    let label = "image";
 
                     // 2. Sanitize (lowercase, remove non-alphanumeric)
                     label = label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1019,26 +955,6 @@ export const UnitView: Component<Props> = (props) => {
                 />
             </Show>
 
-            <Show when={isArt() && liveUnit().data.nodeStatus === "error"}>
-                <div
-                    class="pointer-events-none absolute inset-0 flex items-center justify-center px-3 text-center"
-                    style={{
-                        "z-index": 30,
-                        "background-color": "rgba(15, 23, 42, 0.82)",
-                        color: "#fecaca",
-                    }}
-                >
-                    <div style={{ "max-height": "70%", overflow: "hidden" }}>
-                        <div class="text-xs font-semibold" style={{ color: "#fca5a5" }}>
-                            执行失败
-                        </div>
-                        <div class="mt-1 text-[11px] leading-snug break-words">
-                            {getArtErrorMessage()}
-                        </div>
-                    </div>
-                </div>
-            </Show>
-
             <Show when={isMinified()}>
                 <div class="mini-overlay" style={{
                     "position": "absolute", "top":0, "left":0, "right":0, "bottom":0,
@@ -1110,30 +1026,9 @@ export const UnitView: Component<Props> = (props) => {
         {/* Unit Params Panel (Handling Inputs, Outputs, Params, Header) */}
         <Show when={props.showParams}>
              <UnitParamsPanel
-                 unit={props.unit}
-                 params={props.params}
-                 execConfig={props.execConfig}
-                 capability={props.capability}
-                 connectedLinks={props.connectedLinks}
-                 resolveUnitImage={props.resolveUnitImage}
-                 availableArts={props.availableArts}
-                 onParamChange={props.onParamChange}
-                 onLinkStart={props.onLinkStart}
-                 onLinkDrop={props.onLinkDrop}
-                 onLinkHover={props.onLinkHover}
-                 onLinkMove={props.onLinkMove}
-                 onAddNode={props.onAddNode}
-             />
-        </Show>
-
-        {/* Unit Add Node Menu (Center Overlay) */}
-        <UnitAddNodeMenu
              unit={props.unit}
-             availableArts={props.availableArts}
-             onAddNode={props.onAddNode}
-             showActions={props.showActions}
-             currentPos={currentPos()}
         />
+        </Show>
 
     </div>
   );

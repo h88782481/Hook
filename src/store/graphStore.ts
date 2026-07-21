@@ -1,10 +1,8 @@
 import { createStore, unwrap } from "solid-js/store";
 import { Unit, Link } from "../types/unit";
-import { ArtCapability } from "../services/protocol";
 import type { StickerGroup } from "../types/stickerEditing";
 import type { StickerEditSnapshot } from "../services/stickerHistory";
 import type { FrozenStickerEntry } from "../services/stickerSnapshot";
-import { deriveUnitExecutionConfig } from "../services/nodeExecutionConfig";
 import {
     buildStickerEditPropagationPatches,
     markStickerEditPropagationLocally,
@@ -18,49 +16,28 @@ import {
     upsertStickerGroup,
 } from "../services/stickerGroups";
 
-// Core Data Stores
 const [units, setUnits] = createStore<Unit[]>([]);
 const [links, setLinks] = createStore<Link[]>([]);
 const [unitParams, setUnitParams] = createStore<Record<string, Record<string, any>>>({});
-const [unitExecConfig, setUnitExecConfig] = createStore<Record<string, any>>({});
-const [capabilities, setCapabilities] = createStore<ArtCapability[]>([]);
 const [stickerGroups, setStickerGroups] = createStore<StickerGroup[]>([]);
 const [recycleBin, setRecycleBin] = createStore<FrozenStickerEntry[]>([]);
 const [referenceLibrary, setReferenceLibrary] = createStore<FrozenStickerEntry[]>([]);
 
-// Actions
 const addUnit = (unit: Unit) => {
-    const capability = unit.artId ? capabilities.find((cap) => cap.id === unit.artId) : undefined;
-    const executionConfig = deriveUnitExecutionConfig({
-        capability,
-        explicitConfig: unit.data?.executionConfig,
-    });
-    const unitWithConfig: Unit = {
-        ...unit,
-        data: {
-            ...unit.data,
-            executionConfig,
-        },
-    };
-
-    setUnits((prev) => [...prev, unitWithConfig]);
+    setUnits((prev) => [...prev, unit]);
     setUnitParams(unit.id, unit.params || {});
-    setUnitExecConfig(unit.id, executionConfig);
 };
 
 const removeUnit = (id: string) => {
     setUnits((prev) => prev.filter((u) => u.id !== id));
-    // Cascade delete links
     setLinks((prev) => prev.filter((l) => l.fromUnitId !== id && l.toUnitId !== id));
-    // Clear per-unit keyed state so it does not accumulate across add/remove churn.
     setUnitParams(id, undefined!);
-    setUnitExecConfig(id, undefined!);
 };
 
 const updateUnit = (id: string, updates: Partial<Unit>) => {
     setUnits(
         (u) => u.id === id,
-        (prev) => ({ ...prev, ...updates })
+        (prev) => ({ ...prev, ...updates }),
     );
 };
 
@@ -82,7 +59,7 @@ const updateUnitData = (id: string, updates: Partial<Unit["data"]>) => {
     setUnits(
         (u) => u.id === id,
         "data",
-        (prev) => ({ ...prev, ...nextUpdates })
+        (prev) => ({ ...prev, ...nextUpdates }),
     );
 };
 
@@ -109,7 +86,7 @@ const resizeStickerFrame = (
     options: { propagate?: boolean } = {},
 ) => {
     const unit = units.find((item) => item.id === id);
-    if (!unit || unit.type !== "sticker") {
+    if (!unit) {
         updateUnit(id, frame);
         return;
     }
@@ -119,14 +96,12 @@ const resizeStickerFrame = (
         { w: unit.w, h: unit.h },
         frame,
     );
-
     updateUnit(id, frame);
-
     if (Object.keys(editUpdates).length > 0) {
-        updateStickerEditData(id, editUpdates);
-        if (options.propagate !== false) {
-            propagateStickerEditsFrom(id);
-        }
+        updateStickerEditData(id, editUpdates, { markLocalEdit: false });
+    }
+    if (options.propagate !== false) {
+        propagateStickerEditsFrom(id);
     }
 };
 
@@ -136,42 +111,32 @@ const propagateStickerEditsFrom = (sourceUnitId: string) => {
         links: unwrap(links),
         sourceUnitId,
     });
-
     patches.forEach((patch) => {
         updateUnitData(patch.unitId, patch.data);
     });
-
     return patches;
 };
 
 const updateStickerWindowState = (
     id: string,
     frame: Pick<Unit, "x" | "y" | "w" | "h">,
-    dataUpdates: Partial<Unit["data"]>,
+    data: Partial<Unit["data"]>,
 ) => {
-    const match = (u: Unit) => u.id === id;
-    setUnits(match, "x", () => frame.x);
-    setUnits(match, "y", () => frame.y);
-    setUnits(match, "w", () => frame.w);
-    setUnits(match, "h", () => frame.h);
-    setUnits(match, "data", (prev) => ({
-        ...prev,
-        ...dataUpdates,
-    }));
+    updateUnit(id, frame);
+    updateUnitData(id, data);
 };
 
 const restoreStickerEditSnapshot = (id: string, snapshot: StickerEditSnapshot) => {
     updateUnit(id, snapshot.unitRect);
-    const dataUpdates: Partial<Unit["data"]> = {
-        annotationState: snapshot.annotationState,
-        imageEditState: snapshot.imageEditState,
-    };
-
-    if (snapshot.imageData) {
-        Object.assign(dataUpdates, snapshot.imageData);
-    }
-
-    updateStickerEditData(id, dataUpdates);
+    updateStickerEditData(
+        id,
+        {
+            annotationState: snapshot.annotationState,
+            imageEditState: snapshot.imageEditState,
+            ...(snapshot.imageData || {}),
+        },
+        { markLocalEdit: false },
+    );
 };
 
 const addOrUpdateStickerGroup = (group: StickerGroup) => {
@@ -180,17 +145,10 @@ const addOrUpdateStickerGroup = (group: StickerGroup) => {
 
 const deleteStickerGroup = (groupId: string) => {
     setStickerGroups((prev) => removeStickerGroup(prev, groupId));
-    setUnits((unit) => unit.data?.groupId === groupId, "data", "groupId", () => undefined);
 };
 
-const setUnitGroup = (unitIds: string[], groupId: string | undefined) => {
-    const ids = new Set(unitIds);
-    setUnits(
-        (unit) => ids.has(unit.id),
-        "data",
-        "groupId",
-        () => groupId,
-    );
+const setUnitGroup = (unitId: string, groupId: string | undefined) => {
+    updateUnitData(unitId, { groupId });
 };
 
 const setGroupHidden = (groupId: string) => {
@@ -216,21 +174,16 @@ const removeLink = (id: string) => {
     setLinks((prev) => prev.filter((l) => l.id !== id));
 };
 
-// Graph Store Facade
 export const graphStore = {
     units,
     links,
     unitParams,
-    unitExecConfig,
-    capabilities,
     stickerGroups,
     recycleBin,
     referenceLibrary,
     setUnits,
     setLinks,
     setUnitParams,
-    setUnitExecConfig,
-    setCapabilities,
     setStickerGroups,
     setRecycleBin,
     setReferenceLibrary,
@@ -251,6 +204,6 @@ export const graphStore = {
         setGroupLocked,
         closeStickerGroup,
         addLink,
-        removeLink
-    }
+        removeLink,
+    },
 };

@@ -160,29 +160,6 @@ const normalizeToolProfiles = (
     return next;
 };
 
-const migrateFlatValuesIntoProfiles = (
-    settings: StickerToolSettings,
-    incoming: Partial<StickerToolSettings> | null | undefined,
-): StickerCreateToolProfiles => {
-    const next = structuredClone(settings.toolProfiles);
-
-    for (const [tool, keys] of Object.entries(TOOL_PROFILE_KEYS_BY_TOOL) as Array<
-        [StickerCreateTool, readonly StickerToolProfileSettingKey[]]
-    >) {
-        if (keys.length < 1) continue;
-        const current = { ...(next[tool] ?? {}) } as Partial<StickerToolProfileSettings>;
-        for (const key of keys) {
-            if (incoming?.[key] === undefined) continue;
-            const value = incoming[key];
-            if (value === undefined) continue;
-            setProfileSetting(current, key, value as StickerToolProfileSettings[typeof key]);
-        }
-        next[tool] = current;
-    }
-
-    return next;
-};
-
 const applyActiveToolProfile = (settings: StickerToolSettings): StickerToolSettings => {
     const targetTool = resolveActiveProfileTool(settings.activeTool);
     if (!targetTool) return settings;
@@ -211,15 +188,11 @@ const normalizeModeFields = (
         ? value.activeCanvasTool
         : defaults.activeCanvasTool;
 
-    const activeToolCandidate = isCreateTool(value?.activeTool)
+    const activeTool = isCreateTool(value?.activeTool)
         && value.activeTool !== "crop"
         && value.activeTool !== "content-eraser"
             ? value.activeTool
             : defaults.activeTool;
-
-    const activeTool = activeToolCandidate === "highlighter"
-        ? "brush"
-        : activeToolCandidate;
 
     const domain = isEditingDomain(value?.domain)
         ? value.domain
@@ -238,10 +211,6 @@ const normalizeModeFields = (
         transformMode,
         activeCanvasTool,
         activeTool,
-        brushHighlighterEnabled:
-            activeToolCandidate === "highlighter"
-                ? true
-                : value?.brushHighlighterEnabled,
     };
 };
 
@@ -250,40 +219,16 @@ export const normalizeStickerToolSettings = (
 ): StickerToolSettings => {
     const defaults = createDefaultStickerToolSettings();
     const normalizedModeFields = normalizeModeFields(value, defaults);
-    const { brushHighlighterEnabled: normalizedHighlighter, ...normalizedSettings } =
-        normalizedModeFields;
-    const hasIncomingProfiles = !!value?.toolProfiles;
-    let next: StickerToolSettings = {
+    const next: StickerToolSettings = {
         ...defaults,
         ...value,
-        ...normalizedSettings,
+        ...normalizedModeFields,
         toolProfiles: normalizeToolProfiles(value?.toolProfiles, cloneDefaultToolProfiles()),
         brushHighlighterEnabled:
-            normalizedHighlighter ?? value?.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
+            value?.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
         textFontFamily: normalizeFontFamily(value?.textFontFamily, defaults.textFontFamily),
         serialFontFamily: normalizeFontFamily(value?.serialFontFamily, defaults.serialFontFamily),
     };
-
-    if (!hasIncomingProfiles) {
-        next = {
-            ...next,
-            toolProfiles: migrateFlatValuesIntoProfiles(next, value),
-        };
-    }
-
-    if (normalizedHighlighter) {
-        next = {
-            ...next,
-            brushHighlighterEnabled: true,
-            toolProfiles: {
-                ...next.toolProfiles,
-                brush: {
-                    ...(next.toolProfiles.brush ?? {}),
-                    brushHighlighterEnabled: true,
-                },
-            },
-        };
-    }
 
     return applyActiveToolProfile(next);
 };

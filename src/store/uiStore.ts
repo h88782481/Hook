@@ -48,7 +48,6 @@ export const [selectedUnitIds, setSelectedUnitIds] = createStore<string[]>([]);
 export const selectionActions = {
     add: (id: string) => {
         setSelectedUnitIds(prev => prev.includes(id) ? prev : [...prev, id]);
-        // Keep single-select for backward compat / primary target
         setSelectedStickerId(id);
     },
     remove: (id: string) => {
@@ -81,9 +80,7 @@ export const selectionActions = {
 
 // Global Dragging State
 export const [draggingStickerId, setDraggingStickerId] = createSignal<string | null>(null);
-// Legacy Single Drag (Keep for conflict avoidance during transition, or deprecate?)
-// We will use this for the *Primary* dragged unit for snapping logic
-// Multi-Drag Positions (Map ID -> {x, y})
+// Primary dragged unit for snapping; multi-drag offsets live in multiDragPositions.
 export const [multiDragPositions, setMultiDragPositions] = createSignal<Record<string, {x: number, y: number}> | null>(null);
 // Capture Mode (Screenshot)
 export const [isSelecting, setIsSelecting] = createSignal(false);
@@ -128,9 +125,6 @@ export const [isHistoryPanelOpen, setIsHistoryPanelOpen] = createSignal(false);
 
 // Force Reactivity Tick for Layout (e.g. Fit Frame)
 export const [layoutTick, setLayoutTick] = createSignal(0);
-// export const [isCropping, setIsCropping] = createSignal(false);
-
-
 
 // Linking State
 export const [linkingState, setLinkingState] = createSignal<{
@@ -170,9 +164,8 @@ export const [globalAddNodeMenu, setGlobalAddNodeMenu] = createSignal<{
 export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showParams: boolean }>>({});
 
 
-// Clipboard State (Restored from Legacy)
+// Clipboard paste cascade state
 export interface ClipboardData {
-    // Legacy Sticker Data
     src: string;
     w: number;
     h: number;

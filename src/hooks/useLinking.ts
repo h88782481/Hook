@@ -35,7 +35,7 @@ export function useLinking(options: UseLinkingOptions = {}) {
                 console.log("Re-linking (Moving) from input:", portId, "Source:", sourceUnit.id);
 
                 const startX = sourceUnit.x + sourceUnit.w + (sourceUnit.data.minified ? 0 : 6);
-                const startY = calculatePortY(sourceUnit, link.fromPortId, false, graphStore.capabilities);
+                const startY = calculatePortY(sourceUnit, link.fromPortId, false);
 
                 // 2. Remove existing link using Action
                 graphStore.actions.removeLink(link.id);

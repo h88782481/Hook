@@ -44,6 +44,7 @@ import {
 
 
 import { syncService } from "./services/syncService";
+import { resolveUnitImageFromGraph } from "./services/graphImageResolution";
 import type { BootProfile } from "./services/bootProfile";
 import { captureStickerEditSnapshot } from "./services/stickerHistory";
 import { removeAnnotationById } from "./services/stickerAnnotationMutations";
@@ -93,7 +94,7 @@ export default function App() {
       cancelAutoLongCaptureSession,
       notifyAutoLongCaptureWheel,
   } = useSelection();
-  const { handleParamChange, handleDoubleClick, spawnConnectedNode, propagateFromUnit } = useUnitActions();
+  const { handleParamChange, handleDoubleClick, propagateFromUnit } = useUnitActions();
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
       onLinkCreated: (sourceId) => {
           graphStore.actions.propagateStickerEditsFrom(sourceId);
@@ -1140,44 +1141,12 @@ export default function App() {
 
 
 
-  const resolveUnitImage = (id: string, visited = new Set<string>()): string | undefined => {
-      // Loop Detection
-      if (visited.has(id)) return undefined;
-      visited.add(id);
-
-      const u = graphStore.units.find(u => u.id === id);
-      if (!u) return undefined;
-
-      // 1. Generated Result (Highest Priority)
-      if (u.data.previewSrc) {
-        return u.data.previewSrc;
-      }
-
-      // 2. Upstream Resolution (Pass-Through)
-      // Check connected inputs BEFORE falling back to 'src' (Original Screenshot)
-      // Fix potential undefined artId access with optional chaining and fallback
-      const capability = u.type === "art" ? graphStore.capabilities.find((item) => item.id === u.artId) : undefined;
-      const inputs = u.inputs || (u.type === 'art' ? capability?.inputs || [] : []) || [{ name: 'image' }];
-
-      // Try to find a connected image input using declared ports.
-      const imageInputNames = new Set(
-          (u.type === "art"
-              ? (capability?.inputs || []).map((input) => input.name)
-              : (u.inputs || []).map((input) => input.id || input.label)
-          ).filter((name): name is string => typeof name === "string" && name.length > 0),
-      );
-      const link = graphStore.links.find(
-          (l) => l.toUnitId === id && (imageInputNames.size === 0 || imageInputNames.has(l.toPortId)),
-      );
-
-      if (link) {
-          const upstream = resolveUnitImage(link.fromUnitId, visited);
-          if (upstream) return upstream;
-      }
-
-      // 3. Fallback to Source (Original Screenshot / Upload)
-      // If no result and no upstream image, show original
-      return u.data.src;
+  const resolveUnitImage = (id: string): string | undefined => {
+      return resolveUnitImageFromGraph({
+          units: graphStore.units,
+          links: graphStore.links,
+          unitId: id,
+      });
   };
 
   return (
@@ -1269,7 +1238,6 @@ export default function App() {
                 syncService.updateBackendRects();
                 syncService.performWorkflowSync();
             }}
-            onAddNode={spawnConnectedNode}
             onParamChange={handleParamChange}
 
             onLinkStart={startLinking}
@@ -1280,10 +1248,6 @@ export default function App() {
             onRendered={(id, dataUrl) => {
                 graphStore.actions.updateUnitData(id, {
                     previewSrc: dataUrl,
-                    processing: false,
-                    progress: 1,
-                    nodeStatus: "completed",
-                    errorMessage: undefined,
                 });
                 propagateFromUnit(id);
                 void syncService.performWorkflowSync();

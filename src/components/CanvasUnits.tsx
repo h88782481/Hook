@@ -7,7 +7,6 @@ import {
     unitUiState,
     multiDragPositions,
     activeStickerGroupId,
-    uiActions,
 } from "../store/uiStore";
 import { syncService } from "../services/syncService";
 
@@ -16,7 +15,6 @@ interface CanvasUnitsProps {
     onStartDrag: (e: MouseEvent, id: string) => void;
     onDoubleClick: (e: MouseEvent, id: string) => void;
     onDelete: (id: string) => void;
-    onAddNode: (fromId: string, artId: string) => void;
     onParamChange: (id: string, pid: string, val: any, isFinal?: boolean) => void;
 
     // Linking events
@@ -87,16 +85,11 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               unit={u}
               multiDragPositions={multiDragPositions()}
               params={graphStore.unitParams[u.id] || {}}
-              execConfig={graphStore.unitExecConfig[u.id]}
               isSelected={selectedUnitIds.includes(u.id) || selectedStickerId() === u.id}
 
               // UI State (Show/Hide panels)
               showActions={(unitUiState[u.id]?.showActions || false) && !u.data.minified}
               showParams={(unitUiState[u.id]?.showParams || false) && !u.data.minified}
-
-              // Capabilities
-              capability={u.type === 'art' ? graphStore.capabilities.find(c => c.id === u.artId) : undefined}
-              availableArts={graphStore.capabilities}
 
               // Setup
               portsLayer={props.portsLayerRef}
@@ -106,10 +99,6 @@ export const CanvasUnits: Component<CanvasUnitsProps> = (props) => {
               onDoubleTap={(e) => props.onDoubleClick(e, u.id)}
 
               onDelete={() => props.onDelete(u.id)}
-              onAddNode={(artId) => {
-                  props.onAddNode(u.id, artId);
-                  uiActions.closeActions(u.id);
-              }}
               onParamChange={(pid, val, isFinal) => props.onParamChange(u.id, pid, val, isFinal)}
 
               // Linking

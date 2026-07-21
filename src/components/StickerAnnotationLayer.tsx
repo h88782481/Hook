@@ -626,7 +626,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             patchUnitDataLocally({
                 rasterizedAnnotationLayerSrc: nextLayerSrc,
                 previewSrc,
-                resultHandle: undefined,
                 filePath: undefined,
             });
         });
@@ -684,7 +683,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 await patchUnitData({
                     src: nextBaseLayerSrc,
                     previewSrc: nextBaseLayerSrc,
-                    resultHandle: undefined,
                     filePath: undefined,
                     imageEditState: createEmptyImageEditState(),
                 }, { propagateEdit: true });
@@ -702,7 +700,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 src: next.baseLayerSrc,
                 previewSrc: next.previewSrc,
                 rasterizedAnnotationLayerSrc: next.rasterizedAnnotationLayerSrc,
-                resultHandle: undefined,
                 filePath: undefined,
                 imageEditState: createEmptyImageEditState(),
             }, { propagateEdit: true });
@@ -762,7 +759,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             patchUnitDataLocally({
                 src: next.baseLayerSrc,
                 previewSrc: next.previewSrc,
-                resultHandle: undefined,
                 filePath: undefined,
                 rasterizedAnnotationLayerSrc: next.rasterizedAnnotationLayerSrc,
                 imageEditState: createEmptyImageEditState(),
@@ -814,7 +810,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                           { w: props.width, h: props.height },
                       )
                     : finalSrc,
-                resultHandle: undefined,
                 filePath: undefined,
                 rasterizedAnnotationLayerSrc: finalRasterizedAnnotationLayerSrc ?? undefined,
                 imageEditState: createEmptyImageEditState(),

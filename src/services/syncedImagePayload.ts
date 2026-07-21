@@ -9,16 +9,3 @@ export const normalizePreviewSrc = (unit: ImagePayloadUnit) => {
     }
     return previewSrc;
 };
-
-export const isFileBackedImage = (unit: ImagePayloadUnit) =>
-    Boolean(unit.data.filePath);
-
-export const buildSyncedImagePayload = (unit: ImagePayloadUnit) => {
-    const previewSrc = isFileBackedImage(unit) ? undefined : normalizePreviewSrc(unit);
-    return {
-        src: unit.data?.src,
-        ...(unit.data.filePath ? { filePath: unit.data.filePath } : {}),
-        ...(previewSrc ? { previewSrc } : {}),
-        rasterizedAnnotationLayerSrc: unit.data?.rasterizedAnnotationLayerSrc || null,
-    };
-};

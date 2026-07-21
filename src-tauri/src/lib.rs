@@ -30,18 +30,16 @@ use uiautomation::UIAutomation;
 #[cfg(target_os = "windows")]
 use uiautomation::types::Point as UiaPoint;
 
-// Import Windows specific modules for shared memory
 #[cfg(target_os = "windows")]
 use windows::core::{BOOL, Interface, PCWSTR, PWSTR};
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_OR,
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Memory::{
-    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ, MEMORY_MAPPED_VIEW_ADDRESS,
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
@@ -87,9 +85,1606 @@ use windows::Win32::UI::WindowsAndMessaging::{
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::Shell::{IWebBrowser2, IShellWindows, ShellWindows};
 
-// =====================================
-// New WinAPI helpers for Shared Memory
-// =====================================
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BootProfile {
+    startup_mode: String,
+    initial_ui_mode: String,
+    auto_start_capture: bool,
+}
+
+fn read_env_bool(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(default)
+}
+
+fn boot_profile_from_env() -> BootProfile {
+    let startup_mode = match std::env::var("HOOK_STARTUP_MODE") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("visible") => "visible".to_string(),
+        _ => "silent".to_string(),
+    };
+
+    let initial_ui_mode = match std::env::var("HOOK_INITIAL_UI_MODE") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("overlay") => "overlay".to_string(),
+        Ok(value) if value.trim().eq_ignore_ascii_case("canvas") => "canvas".to_string(),
+        Ok(value) if value.trim().eq_ignore_ascii_case("tray") => "tray".to_string(),
+        _ if startup_mode == "visible" => "overlay".to_string(),
+        _ => "overlay".to_string(),
+    };
+
+
+    BootProfile {
+        startup_mode,
+        initial_ui_mode,
+        auto_start_capture: read_env_bool("HOOK_AUTOSTART_CAPTURE", false),
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfCheckCapabilities {
+    desktop: bool,
+    capture: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfCheckReport {
+    app: &'static str,
+    binary: &'static str,
+    version: &'static str,
+    status: &'static str,
+    capabilities: SelfCheckCapabilities,
+}
+
+pub fn self_check_report() -> SelfCheckReport {
+    SelfCheckReport {
+        app: "Hook",
+        binary: "hook.exe",
+        version: env!("CARGO_PKG_VERSION"),
+        status: "ok",
+        capabilities: SelfCheckCapabilities {
+            desktop: true,
+            capture: true,
+        },
+    }
+}
+
+pub fn self_check_report_json() -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&self_check_report())
+}
+
+
+pub fn hook_help_text() -> &'static str {
+    concat!(
+        "Usage: hook [OPTIONS]\n",
+        "\n",
+        "Options:\n",
+        "  --self-check              Print a no-GUI JSON self-check report and exit\n",
+        "  -h, --help                Print help\n",
+        "  -V, --version             Print version\n",
+        "\n",
+        "Environment:\n",
+        "  HOOK_SELF_CHECK_OUTPUT          Optional file path for --self-check JSON output\n",
+        "  HOOK_CLI_OUTPUT                 Optional file path for --help/--version text output\n",
+    )
+}
+
+pub fn hook_version_text() -> String {
+    format!("hook {}", env!("CARGO_PKG_VERSION"))
+}
+
+pub fn write_optional_cli_output(env_name: &str, text: &str) -> std::io::Result<()> {
+    if let Ok(path) = std::env::var(env_name) {
+        if !path.trim().is_empty() {
+            std::fs::write(path, text)?;
+        }
+    }
+    Ok(())
+}
+
+fn runtime_log_dir() -> PathBuf {
+    std::env::var("HOOK_LOG_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(default_runtime_log_dir)
+}
+
+fn default_runtime_log_dir() -> PathBuf {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Hook")
+        .join("logs")
+}
+
+fn effective_app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    if let Some(override_dir) = std::env::var_os("HOOK_APPDATA_DIR")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        return Ok(override_dir);
+    }
+    app.path().app_data_dir().map_err(|e| e.to_string())
+}
+
+const RUNTIME_LOG_QUEUE_CAPACITY: usize = 512;
+static RUNTIME_LOG_SENDER: OnceLock<mpsc::SyncSender<String>> = OnceLock::new();
+static INSTALLED_FONT_FAMILIES: OnceLock<Vec<String>> = OnceLock::new();
+
+fn append_runtime_log_line_sync(line: &str) {
+    let dir = runtime_log_dir();
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+
+    let path = dir.join("hook-runtime.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{}", line);
+    }
+}
+
+fn runtime_log_sender() -> &'static mpsc::SyncSender<String> {
+    RUNTIME_LOG_SENDER.get_or_init(|| {
+        let (sender, receiver) = mpsc::sync_channel::<String>(RUNTIME_LOG_QUEUE_CAPACITY);
+        let _ = std::thread::Builder::new()
+            .name("hook-runtime-log".to_string())
+            .spawn(move || {
+                while let Ok(line) = receiver.recv() {
+                    append_runtime_log_line_sync(&line);
+                }
+            });
+        sender
+    })
+}
+
+pub(crate) fn append_runtime_log_line(message: &str) {
+    let timestamp = runtime_log_timestamp();
+    let line = format!("[{}] {}", timestamp, message);
+    let _ = runtime_log_sender().try_send(line);
+}
+
+fn unix_timestamp_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
+fn runtime_log_timestamp() -> String {
+    unix_timestamp_millis().to_string()
+}
+
+fn file_timestamp_component() -> String {
+    unix_timestamp_millis().to_string()
+}
+
+fn sanitize_drag_filename_hint(hint: Option<&str>) -> String {
+    let sanitized: String = hint
+        .unwrap_or("hook")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let collapsed = sanitized.trim_matches('_');
+    if collapsed.is_empty() {
+        "hook".to_string()
+    } else {
+        collapsed.chars().take(48).collect()
+    }
+}
+
+const MAX_BASE64_IMAGE_ENCODED_BYTES: usize = 64 * 1024 * 1024;
+const MAX_IMAGE_PIXELS: u64 = 100_000_000;
+// Per-image limits above bound a single frame, but a stitch call takes a whole
+// Vec of frames that are each decoded to a full bitmap. Without an aggregate cap
+// a caller can submit thousands of max-size frames and exhaust memory. This caps
+// the frame count; combined with the per-frame pixel limit it bounds peak memory.
+const MAX_STITCH_FRAME_COUNT: usize = 512;
+const CLIPBOARD_CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
+const CLIPBOARD_CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
+const CLIPBOARD_CACHE_TARGET_BYTES: u64 = 128 * 1024 * 1024;
+
+fn decode_base64_image_data(base64_image: &str) -> Result<Vec<u8>, String> {
+    let base64_data = base64_image.split(",").last().unwrap_or(base64_image);
+    if base64_data.len() > MAX_BASE64_IMAGE_ENCODED_BYTES {
+        return Err(format!(
+            "Image payload too large: {} encoded bytes exceeds limit {}",
+            base64_data.len(),
+            MAX_BASE64_IMAGE_ENCODED_BYTES
+        ));
+    }
+
+    let image_data = base64::engine::general_purpose::STANDARD
+        .decode(base64_data)
+        .map_err(|e| format!("Base64 decode failed: {}", e))?;
+    validate_image_data_limits(&image_data)?;
+    Ok(image_data)
+}
+
+fn validate_image_data_limits(image_data: &[u8]) -> Result<(), String> {
+    let image =
+        image::load_from_memory(image_data).map_err(|e| format!("Image load failed: {}", e))?;
+    let pixels = u64::from(image.width()) * u64::from(image.height());
+    if pixels > MAX_IMAGE_PIXELS {
+        return Err(format!(
+            "Image dimensions too large: {}x{} exceeds {} pixels",
+            image.width(),
+            image.height(),
+            MAX_IMAGE_PIXELS
+        ));
+    }
+    Ok(())
+}
+
+fn clipboard_cache_dir() -> PathBuf {
+    std::env::var("HOOK_CLIPBOARD_CACHE_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .or_else(|| {
+            std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(PathBuf::from)
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.join("Hook").join("clipboard_cache"))
+        })
+        .unwrap_or_else(|| std::env::temp_dir().join("Hook").join("clipboard_cache"))
+}
+
+fn cleanup_clipboard_cache() -> Result<(), String> {
+    let dir = clipboard_cache_dir();
+    cleanup_clipboard_cache_dir(
+        &dir,
+        SystemTime::now(),
+        CLIPBOARD_CACHE_MAX_BYTES,
+        CLIPBOARD_CACHE_TARGET_BYTES,
+    )
+}
+
+fn cleanup_clipboard_cache_dir(
+    dir: &Path,
+    now: SystemTime,
+    max_total_bytes: u64,
+    target_total_bytes: u64,
+) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    let max_age = std::time::Duration::from_secs(CLIPBOARD_CACHE_MAX_AGE_SECS);
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read clipboard cache: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to inspect clipboard cache: {}", e))?;
+        let metadata = match entry.metadata() {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => continue,
+        };
+        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        if now.duration_since(modified).unwrap_or_default() > max_age {
+            let _ = fs::remove_file(entry.path());
+            continue;
+        }
+        entries.push((entry.path(), modified, metadata.len()));
+    }
+
+    let mut total_bytes: u64 = entries.iter().map(|(_, _, len)| *len).sum();
+    if total_bytes < max_total_bytes {
+        return Ok(());
+    }
+
+    entries.sort_by_key(|(_, modified, _)| *modified);
+    for (path, _, len) in entries {
+        if total_bytes <= target_total_bytes {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total_bytes = total_bytes.saturating_sub(len);
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_clipboard_cache_dir() -> Result<PathBuf, String> {
+    let cache_dir = clipboard_cache_dir();
+    fs::create_dir_all(&cache_dir).map_err(|e| format!("Failed to create cache dir: {}", e))?;
+    let _ = cleanup_clipboard_cache_dir(
+        &cache_dir,
+        SystemTime::now(),
+        CLIPBOARD_CACHE_MAX_BYTES,
+        CLIPBOARD_CACHE_TARGET_BYTES,
+    );
+    Ok(cache_dir)
+}
+
+fn cache_file_name_for_log(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "<unknown>".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+struct SaveDialogPlacement {
+    target_x: i32,
+    target_y: i32,
+}
+
+#[cfg(target_os = "windows")]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn move_save_dialog_to_target(dialog_hwnd: HWND, placement: SaveDialogPlacement) {
+    let parent_hwnd = GetParent(dialog_hwnd).unwrap_or(dialog_hwnd);
+    let mut rect = RECT::default();
+    if GetWindowRect(parent_hwnd, &mut rect).is_err() {
+        return;
+    }
+
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    let x = placement.target_x - width / 2;
+    let y = placement.target_y - height / 2;
+    let _ = SetWindowPos(
+        parent_hwnd,
+        None,
+        x,
+        y,
+        0,
+        0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+    );
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn save_dialog_hook(
+    dialog_hwnd: HWND,
+    message: u32,
+    _wparam: WPARAM,
+    lparam: LPARAM,
+) -> usize {
+    if message != WM_NOTIFY {
+        return 0;
+    }
+
+    let notification = lparam.0 as *const windows::Win32::UI::Controls::Dialogs::OFNOTIFYW;
+    if notification.is_null() || (*notification).hdr.code != CDN_INITDONE {
+        return 0;
+    }
+
+    let open_file_name = (*notification).lpOFN;
+    if open_file_name.is_null() {
+        return 0;
+    }
+
+    let placement = (*open_file_name).lCustData.0 as *const SaveDialogPlacement;
+    if placement.is_null() {
+        return 0;
+    }
+
+    move_save_dialog_to_target(dialog_hwnd, *placement);
+    0
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_save_dialog_placement(
+    app: &tauri::AppHandle,
+    dialog_center_x: f64,
+    dialog_center_y: f64,
+) -> Result<(HWND, SaveDialogPlacement), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok((
+            HWND(std::ptr::null_mut()),
+            SaveDialogPlacement {
+                target_x: dialog_center_x.round() as i32,
+                target_y: dialog_center_y.round() as i32,
+            },
+        ));
+    };
+
+    let scale_factor = window.scale_factor().unwrap_or(1.0);
+    let origin = window
+        .outer_position()
+        .unwrap_or(PhysicalPosition { x: 0, y: 0 });
+    let owner = window.hwnd().map_err(|e| e.to_string())?;
+    let owner = HWND(owner.0);
+
+    Ok((
+        owner,
+        SaveDialogPlacement {
+            target_x: origin.x + (dialog_center_x * scale_factor).round() as i32,
+            target_y: origin.y + (dialog_center_y * scale_factor).round() as i32,
+        },
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn select_sticker_save_path(
+    app: &tauri::AppHandle,
+    dialog_center_x: f64,
+    dialog_center_y: f64,
+) -> Result<Option<PathBuf>, String> {
+    let (owner, placement) = resolve_save_dialog_placement(app, dialog_center_x, dialog_center_y)?;
+
+    let default_filename = format!("Hook_{}.png", file_timestamp_component());
+    let default_filename_wide = wide_null(&default_filename);
+    let filter_wide: Vec<u16> = "PNG Image (*.png)\0*.png\0All Files (*.*)\0*.*\0\0"
+        .encode_utf16()
+        .collect();
+    let title_wide = wide_null("另存为贴图图片");
+    let default_extension_wide = wide_null("png");
+    let mut file_buffer = vec![0u16; 32768];
+    let copy_len = default_filename_wide.len().min(file_buffer.len());
+    file_buffer[..copy_len].copy_from_slice(&default_filename_wide[..copy_len]);
+
+    let mut dialog = OPENFILENAMEW::default();
+    dialog.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
+    dialog.hwndOwner = owner;
+    dialog.lpstrFilter = PCWSTR(filter_wide.as_ptr());
+    dialog.lpstrFile = PWSTR(file_buffer.as_mut_ptr());
+    dialog.nMaxFile = file_buffer.len() as u32;
+    dialog.lpstrTitle = PCWSTR(title_wide.as_ptr());
+    dialog.Flags =
+        OFN_EXPLORER | OFN_ENABLEHOOK | OFN_NOCHANGEDIR | OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    dialog.lpstrDefExt = PCWSTR(default_extension_wide.as_ptr());
+    dialog.lCustData = LPARAM((&placement as *const SaveDialogPlacement) as isize);
+    dialog.lpfnHook = Some(save_dialog_hook);
+
+    let accepted = unsafe { GetSaveFileNameW(&mut dialog).as_bool() };
+    if !accepted {
+        let error = unsafe { CommDlgExtendedError() };
+        if error.0 == 0 {
+            return Ok(None);
+        }
+        return Err(format!("Save dialog failed: {}", error.0));
+    }
+
+    let end = file_buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(file_buffer.len());
+    if end == 0 {
+        return Ok(None);
+    }
+
+    let selected = String::from_utf16_lossy(&file_buffer[..end]);
+    Ok(Some(PathBuf::from(selected)))
+}
+
+#[cfg(target_os = "windows")]
+fn select_image_open_path() -> Result<Option<PathBuf>, String> {
+    let filter_wide: Vec<u16> =
+        "图片文件 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp\0所有文件 (*.*)\0*.*\0\0"
+            .encode_utf16()
+            .collect();
+    let title_wide = wide_null("打开图片进行编辑");
+    let mut file_buffer = vec![0u16; 32768];
+
+    let mut dialog = OPENFILENAMEW::default();
+    dialog.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
+    dialog.lpstrFilter = PCWSTR(filter_wide.as_ptr());
+    dialog.lpstrFile = PWSTR(file_buffer.as_mut_ptr());
+    dialog.nMaxFile = file_buffer.len() as u32;
+    dialog.lpstrTitle = PCWSTR(title_wide.as_ptr());
+    dialog.Flags = OFN_EXPLORER | OFN_NOCHANGEDIR | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    let accepted = unsafe { GetOpenFileNameW(&mut dialog).as_bool() };
+    if !accepted {
+        let error = unsafe { CommDlgExtendedError() };
+        if error.0 == 0 {
+            return Ok(None);
+        }
+        return Err(format!("Open dialog failed: {}", error.0));
+    }
+
+    let end = file_buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(file_buffer.len());
+    if end == 0 {
+        return Ok(None);
+    }
+
+    let selected = String::from_utf16_lossy(&file_buffer[..end]);
+    Ok(Some(PathBuf::from(selected)))
+}
+
+/// Open a native file picker and return the chosen image decoded as a data URL.
+/// The original file is read only (never modified), matching the "edit a copy"
+/// behavior of capcap's Finder edit entry. Returns Ok(None) if the user cancels.
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn open_image_for_edit() -> Result<Option<String>, String> {
+    let Some(path) = select_image_open_path()? else {
+        return Ok(None);
+    };
+    read_image_from_path(path.to_string_lossy().to_string()).map(Some)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn open_image_for_edit() -> Result<Option<String>, String> {
+    Err("Open image dialog is only supported on Windows".to_string())
+}
+
+/// Try to read an image from the clipboard. Returns the image as a data URL if
+/// available, or the first file path from the clipboard if the clipboard contains
+/// a file list (CF_HDROP). Returns Ok(None) if no image or file is found.
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn read_clipboard_image() -> Result<Option<String>, String> {
+    use arboard::Clipboard;
+    use clipboard_win::{formats, get_clipboard};
+
+    // Try image first (arboard handles PNG/BMP/etc.)
+    if let Ok(mut clipboard) = Clipboard::new() {
+        if let Ok(image_data) = clipboard.get_image() {
+            let width = image_data.width;
+            let height = image_data.height;
+            let rgba = image_data.bytes.into_owned();
+
+            let img = image::RgbaImage::from_raw(width as u32, height as u32, rgba)
+                .ok_or_else(|| "Failed to construct image from clipboard RGBA data".to_string())?;
+
+            let mut buf = Vec::new();
+            img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                .map_err(|e| format!("PNG encode failed: {}", e))?;
+
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&buf);
+            return Ok(Some(format!("data:image/png;base64,{}", encoded)));
+        }
+    }
+
+    // Try file list (CF_HDROP) via clipboard-win
+    if let Ok(file_paths) = get_clipboard::<Vec<String>, _>(formats::FileList) {
+        if let Some(first_path) = file_paths.into_iter().next() {
+            let lower = first_path.to_lowercase();
+            if lower.ends_with(".png")
+                || lower.ends_with(".jpg")
+                || lower.ends_with(".jpeg")
+                || lower.ends_with(".bmp")
+            {
+                return read_image_from_path(first_path).map(Some);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn read_clipboard_image() -> Result<Option<String>, String> {
+    Err("Clipboard image reading is only supported on Windows".to_string())
+}
+
+fn capture_window_metrics(window: &tauri::WebviewWindow) -> Option<CaptureWindowMetrics> {
+    let monitor = window.current_monitor().ok().flatten()?;
+    let position = monitor.position();
+    let physical_size = monitor.size();
+    let scale_factor = monitor.scale_factor();
+
+    Some(CaptureWindowMetrics {
+        physical_origin_x: position.x as f64,
+        physical_origin_y: position.y as f64,
+        scale_factor,
+        logical_width: physical_size.width as f64 / scale_factor,
+        logical_height: physical_size.height as f64 / scale_factor,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ModifierSnapshot {
+    ctrl_pressed: bool,
+    alt_pressed: bool,
+    shift_pressed: bool,
+}
+
+fn emit_capture_mouse_event(
+    window: &tauri::WebviewWindow,
+    event_name: &str,
+    global_x: f64,
+    global_y: f64,
+    modifiers: ModifierSnapshot,
+    native_drag_preflight: bool,
+) {
+    let sample =
+        sample_screen_color_physical(global_x.round() as i32, global_y.round() as i32).ok();
+    if let Some(metrics) = capture_window_metrics(window) {
+        let local = normalize_global_physical_to_local_logical(global_x, global_y, metrics);
+        let payload = match sample {
+            Some(sample) => serde_json::json!({
+                "x": local.x,
+                "y": local.y,
+                "globalX": global_x,
+                "globalY": global_y,
+                "scaleFactor": metrics.scale_factor,
+                "physicalOriginX": metrics.physical_origin_x,
+                "physicalOriginY": metrics.physical_origin_y,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
+                "hex": sample.hex,
+                "rgb": sample.rgb,
+            }),
+            None => serde_json::json!({
+                "x": local.x,
+                "y": local.y,
+                "globalX": global_x,
+                "globalY": global_y,
+                "scaleFactor": metrics.scale_factor,
+                "physicalOriginX": metrics.physical_origin_x,
+                "physicalOriginY": metrics.physical_origin_y,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
+            }),
+        };
+        let _ = window.emit(event_name, payload);
+    } else {
+        let payload = match sample {
+            Some(sample) => serde_json::json!({
+                "x": global_x,
+                "y": global_y,
+                "globalX": global_x,
+                "globalY": global_y,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
+                "hex": sample.hex,
+                "rgb": sample.rgb,
+            }),
+            None => serde_json::json!({
+                "x": global_x,
+                "y": global_y,
+                "globalX": global_x,
+                "globalY": global_y,
+                "ctrlKey": modifiers.ctrl_pressed,
+                "altKey": modifiers.alt_pressed,
+                "shiftKey": modifiers.shift_pressed,
+                "nativeDragPreflight": native_drag_preflight,
+            }),
+        };
+        let _ = window.emit(event_name, payload);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn current_modifier_snapshot() -> ModifierSnapshot {
+    ModifierSnapshot {
+        ctrl_pressed: unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } < 0,
+        alt_pressed: unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } < 0,
+        shift_pressed: unsafe { GetAsyncKeyState(VK_SHIFT.0 as i32) } < 0
+            || OVERLAY_SHIFT_KEY_DOWN.load(Ordering::SeqCst),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_modifier_snapshot() -> ModifierSnapshot {
+    ModifierSnapshot {
+        ctrl_pressed: false,
+        alt_pressed: false,
+        shift_pressed: false,
+    }
+}
+
+fn emit_overlay_wheel_event(
+    window: &tauri::WebviewWindow,
+    event_name: &str,
+    global_x: f64,
+    global_y: f64,
+    delta_y: f64,
+    modifiers: ModifierSnapshot,
+) {
+    if let Some(metrics) = capture_window_metrics(window) {
+        let local = normalize_global_physical_to_local_logical(global_x, global_y, metrics);
+        let payload = serde_json::json!({
+            "x": local.x,
+            "y": local.y,
+            "globalX": global_x,
+            "globalY": global_y,
+            "scaleFactor": metrics.scale_factor,
+            "physicalOriginX": metrics.physical_origin_x,
+            "physicalOriginY": metrics.physical_origin_y,
+            "ctrlKey": modifiers.ctrl_pressed,
+            "altKey": modifiers.alt_pressed,
+            "shiftKey": modifiers.shift_pressed,
+            "deltaY": -delta_y,
+        });
+        let _ = window.emit(event_name, payload);
+    } else {
+        let payload = serde_json::json!({
+            "x": global_x,
+            "y": global_y,
+            "globalX": global_x,
+            "globalY": global_y,
+            "ctrlKey": modifiers.ctrl_pressed,
+            "altKey": modifiers.alt_pressed,
+            "shiftKey": modifiers.shift_pressed,
+            "deltaY": -delta_y,
+        });
+        let _ = window.emit(event_name, payload);
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+enum CaptureMouseHookEvent {
+    Move { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Down { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Up { x: f64, y: f64, modifiers: ModifierSnapshot },
+    Wheel { x: f64, y: f64, modifiers: ModifierSnapshot },
+    OverlayDown {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayMove {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayUp {
+        x: f64,
+        y: f64,
+        modifiers: ModifierSnapshot,
+        native_drag_preflight: bool,
+    },
+    OverlayWheel { x: f64, y: f64, delta_y: f64, modifiers: ModifierSnapshot },
+    OverlayContextMenu { x: f64, y: f64, modifiers: ModifierSnapshot },
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+enum OverlayKeyboardHookEvent {
+    Escape,
+    Delete,
+    Copy,
+    Paste,
+}
+
+#[cfg(target_os = "windows")]
+const CAPTURE_MOUSE_EVENT_QUEUE_CAPACITY: usize = 2048;
+
+#[cfg(target_os = "windows")]
+static CAPTURE_MOUSE_EVENT_SENDER: OnceLock<mpsc::SyncSender<CaptureMouseHookEvent>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_KEYBOARD_EVENT_SENDER: OnceLock<mpsc::SyncSender<OverlayKeyboardHookEvent>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static CAPTURE_MOUSE_HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_KEYBOARD_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_SHIFT_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static CAPTURE_SYSTEM_CURSOR_OVERRIDDEN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HIT_MAP: OnceLock<Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>>> =
+    OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HIT_MAP_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_HOOK_HOVER_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_CLICK_THROUGH_ACTIVE: AtomicBool = AtomicBool::new(true);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_ACTIVATE_WNDPROC_INSTALLED: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MOUSE_ACTIVATE_WNDPROC_PREVIOUS: OnceLock<isize> = OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_INPUT_SHIELD_HWND: OnceLock<isize> = OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_INPUT_SHIELD_WNDPROC_PREVIOUS: OnceLock<isize> = OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_INPUT_SHIELD_DIRECT_DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static OVERLAY_MAIN_HWND: OnceLock<isize> = OnceLock::new();
+#[cfg(target_os = "windows")]
+static OVERLAY_TOPMOST_MAINTENANCE_STARTED: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+const OVERLAY_TOPMOST_MAINTENANCE_INTERVAL_MS: u64 = 250;
+#[cfg(target_os = "windows")]
+static OVERLAY_HWND_RETRY_THREAD_STARTED: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+const OVERLAY_HWND_RETRY_INTERVAL_MS: u64 = 250;
+#[cfg(target_os = "windows")]
+const OVERLAY_HWND_RETRY_ATTEMPTS: usize = 80;
+
+#[cfg(target_os = "windows")]
+fn queue_capture_mouse_hook_event(event: CaptureMouseHookEvent) {
+    if let Some(sender) = CAPTURE_MOUSE_EVENT_SENDER.get() {
+        let _ = sender.try_send(event);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn queue_overlay_keyboard_hook_event(event: OverlayKeyboardHookEvent) {
+    if let Some(sender) = OVERLAY_KEYBOARD_EVENT_SENDER.get() {
+        let _ = sender.try_send(event);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn overlay_mouse_hit_map() -> &'static Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>> {
+    OVERLAY_MOUSE_HIT_MAP.get_or_init(|| Arc::new(std::sync::Mutex::new(Vec::new())))
+}
+
+#[cfg(target_os = "windows")]
+fn is_sticker_body_synthetic_rect(rect: &mouse_monitor::Rect) -> bool {
+    rect.name == "MINI" || rect.name == "FULL"
+}
+
+#[cfg(target_os = "windows")]
+fn is_overlay_ui_synthetic_rect(rect: &mouse_monitor::Rect) -> bool {
+    matches!(
+        rect.name.as_str(),
+        "STICKER_TOP_STRIP"
+            | "STICKER_TOP_STRIP_MENU"
+            | "STICKER_CONTEXT_MENU_ROOT"
+            | "ACTIONS_MENU"
+            | "PARAMS_PANEL"
+            | "TEXT_EDITOR"
+            | "EXEC_SETTINGS"
+            | "COLOR_PICKER"
+    ) || rect.name.starts_with("PORT_IN_")
+        || rect.name.starts_with("PORT_OUT_")
+}
+
+#[cfg(target_os = "windows")]
+fn is_synthetic_overlay_rect(rect: &mouse_monitor::Rect) -> bool {
+    is_sticker_body_synthetic_rect(rect) || is_overlay_ui_synthetic_rect(rect)
+}
+
+#[cfg(target_os = "windows")]
+fn should_overlay_window_ignore_cursor_events(
+    rects: &[mouse_monitor::Rect],
+    x: f64,
+    y: f64,
+) -> bool {
+    !rects
+        .iter()
+        .any(|rect| !is_synthetic_overlay_rect(rect) && rect.contains(x, y))
+}
+
+#[cfg(target_os = "windows")]
+fn should_route_overlay_mouse_events(x: f64, y: f64) -> bool {
+    if OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst) {
+        return true;
+    }
+    if !OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst) {
+        return false;
+    }
+    overlay_mouse_hit_map()
+        .lock()
+        .ok()
+        .map(|rects| {
+            rects
+                .iter()
+                .any(|rect| is_synthetic_overlay_rect(rect) && rect.contains(x, y))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn is_pointer_over_sticker_body_synthetic_rect(x: f64, y: f64) -> bool {
+    if !OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst) {
+        return false;
+    }
+    overlay_mouse_hit_map()
+        .lock()
+        .ok()
+        .map(|rects| {
+            rects
+                .iter()
+                .any(|rect| is_sticker_body_synthetic_rect(rect) && rect.contains(x, y))
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn capture_mouse_hook_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code != HC_ACTION as i32 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    if lparam.0 == 0 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let mouse = unsafe { *(lparam.0 as *const MSLLHOOKSTRUCT) };
+    let x = mouse.pt.x as f64;
+    let y = mouse.pt.y as f64;
+    let modifiers = current_modifier_snapshot();
+    let capture_active = CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst);
+    let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
+    let overlay_hover_active = OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.load(Ordering::SeqCst);
+    let native_drag_preflight_active =
+        OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.load(Ordering::SeqCst);
+    if !capture_active
+        && !should_route_overlay_mouse
+        && !overlay_hover_active
+        && !native_drag_preflight_active
+    {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    match wparam.0 as u32 {
+        WM_MOUSEMOVE => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Move { x, y, modifiers });
+            }
+            if !capture_active && (should_route_overlay_mouse || native_drag_preflight_active) {
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
+            }
+            if !capture_active && overlay_hover_active {
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(false, Ordering::SeqCst);
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayMove {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
+            }
+        }
+        WM_LBUTTONDOWN => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Down { x, y, modifiers });
+                return LRESULT(1);
+            }
+            if should_route_overlay_mouse {
+                let shift_sticker_native_drag_preflight =
+                    modifiers.shift_pressed && is_pointer_over_sticker_body_synthetic_rect(x, y);
+                if shift_sticker_native_drag_preflight {
+                    OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE
+                        .store(true, Ordering::SeqCst);
+                    OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                    append_runtime_log_line(&format!(
+                        "overlay_native_drag_preflight_start :: x={} y={}",
+                        x, y
+                    ));
+                    queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight: true,
+                    });
+                    return LRESULT(1);
+                }
+                OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(true, Ordering::SeqCst);
+                OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(true, Ordering::SeqCst);
+                OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(false, Ordering::SeqCst);
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                promote_overlay_input_shield_to_fullscreen();
+                append_runtime_log_line(&format!(
+                    "overlay_drag_start :: synthetic={} x={} y={}",
+                    true, x, y
+                ));
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayDown {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: false,
+                });
+                return LRESULT(1);
+            }
+        }
+        WM_LBUTTONUP => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Up { x, y, modifiers });
+                return LRESULT(1);
+            }
+            let drag_active = OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
+            let synthetic_drag_active =
+                OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.swap(false, Ordering::SeqCst);
+            let native_drag_preflight_active =
+                OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.swap(false, Ordering::SeqCst);
+            if drag_active
+                || synthetic_drag_active
+                || native_drag_preflight_active
+                || should_route_overlay_mouse
+            {
+                append_runtime_log_line(&format!(
+                    "overlay_drag_end :: synthetic={} x={} y={}",
+                    synthetic_drag_active, x, y
+                ));
+            }
+            if drag_active
+                || synthetic_drag_active
+                || native_drag_preflight_active
+                || should_route_overlay_mouse
+            {
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(should_route_overlay_mouse, Ordering::SeqCst);
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayUp {
+                    x,
+                    y,
+                    modifiers,
+                    native_drag_preflight: native_drag_preflight_active,
+                });
+                return LRESULT(1);
+            }
+        }
+        WM_MOUSEWHEEL => {
+            if capture_active {
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::Wheel { x, y, modifiers });
+                return LRESULT(1);
+            }
+            if should_route_overlay_mouse {
+                let delta_y = (((mouse.mouseData >> 16) & 0xffff) as i16) as f64;
+                queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayWheel {
+                    x,
+                    y,
+                    delta_y,
+                    modifiers,
+                });
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                return LRESULT(1);
+            }
+        }
+        WM_RBUTTONDOWN | WM_RBUTTONUP | WM_MBUTTONDOWN | WM_MBUTTONUP | WM_XBUTTONDOWN
+        | WM_XBUTTONUP => {
+            if capture_active {
+                return LRESULT(1);
+            }
+            if should_route_overlay_mouse {
+                OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.store(true, Ordering::SeqCst);
+                if wparam.0 as u32 == WM_RBUTTONUP {
+                    queue_capture_mouse_hook_event(CaptureMouseHookEvent::OverlayContextMenu {
+                        x,
+                        y,
+                        modifiers,
+                    });
+                }
+                return LRESULT(1);
+            }
+        }
+        _ => {}
+    }
+
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+#[cfg(target_os = "windows")]
+fn install_capture_mouse_hook_thread(window: tauri::WebviewWindow) {
+    let (sender, receiver) =
+        mpsc::sync_channel::<CaptureMouseHookEvent>(CAPTURE_MOUSE_EVENT_QUEUE_CAPACITY);
+    if CAPTURE_MOUSE_EVENT_SENDER.set(sender).is_err() {
+        append_runtime_log_line("capture_mouse_hook_sender_already_initialized");
+        return;
+    }
+
+    let emit_window = window.clone();
+    let _ = std::thread::Builder::new()
+        .name("hook-capture-mouse-events".to_string())
+        .spawn(move || {
+            let mut deferred_event: Option<CaptureMouseHookEvent> = None;
+            loop {
+                let event = match deferred_event.take() {
+                    Some(event) => event,
+                    None => match receiver.recv() {
+                        Ok(event) => event,
+                        Err(_) => break,
+                    },
+                };
+
+                match event {
+                    CaptureMouseHookEvent::Move {
+                        mut x,
+                        mut y,
+                        mut modifiers,
+                    } => {
+                        loop {
+                            match receiver.try_recv() {
+                                Ok(CaptureMouseHookEvent::Move {
+                                    x: next_x,
+                                    y: next_y,
+                                    modifiers: next_modifiers,
+                                }) => {
+                                    x = next_x;
+                                    y = next_y;
+                                    modifiers = next_modifiers;
+                                }
+                                Ok(other_event) => {
+                                    deferred_event = Some(other_event);
+                                    break;
+                                }
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                Err(mpsc::TryRecvError::Disconnected) => return,
+                            }
+                        }
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_move",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
+                    }
+                    CaptureMouseHookEvent::Down { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_down",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
+                    }
+                    CaptureMouseHookEvent::OverlayDown {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight,
+                    } => {
+                        sync_overlay_input_shield_from_runtime_state(&emit_window);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_down",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
+                    }
+                    CaptureMouseHookEvent::OverlayMove {
+                        mut x,
+                        mut y,
+                        mut modifiers,
+                        native_drag_preflight,
+                    } => {
+                        loop {
+                            match receiver.try_recv() {
+                                Ok(CaptureMouseHookEvent::OverlayMove {
+                                    x: next_x,
+                                    y: next_y,
+                                    modifiers: next_modifiers,
+                                    native_drag_preflight: next_native_drag_preflight,
+                                }) => {
+                                    if next_native_drag_preflight != native_drag_preflight {
+                                        deferred_event = Some(CaptureMouseHookEvent::OverlayMove {
+                                            x: next_x,
+                                            y: next_y,
+                                            modifiers: next_modifiers,
+                                            native_drag_preflight: next_native_drag_preflight,
+                                        });
+                                        break;
+                                    }
+                                    x = next_x;
+                                    y = next_y;
+                                    modifiers = next_modifiers;
+                                }
+                                Ok(other_event) => {
+                                    deferred_event = Some(other_event);
+                                    break;
+                                }
+                                Err(mpsc::TryRecvError::Empty) => break,
+                                Err(mpsc::TryRecvError::Disconnected) => return,
+                            }
+                        }
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_move",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
+                    }
+                    CaptureMouseHookEvent::Up { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "capture/global_mouse_up",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
+                    }
+                    CaptureMouseHookEvent::OverlayUp {
+                        x,
+                        y,
+                        modifiers,
+                        native_drag_preflight,
+                    } => {
+                        sync_overlay_input_shield_from_runtime_state(&emit_window);
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_mouse_up",
+                            x,
+                            y,
+                            modifiers,
+                            native_drag_preflight,
+                        );
+                    }
+                    CaptureMouseHookEvent::Wheel { x, y, modifiers } => {
+                        let _ = (x, y, modifiers);
+                    }
+                    CaptureMouseHookEvent::OverlayWheel {
+                        x,
+                        y,
+                        delta_y,
+                        modifiers,
+                    } => {
+                        emit_overlay_wheel_event(
+                            &emit_window,
+                            "overlay/global_mouse_wheel",
+                            x,
+                            y,
+                            delta_y,
+                            modifiers,
+                        );
+                    }
+                    CaptureMouseHookEvent::OverlayContextMenu { x, y, modifiers } => {
+                        emit_capture_mouse_event(
+                            &emit_window,
+                            "overlay/global_context_menu",
+                            x,
+                            y,
+                            modifiers,
+                            false,
+                        );
+                    }
+                }
+            }
+        });
+
+    let _ = std::thread::Builder::new()
+        .name("hook-capture-mouse-hook".to_string())
+        .spawn(move || {
+            let hook = match unsafe {
+                SetWindowsHookExW(WH_MOUSE_LL, Some(capture_mouse_hook_proc), None, 0)
+            } {
+                Ok(hook) => {
+                    append_runtime_log_line("capture_mouse_hook_install_success");
+                    hook
+                }
+                Err(error) => {
+                    append_runtime_log_line(&format!(
+                        "capture_mouse_hook_install_failed :: {}",
+                        error
+                    ));
+                    return;
+                }
+            };
+
+            let mut msg = MSG::default();
+            while unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
+                let _ = unsafe { TranslateMessage(&msg) };
+                unsafe { DispatchMessageW(&msg) };
+            }
+            let _ = unsafe { UnhookWindowsHookEx(hook) };
+            append_runtime_log_line("capture_mouse_hook_thread_exited");
+        });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_capture_mouse_hook_thread(_window: tauri::WebviewWindow) {}
+
+#[cfg(target_os = "windows")]
+const VK_KEY_C: u32 = b'C' as u32;
+#[cfg(target_os = "windows")]
+const VK_KEY_V: u32 = b'V' as u32;
+
+#[cfg(target_os = "windows")]
+fn update_overlay_modifier_key_state(vk_code: u32, pressed: bool) {
+    if vk_code == VK_SHIFT.0 as u32
+        || vk_code == VK_LSHIFT.0 as u32
+        || vk_code == VK_RSHIFT.0 as u32
+    {
+        OVERLAY_SHIFT_KEY_DOWN.store(pressed, Ordering::SeqCst);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn overlay_keyboard_hook_event_for_keydown(
+    vk_code: u32,
+    modifiers: ModifierSnapshot,
+) -> Option<OverlayKeyboardHookEvent> {
+    if vk_code == VK_ESCAPE.0 as u32 {
+        return Some(OverlayKeyboardHookEvent::Escape);
+    }
+    if vk_code == VK_DELETE.0 as u32 || vk_code == VK_BACK.0 as u32 {
+        return Some(OverlayKeyboardHookEvent::Delete);
+    }
+    if modifiers.ctrl_pressed && vk_code == VK_KEY_C {
+        return Some(OverlayKeyboardHookEvent::Copy);
+    }
+    if modifiers.ctrl_pressed && vk_code == VK_KEY_V {
+        return Some(OverlayKeyboardHookEvent::Paste);
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn overlay_keyboard_hook_should_consume_keyup(
+    vk_code: u32,
+    modifiers: ModifierSnapshot,
+) -> bool {
+    vk_code == VK_ESCAPE.0 as u32
+        || vk_code == VK_DELETE.0 as u32
+        || vk_code == VK_BACK.0 as u32
+        || (modifiers.ctrl_pressed && (vk_code == VK_KEY_C || vk_code == VK_KEY_V))
+}
+
+#[cfg(target_os = "windows")]
+fn overlay_keyboard_capture_should_handle_current_cursor() -> bool {
+    if !OVERLAY_KEYBOARD_CAPTURE_ACTIVE.load(Ordering::SeqCst) {
+        return false;
+    }
+
+    let Some((x, y)) = current_cursor_position_physical() else {
+        return false;
+    };
+
+    should_route_overlay_mouse_events(x, y)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn overlay_keyboard_hook_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code != HC_ACTION as i32 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+    if lparam.0 == 0 {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let keyboard = unsafe { *(lparam.0 as *const KBDLLHOOKSTRUCT) };
+    let vk_code = keyboard.vkCode;
+    match wparam.0 as u32 {
+        WM_KEYDOWN | WM_SYSKEYDOWN => {
+            update_overlay_modifier_key_state(vk_code, true);
+        }
+        WM_KEYUP | WM_SYSKEYUP => {
+            update_overlay_modifier_key_state(vk_code, false);
+        }
+        _ => {}
+    }
+
+    if !overlay_keyboard_capture_should_handle_current_cursor() {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let modifiers = current_modifier_snapshot();
+    match wparam.0 as u32 {
+        WM_KEYDOWN | WM_SYSKEYDOWN => {
+            if let Some(event) = overlay_keyboard_hook_event_for_keydown(vk_code, modifiers) {
+                queue_overlay_keyboard_hook_event(event);
+                return LRESULT(1);
+            }
+        }
+        WM_KEYUP | WM_SYSKEYUP => {
+            if overlay_keyboard_hook_should_consume_keyup(vk_code, modifiers) {
+                return LRESULT(1);
+            }
+        }
+        _ => {}
+    }
+
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+#[cfg(target_os = "windows")]
+fn install_overlay_keyboard_hook_thread(window: tauri::WebviewWindow) {
+    let (sender, receiver) = mpsc::sync_channel::<OverlayKeyboardHookEvent>(256);
+    if OVERLAY_KEYBOARD_EVENT_SENDER.set(sender).is_err() {
+        append_runtime_log_line("overlay_keyboard_hook_sender_already_initialized");
+        return;
+    }
+
+    let emit_window = window.clone();
+    let _ = std::thread::Builder::new()
+        .name("hook-overlay-keyboard-events".to_string())
+        .spawn(move || {
+            while let Ok(event) = receiver.recv() {
+                let event_name = match event {
+                    OverlayKeyboardHookEvent::Escape => "trigger-escape",
+                    OverlayKeyboardHookEvent::Delete => "trigger-delete",
+                    OverlayKeyboardHookEvent::Copy => "trigger-copy",
+                    OverlayKeyboardHookEvent::Paste => "trigger-paste",
+                };
+                append_runtime_log_line(&format!("overlay_keyboard_hook_emit :: {}", event_name));
+                let _ = emit_window.emit(event_name, ());
+            }
+        });
+
+    let _ = std::thread::Builder::new()
+        .name("hook-overlay-keyboard-hook".to_string())
+        .spawn(move || {
+            let hook = unsafe {
+                SetWindowsHookExW(WH_KEYBOARD_LL, Some(overlay_keyboard_hook_proc), None, 0)
+            };
+            let Ok(hook) = hook else {
+                append_runtime_log_line("overlay_keyboard_hook_install_failed");
+                return;
+            };
+
+            append_runtime_log_line("overlay_keyboard_hook_installed");
+            let mut msg = MSG::default();
+            while unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {
+                let _ = unsafe { TranslateMessage(&msg) };
+                unsafe { DispatchMessageW(&msg) };
+            }
+            let _ = unsafe { UnhookWindowsHookEx(hook) };
+            append_runtime_log_line("overlay_keyboard_hook_thread_exited");
+        });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_overlay_keyboard_hook_thread(_window: tauri::WebviewWindow) {}
+
+fn refresh_overlay_interactivity_for_current_cursor(
+    window: &tauri::WebviewWindow,
+    hit_map: &SharedHitMap,
+) {
+    let active = match hit_map.active.lock() {
+        Ok(guard) => *guard,
+        Err(_) => return,
+    };
+
+    if !active {
+        return;
+    }
+
+    let (cursor_x, cursor_y) = match current_cursor_position_physical() {
+        Some(position) => position,
+        None => return,
+    };
+
+    let rects = match hit_map.rectangles.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => return,
+    };
+
+    let should_ignore = should_overlay_window_ignore_cursor_events(&rects, cursor_x, cursor_y);
+
+    if window.set_ignore_cursor_events(should_ignore).is_err() {
+        return;
+    }
+    set_overlay_transparent_style(window, should_ignore);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);
+    apply_overlay_no_activate(window);
+    append_runtime_log_line(&format!(
+        "refresh_overlay_interactivity :: cursor_x={} cursor_y={} should_ignore={}",
+        cursor_x, cursor_y, should_ignore
+    ));
+}
+
+#[cfg(target_os = "windows")]
+fn current_cursor_position_physical() -> Option<(f64, f64)> {
+    let mut point = POINT::default();
+    if unsafe { GetCursorPos(&mut point) }.is_ok() {
+        Some((point.x as f64, point.y as f64))
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_cursor_position_physical() -> Option<(f64, f64)> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn set_system_cursor_to_crosshair(cursor_id: SYSTEM_CURSOR_ID) -> bool {
+    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_CROSS) }) else {
+        return false;
+    };
+    let Ok(cursor_copy) = (unsafe { CopyIcon(HICON(cursor.0)) }) else {
+        return false;
+    };
+    unsafe { SetSystemCursor(HCURSOR(cursor_copy.0), cursor_id) }.is_ok()
+}
+
+#[cfg(target_os = "windows")]
+fn set_capture_cursor_crosshair() {
+    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.load(Ordering::SeqCst) {
+        return;
+    }
+
+    let mut updated_any = false;
+    for cursor_id in [
+        OCR_NORMAL,
+        OCR_IBEAM,
+        OCR_CROSS,
+        OCR_HAND,
+        OCR_NO,
+        OCR_SIZEALL,
+        OCR_SIZENESW,
+        OCR_SIZENS,
+        OCR_SIZENWSE,
+        OCR_SIZEWE,
+        OCR_UP,
+    ] {
+        updated_any |= set_system_cursor_to_crosshair(cursor_id);
+    }
+
+    if updated_any {
+        CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(true, Ordering::SeqCst);
+        append_runtime_log_line("capture_cursor_crosshair_enabled");
+    } else {
+        append_runtime_log_line("capture_cursor_crosshair_failed");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_capture_cursor_crosshair() {}
+
+#[cfg(target_os = "windows")]
+fn clear_capture_cursor_crosshair() {
+    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.swap(false, Ordering::SeqCst) {
+        let _ = unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) };
+        append_runtime_log_line("capture_cursor_crosshair_restored");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_capture_cursor_crosshair() {}
+
+fn set_capture_input_runtime_active(active: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        CAPTURE_MOUSE_HOOK_ACTIVE.store(active, Ordering::SeqCst);
+        append_runtime_log_line(&format!("capture_mouse_hook_active :: {}", active));
+    }
+
+    if active {
+        set_capture_cursor_crosshair();
+    } else {
+        clear_capture_cursor_crosshair();
+    }
+}
 
 
 #[tauri::command]
@@ -712,6 +2307,48 @@ fn get_cursor_position(app: tauri::AppHandle) -> Result<PhysicalPosition<f64>, S
 }
 
 
+fn mime_from_image_format(format: image::ImageFormat) -> Option<&'static str> {
+    match format {
+        image::ImageFormat::Png => Some("image/png"),
+        image::ImageFormat::Jpeg => Some("image/jpeg"),
+        image::ImageFormat::WebP => Some("image/webp"),
+        image::ImageFormat::Bmp => Some("image/bmp"),
+        image::ImageFormat::Gif => Some("image/gif"),
+        _ => None,
+    }
+}
+
+fn mime_from_image_path(path: &Path, bytes: &[u8]) -> &'static str {
+    if let Some(mime) = image::guess_format(bytes)
+        .ok()
+        .and_then(mime_from_image_format)
+    {
+        return mime;
+    }
+
+    if let Some(mime) = image::ImageFormat::from_path(path)
+        .ok()
+        .and_then(mime_from_image_format)
+    {
+        return mime;
+    }
+
+    let lower = path.to_string_lossy().to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".bmp") {
+        "image/bmp"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else {
+        "image/png"
+    }
+}
+
 #[tauri::command]
 fn read_image_from_path(path: String) -> Result<String, String> {
     println!("Backend: Reading image from path: {}", path);
@@ -748,7 +2385,6 @@ fn read_image_from_path(path: String) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", mime, b64))
 }
 
-
 // --- Persistence ---
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -781,21 +2417,11 @@ pub struct StickerData {
     pub crop_offset: Option<SimplePoint>,
     pub opacity_normal: Option<f64>,
     pub opacity_mini: Option<f64>,
-    #[serde(rename = "type")]
-    pub node_type: Option<String>,
-    #[serde(rename = "artId")]
-    pub art_id: Option<String>,
     pub params: Option<serde_json::Value>, // Store params as JSON value
     #[serde(rename = "filePath")]
     pub file_path: Option<String>,
     #[serde(rename = "previewSrc")]
-    pub preview_src: Option<String>, // Processed image result
-    #[serde(rename = "originWorkflowId")]
-    pub origin_workflow_id: Option<String>,
-    #[serde(rename = "originNodeId")]
-    pub origin_node_id: Option<String>,
-    #[serde(rename = "executionConfig")]
-    pub execution_config: Option<serde_json::Value>,
+    pub preview_src: Option<String>, // Processed / derived image preview
     #[serde(rename = "annotationState")]
     pub annotation_state: Option<serde_json::Value>,
     #[serde(rename = "imageEditState")]
@@ -3469,6 +5095,38 @@ fn should_accept_tauri_shortcut_trigger(
     *guard = std::time::Instant::now();
     true
 }
+
+
+fn configure_webview2_video_safe_composition() {
+    const ENV_NAME: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+    const VIDEO_SAFE_ARGS: &[&str] = &[
+        "--disable-gpu",
+        "--disable-gpu-compositing",
+        "--disable-gpu-rasterization",
+        "--disable-zero-copy",
+        "--disable-features=UseSkiaRenderer,CanvasOopRasterization",
+    ];
+
+    let existing_args = std::env::var(ENV_NAME).unwrap_or_default();
+    let mut combined_args = existing_args.clone();
+    for arg in VIDEO_SAFE_ARGS {
+        if existing_args.contains(arg) || combined_args.contains(arg) {
+            continue;
+        }
+        if !combined_args.trim().is_empty() {
+            combined_args.push(' ');
+        }
+        combined_args.push_str(arg);
+    }
+
+    std::env::set_var(ENV_NAME, combined_args);
+    append_runtime_log_line("webview2_video_safe_composition_args_applied");
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_webview2_video_safe_composition() {}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     configure_webview2_video_safe_composition();
 
@@ -3478,6 +5136,7 @@ pub fn run() {
     let tauri_ctrl_3_last_trigger = Arc::new(std::sync::Mutex::new(
         std::time::Instant::now() - std::time::Duration::from_secs(2),
     ));
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new().with_handler({
@@ -3515,7 +5174,7 @@ pub fn run() {
                                 println!("Window found. Processing sticker toolbar shortcut...");
                                 trigger_toggle_sticker_toolbar(&window);
                             }
-                        } else if shortcut.matches(Modifiers::CONTROL, Code::KeyE) {
+                        }
                     }
                 }
             })

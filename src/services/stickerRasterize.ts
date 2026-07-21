@@ -60,7 +60,6 @@ export const createRasterizedStickerData = (
         src: sources.baseLayerSrc,
         previewSrc: sources.previewSrc,
         rasterizedAnnotationLayerSrc: sources.rasterizedAnnotationLayerSrc,
-        resultHandle: undefined,
         filePath: undefined,
         imageEditState: createEmptyImageEditState(),
         annotationState: {

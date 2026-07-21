@@ -21,7 +21,6 @@ export const CanvasLinks: Component = () => {
 
         const list = graphStore.units;
         const currentLinks = graphStore.links;
-        const capabilities = graphStore.capabilities; // For port calculation
         const dPositions = multiDragPositions();
 
         return currentLinks.flatMap(link => {
@@ -43,8 +42,8 @@ export const CanvasLinks: Component = () => {
 
              // --- 1. BODY LINK (Solid) ---
              // Always calculated from Body Ports
-             const bodyY1 = calculatePortY(currFrom, link.fromPortId, false, capabilities);
-             const bodyY2 = calculatePortY(currTo, link.toPortId, true, capabilities);
+             const bodyY1 = calculatePortY(currFrom, link.fromPortId, false);
+             const bodyY2 = calculatePortY(currTo, link.toPortId, true);
              const bodyX1 = currFrom.x + currFrom.w + (currFrom.data.minified ? 4 : 6);
              const bodyX2 = currTo.x - (currTo.data.minified ? 4 : 6);
 
