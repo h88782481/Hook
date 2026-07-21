@@ -1,5 +1,5 @@
 import type { Link, Sticker } from "../types/stickerModel";
-import { toDisplayImageSrc } from "./imageSource";
+import { resolveStickerBitmapSrc, toDisplayImageSrc } from "./imageSource";
 
 const STICKER_IMAGE_INPUT = "image";
 
@@ -30,5 +30,5 @@ export const resolveStickerImage = (input: {
         if (upstream) return upstream;
     }
 
-    return toDisplayImageSrc(sticker.data.previewSrc || sticker.data.src);
+    return toDisplayImageSrc(resolveStickerBitmapSrc(sticker.data));
 };

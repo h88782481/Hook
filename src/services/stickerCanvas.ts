@@ -99,6 +99,24 @@ export const drawStrokePath = (
 };
 
 /**
+ * Erase along a stroke path using destination-out (content / annotation eraser).
+ */
+export const eraseStrokePathToTransparency = (
+    context: CanvasRenderingContext2D,
+    points: StickerPoint[],
+    width: number,
+) => {
+    context.save();
+    context.globalCompositeOperation = "destination-out";
+    drawStrokePath(context, points, {
+        color: "#000000",
+        width,
+        opacity: 1,
+    });
+    context.restore();
+};
+
+/**
  * Load an image from a data URL or file path.
  */
 export const loadImage = (src: string) =>

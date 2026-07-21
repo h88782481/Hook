@@ -1,8 +1,8 @@
 import type { ContentEraserStroke, StickerPoint } from "../types/stickerEditing";
-import { drawStrokePath, loadImage } from "./stickerCanvas";
+import { eraseStrokePathToTransparency, loadImage } from "./stickerCanvas";
+import type { FlipAxis } from "./stickerAnnotationTransforms";
 
 type StickerBitmapSize = { w: number; h: number };
-type FlipAxis = "x" | "y";
 
 const createCanvas = (size: StickerBitmapSize) => {
     const canvas = document.createElement("canvas");
@@ -13,21 +13,6 @@ const createCanvas = (size: StickerBitmapSize) => {
         throw new Error("Canvas context unavailable");
     }
     return { canvas, context };
-};
-
-const eraseStrokePathToTransparency = (
-    context: CanvasRenderingContext2D,
-    points: StickerPoint[],
-    width: number,
-) => {
-    context.save();
-    context.globalCompositeOperation = "destination-out";
-    drawStrokePath(context, points, {
-        color: "#000000",
-        width,
-        opacity: 1,
-    });
-    context.restore();
 };
 
 export const composeRasterizedStickerPreview = async (

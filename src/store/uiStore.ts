@@ -337,12 +337,6 @@ export const uiActions = {
         if (!normalized) return;
         setStickerColorState("palette", (palette) => removeStickerPaletteColor(palette, normalized));
     },
-    setStickerSampledColor: (color: string | undefined) => {
-        setStickerColorState("sampledColor", color);
-    },
-    setStickerSampledRgb: (rgb: { r: number; g: number; b: number } | undefined) => {
-        setStickerColorState("sampledRgb", rgb);
-    },
 
     // --- Color + Screenshot history ---
     // Replace the whole history state (used on load from disk).

@@ -37,8 +37,6 @@ export type StickerToolMode = StickerTransformMode | StickerCreateTool | Sticker
 
 export interface StickerColorState {
     activeColor: string;
-    sampledColor?: string;
-    sampledRgb?: { r: number; g: number; b: number };
     palette: string[];
 }
 

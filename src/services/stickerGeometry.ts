@@ -399,7 +399,7 @@ export interface AnnotationScale {
     y: number;
 }
 
-export const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: number }>(
+const scaleAnnotationStyle = <T extends { width: number; cornerRadius?: number }>(
     style: T,
     scaleX: number,
     scaleY: number,

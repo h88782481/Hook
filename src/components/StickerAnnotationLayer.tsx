@@ -37,7 +37,6 @@ import {
     createEmptyAnnotationState,
     HIGHLIGHTER_LAYER_OPACITY,
     createEmptyImageEditState,
-    getEffectiveStickerColor,
     nextSerialLabel,
 } from "../services/stickerEditing";
 import {
@@ -51,6 +50,7 @@ import {
     eraseRasterizedAnnotationLayer,
 } from "../services/stickerBitmapLayers";
 import { renderStickerBaseLayer } from "../services/stickerExport";
+import { resolveStickerBitmapSrc } from "../services/imageSource";
 import { LiveEraseQueue } from "../services/liveEraseQueue";
 import {
     buildLineMeasurementBadge,
@@ -640,7 +640,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const beginLiveRasterizedAnnotationErase = (point: StickerPoint) => {
         const currentSticker = unit();
         const layerSrc = currentSticker?.data.rasterizedAnnotationLayerSrc;
-        const baseLayerSrc = currentSticker?.data.src || currentSticker?.data.previewSrc;
+        const baseLayerSrc = currentSticker
+            ? resolveStickerBitmapSrc(currentSticker.data, { useRasterizedBase: true })
+            : undefined;
         if (!currentSticker || !layerSrc || !baseLayerSrc) return false;
 
         liveRasterizedAnnotationEraseLayerSrc = layerSrc;
@@ -838,8 +840,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         });
 
         if (commit) {
-            uiActions.setStickerSampledColor(payload.hex);
-            uiActions.setStickerSampledRgb(payload.rgb);
             uiActions.setStickerActiveColor(payload.hex);
             uiActions.recordColorHistory({ hex: payload.hex, rgb: payload.rgb });
             const returnTool = uiActions.consumeStickerColorPickerReturnMode();
@@ -923,7 +923,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             ? stickerToolSettings.lineStrokeColor
             : mode === "brush" || mode === "highlighter"
               ? stickerToolSettings.brushColor
-            : getEffectiveStickerColor(stickerColorState);
+            : stickerColorState.activeColor;
     const isHighlighterLineMode = (mode: DraftLine["mode"]) =>
         mode === "highlighter" || (mode === "brush" && stickerToolSettings.brushHighlighterEnabled);
 

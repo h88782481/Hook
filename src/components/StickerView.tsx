@@ -21,7 +21,7 @@ import { StickerPorts } from "./StickerPorts";
 import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
-import { toDisplayImageSrc } from "../services/imageSource";
+import { resolveStickerBitmapSrc, toDisplayImageSrc } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
 import { renderStickerComposite } from "../services/stickerExport";
@@ -186,7 +186,7 @@ export const StickerView: Component<Props> = (props) => {
           }
       }
       if (!resolvedSrc) {
-          resolvedSrc = liveSticker().data.previewSrc || liveSticker().data.src || "";
+          resolvedSrc = resolveStickerBitmapSrc(liveSticker().data) || "";
       }
       return toDisplayImageSrc(resolvedSrc) || "";
   };
@@ -688,7 +688,7 @@ export const StickerView: Component<Props> = (props) => {
 
                     const filename = `${label}_${suffix}_${count}.png`;
 
-                    const src = props.unit.data.previewSrc || props.unit.data.src || "";
+                    const src = resolveStickerBitmapSrc(props.unit.data) || "";
                     const dragOutFilePath = props.unit.data.filePath;
 
                     if (dragOutFilePath) {

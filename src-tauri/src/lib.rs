@@ -2162,16 +2162,23 @@ fn load_rgba_image_from_bytes(
     Ok((width, height, rgba.into_raw()))
 }
 
-fn write_rgba_image_to_clipboard(width: usize, height: usize, raw_bytes: Vec<u8>) -> Result<(), String> {
-    let mut clipboard =
-        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
-    let clipboard_image = arboard::ImageData {
+fn make_arboard_image_data(
+    width: usize,
+    height: usize,
+    raw_bytes: Vec<u8>,
+) -> arboard::ImageData<'static> {
+    arboard::ImageData {
         width,
         height,
         bytes: std::borrow::Cow::Owned(raw_bytes),
-    };
+    }
+}
+
+fn write_rgba_image_to_clipboard(width: usize, height: usize, raw_bytes: Vec<u8>) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
     clipboard
-        .set_image(clipboard_image)
+        .set_image(make_arboard_image_data(width, height, raw_bytes))
         .map_err(|e| format!("Clipboard write failed: {}", e))?;
     Ok(())
 }
@@ -2193,11 +2200,7 @@ fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<String,
 
     let mut clipboard =
         arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
-    let clipboard_image = arboard::ImageData {
-        width,
-        height,
-        bytes: std::borrow::Cow::Owned(raw_bytes),
-    };
+    let clipboard_image = make_arboard_image_data(width, height, raw_bytes);
 
     clipboard
         .set()
@@ -2428,10 +2431,8 @@ pub struct StickerData {
 #[serde(rename_all = "camelCase")]
 pub struct LinkData {
     pub id: String,
-    #[serde(alias = "fromUnitId")]
     pub from_sticker_id: String,
     pub from_port_id: String,
-    #[serde(alias = "toUnitId")]
     pub to_sticker_id: String,
     pub to_port_id: String,
 }

@@ -32,23 +32,10 @@ import {
     annotationRenderRank,
     loadImage,
     drawStrokePath,
+    eraseStrokePathToTransparency,
     applyLineDash,
 } from "./stickerCanvas";
-
-const eraseStrokePathToTransparency = (
-    context: CanvasRenderingContext2D,
-    points: StickerPoint[],
-    width: number,
-) => {
-    context.save();
-    context.globalCompositeOperation = "destination-out";
-    drawStrokePath(context, points, {
-        color: "#000000",
-        width,
-        opacity: 1,
-    });
-    context.restore();
-};
+import { resolveStickerBitmapSrc } from "./imageSource";
 
 const drawArrowHead = (context: CanvasRenderingContext2D, line: StickerLineAnnotation) => {
     if (line.points.length < 2) return;
@@ -385,10 +372,7 @@ const renderStickerCompositeWithAnnotations = async (
         includeRasterizedAnnotationLayer?: boolean;
     },
 ): Promise<string> => {
-    const baseSrc =
-        unit.data.rasterizedAnnotationLayerSrc
-            ? unit.data.src
-            : unit.data.previewSrc || unit.data.src;
+    const baseSrc = resolveStickerBitmapSrc(unit.data, { useRasterizedBase: true });
     if (!baseSrc) {
         throw new Error("Sticker has no image source");
     }
@@ -495,10 +479,7 @@ export const renderStickerTransparentAnnotationLayer = async (
     unit: Sticker,
     annotationIds: string[],
 ): Promise<string> => {
-    const baseSrc =
-        unit.data.rasterizedAnnotationLayerSrc
-            ? unit.data.src
-            : unit.data.previewSrc || unit.data.src;
+    const baseSrc = resolveStickerBitmapSrc(unit.data, { useRasterizedBase: true });
     if (!baseSrc) {
         throw new Error("Sticker has no image source");
     }

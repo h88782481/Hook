@@ -44,3 +44,29 @@ export const resolveCaptureDisplaySrc = (capture: { filePath: string }) => {
     }
     return displaySrc;
 };
+
+type StickerBitmapPayload = {
+    src?: string | null;
+    previewSrc?: string | null;
+    rasterizedAnnotationLayerSrc?: string | null;
+};
+
+/**
+ * Pick which stored bitmap string to load for a sticker.
+ * - preferPreview (default true): previewSrc || src — display / drag / thumbnails
+ * - preferPreview false: src || previewSrc — base-layer preference
+ * - useRasterizedBase: when rasterizedAnnotationLayerSrc is set, prefer the
+ *   unannotated base (src), matching export/composite semantics
+ */
+export const resolveStickerBitmapSrc = (
+    data: StickerBitmapPayload,
+    options?: { preferPreview?: boolean; useRasterizedBase?: boolean },
+): string | undefined => {
+    const preferPreview = options?.preferPreview ?? true;
+    if (options?.useRasterizedBase && data.rasterizedAnnotationLayerSrc) {
+        return data.src || data.previewSrc || undefined;
+    }
+    return preferPreview
+        ? data.previewSrc || data.src || undefined
+        : data.src || data.previewSrc || undefined;
+};

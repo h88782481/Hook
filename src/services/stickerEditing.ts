@@ -347,9 +347,6 @@ export const computeRestoredCropFrame = (
     };
 };
 
-export const getEffectiveStickerColor = (colors: StickerColorState, preferSampled = false) =>
-    preferSampled && colors.sampledColor ? colors.sampledColor : colors.activeColor;
-
 export const addStickerPaletteColor = (palette: string[], color: string) => {
     const normalized = normalizePaletteColor(color);
     if (!normalized || palette.includes(normalized)) {

@@ -59,7 +59,7 @@ export const rgbaToHex = (r: number, g: number, b: number, a: number): string =>
  * Alpha (0-1) encoded in a color string.
  * Supports "transparent" (=0), #RRGGBBAA, and treats other hex as opaque.
  */
-export const getColorAlpha = (color: string | undefined): number => {
+const getColorAlpha = (color: string | undefined): number => {
     if (!color) return 0;
     const trimmed = color.trim().toLowerCase();
     if (trimmed === TRANSPARENT_COLOR) return 0;
