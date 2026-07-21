@@ -678,6 +678,55 @@ fn read_clipboard_image() -> Result<Option<String>, String> {
     Err("Clipboard image reading is only supported on Windows".to_string())
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScreenColorSample {
+    hex: String,
+    rgb: ScreenColorRgb,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScreenColorRgb {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+#[cfg(target_os = "windows")]
+fn sample_screen_color_physical(x: i32, y: i32) -> Result<ScreenColorSample, String> {
+    use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
+
+    let screen_dc = unsafe { GetDC(None) };
+    if screen_dc.is_invalid() {
+        return Err("Screen DC unavailable".to_string());
+    }
+
+    let color = unsafe { GetPixel(screen_dc, x, y) };
+    unsafe {
+        ReleaseDC(None, screen_dc);
+    }
+
+    if color.0 == u32::MAX {
+        return Err("Screen pixel unavailable".to_string());
+    }
+
+    let raw = color.0;
+    let r = (raw & 0x0000_00ff) as u8;
+    let g = ((raw & 0x0000_ff00) >> 8) as u8;
+    let b = ((raw & 0x00ff_0000) >> 16) as u8;
+
+    Ok(ScreenColorSample {
+        hex: format!("#{r:02x}{g:02x}{b:02x}"),
+        rgb: ScreenColorRgb { r, g, b },
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn sample_screen_color_physical(_x: i32, _y: i32) -> Result<ScreenColorSample, String> {
+    Err("Screen color picking is only supported on Windows".to_string())
+}
+
 fn capture_window_metrics(window: &tauri::WebviewWindow) -> Option<CaptureWindowMetrics> {
     let monitor = window.current_monitor().ok().flatten()?;
     let position = monitor.position();

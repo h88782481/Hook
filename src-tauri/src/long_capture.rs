@@ -4,8 +4,6 @@ use image::{imageops, RgbImage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-use crate::screenshot;
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LongCaptureAxis {
