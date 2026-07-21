@@ -8,12 +8,7 @@ license = "MIT"
 repository = "https://github.com/aiaimimi0920/Hook"
 homepage = "https://github.com/aiaimimi0920/Hook"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "hook_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -21,47 +16,26 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [features]
-# Force-enables capture-path diagnostic logging (writes hook_runtime.log next to
-# the exe) without needing any environment variable. Build a diagnostic exe with
-# `cargo tauri build --no-bundle --features diag_capture`.
 diag_capture = []
 
 [dependencies]
 tauri = { version = "=2.11.2", features = ["protocol-asset", "tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
-toml = "0.8"
-thiserror = "1"
-hound = "3"
-async-trait = "0.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 image = "0.25.9"
 base64 = "0.22.1"
 arboard = "3.6.1"
 tauri-plugin-global-shortcut = "2.3.1"
-shared_memory = "0.12.4"
 rdev = "0.5.3"
-
-# Hook-owned capture crates, imported from Cap and kept local to Hook.
 scap-targets = { path = "crates/scap-targets" }
 scap-direct3d = { path = "crates/scap-direct3d" }
 anyhow = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "macros"] }
 uuid = { version = "1.10.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 dirs = "5.0"
-tungstenite = "0.24"
 clipboard-win = "5.4.1"
 
 [target.'cfg(windows)'.dependencies]
-cpal = "0.17.3"
-windows-sys = { version = "0.61", features = [
-    "Win32_Foundation",
-    "Win32_System_DataExchange",
-    "Win32_System_Memory",
-    "Win32_System_Ole",
-    "Win32_UI_Input_KeyboardAndMouse",
-] }
 windows = { version = "0.60.0", features = [
     "System",
     "Graphics_Capture",

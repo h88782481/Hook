@@ -2,7 +2,6 @@ import { api } from "./api";
 import { graphStore } from "../store/graphStore";
 import { Unit, Link } from "../types/unit";
 import { extraRects } from "./uiRegistry";
-import { artLoom } from "./client";
 import { WORKFLOW_ID } from "../constants";
 import type { BootProfile } from "./bootProfile";
 import type { StickerGroup } from "../types/stickerEditing";
@@ -299,7 +298,7 @@ const executeSyncCycle = async () => {
                 viewport: { x: 0, y: 0, zoom: 1 }
             };
 
-            syncPromises.push(artLoom.syncWorkflow(dominantWfId, snapshot));
+            // ArtLoom sync removed
 
             // Optimistic update of origin info for nodes that were just adopted
             const neededUpdates = componentUnits.filter(u => u.data?.originWorkflowId !== dominantWfId);
@@ -333,11 +332,11 @@ const executeSyncCycle = async () => {
 
     const globalRfNodes = currentUnits.map(u => {
         const syncImg = shouldSyncImage(u, WORKFLOW_ID);
-        const artLoomType = u.type === 'sticker' ? 'sticker' : 'artNode';
+        const nodeType = u.type === 'sticker' ? 'sticker' : 'artNode';
 
         return {
             id: u.id,
-            type: artLoomType,
+            type: nodeType,
             position: { x: u.x, y: u.y },
             data: {
                 label: u.artId || "Node",
@@ -366,11 +365,7 @@ const executeSyncCycle = async () => {
         targetHandle: l.toPortId || "input"
     }));
 
-    syncPromises.push(artLoom.syncWorkflow(WORKFLOW_ID, {
-        nodes: globalRfNodes,
-        edges: globalRfEdges,
-        viewport: { x: 0, y: 0, zoom: 1 }
-    }));
+    // ArtLoom global sync removed
 
     // Wait for all syncs to complete
     await Promise.all(syncPromises);

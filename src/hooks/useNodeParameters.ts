@@ -1,11 +1,7 @@
-import { api } from "../services/api";
 import { graphStore } from "../store/graphStore";
-import { shaderCache } from "../services/shaderCache";
 import { syncService } from "../services/syncService";
-import { resolveEffectiveNodeParams, resolveUnitExecutionInputImage } from "../services/graphImageResolution";
 import { deriveUnitExecutionConfig } from "../services/nodeExecutionConfig";
 import {
-    DISABLED_PREFIX,
     PARAM_ui_resize,
     EXEC_PREFIX,
     EXEC_expanded,
@@ -81,42 +77,7 @@ export function useNodeParameters() {
                     graphStore.setUnitExecConfig(unitId, "propagation", "notifyDownstream", value);
                     break;
                 case EXEC_manualTrigger:
-                    // Manual trigger
                     console.log(`[Execution] Manual trigger for unit ${unitId}`);
-
-                    // CHECK IF SHADER ART BEFORE CONTINUING
-                    const unit = graphStore.units.find(u => u.id === unitId);
-                    const caps = graphStore.capabilities;
-                    const artCap = unit && caps.find(c => c.id === unit.artId);
-
-                    if (artCap?.execution_type === 'shader') {
-                         console.log(`[Execution] Shader Art Manual Trigger intercepted for ${unitId}`);
-                         const executeShader = async () => {
-                             if (!unit || !unit.artId) return;
-
-                             if (!shaderCache.hasShaderCode(unit.artId)) {
-                                 try {
-                                     await shaderCache.prefetchShader(unit.artId);
-                                 } catch (e) {
-                                     console.error(`[Execution] Prefetch failed:`, e);
-                                     return;
-                                 }
-                             }
-
-                             const canvas = document.getElementById(`shader-canvas-${unitId}`) as HTMLCanvasElement;
-                             if (canvas) {
-                                 const renderer = shaderCache.getRenderer(unit.artId, unitId, canvas);
-                                 if (renderer) {
-                                     renderer.render();
-                                     return;
-                                 }
-                             }
-                         };
-                         executeShader();
-                         return; // STOP EXECUTION HERE
-                    }
-
-                    // For now, just trigger processing like before
                     graphStore.setUnitParams(unitId, (prev) => ({ ...(prev || {}), ["force_update"]: value }));
                     break;
             }
@@ -151,132 +112,11 @@ export function useNodeParameters() {
             }
         }
 
-        // 3. Find the Unit and its Capability
-        const unit = graphStore.units.find(u => u.id === unitId);
-        if (!unit) return;
-
-        const artId = unit.artId;
-        const caps = graphStore.capabilities;
-        const artCapability = caps.find(c => c.id === artId);
-
-        // 4. Check execution config to decide if we should execute
-        const execConfig = deriveUnitExecutionConfig({
-            capability: artCapability,
-            explicitConfig: graphStore.unitExecConfig[unitId] || unit.data?.executionConfig,
-        });
-
-        const isManualTrigger =
-            paramId === "force_update" ||
-            paramId === EXEC_manualTrigger ||
-            triggerSource === "manual";
-        const isUpstreamTrigger = triggerSource === "upstream";
-        const isParamDriven = execConfig.triggerMode?.paramDriven ?? true;
-        const isUpstreamDriven = execConfig.triggerMode?.upstreamDriven ?? true;
-
-        if (!isManualTrigger) {
-            if (isUpstreamTrigger) {
-                if (!isUpstreamDriven) return;
-            } else if (!isParamDriven) {
-                return;
-            }
+        // Keep local params only; remote ArtLoom / shader execution has been removed.
+        if (!isFinal && triggerSource === "param") {
+            return;
         }
-
-        // If param-driven but NOT final (dragging slider), SKIP backend execution
-        // UNLESS it's a shader art
-        if (!isFinal && !isManualTrigger && !isUpstreamTrigger) {
-             if (artCapability?.execution_type !== 'shader') {
-                return;
-             }
-        }
-
-          // 4. Find Source Image (for Mock Processing)
-          const inputImage = resolveUnitExecutionInputImage({
-              units: graphStore.units,
-              links: graphStore.links,
-              capabilities: graphStore.capabilities,
-              unitId,
-          }) ?? null;
-
-          // 5. Dispatch to Backend
-          const manualParams = graphStore.unitParams[unitId] || {};
-          const fullParams = resolveEffectiveNodeParams({
-              units: graphStore.units,
-              links: graphStore.links,
-              capabilities: graphStore.capabilities,
-              unitId,
-              manualParams,
-          });
-          const effectiveValue = fullParams[paramId] ?? value;
-
-          const disabledParams: string[] = [];
-          const activeParams: Record<string, any> = {};
-
-          Object.keys(manualParams).forEach(key => {
-              if (manualParams[key] === DISABLED_PREFIX) {
-                  disabledParams.push(key);
-              }
-          });
-
-          Object.keys(fullParams).forEach(key => {
-              if (fullParams[key] !== DISABLED_PREFIX) {
-                  activeParams[key] = fullParams[key];
-              }
-          });
-
-          // === SHADER ART LOCAL EXECUTION ===
-          if (artCapability?.execution_type === 'shader' && artId) {
-                const isLutParam = ['reference', 'recalculate'].includes(paramId);
-                if (isManualTrigger || isLutParam) {
-                    // Contextual shaders are refreshed by ShaderPreview with the current
-                    // source/reference images. Do not dispatch them to the image backend,
-                    // otherwise the backend pass-through can overwrite the WebGL result.
-                }
-
-                const canvas = document.getElementById(`shader-canvas-${unitId}`) as HTMLCanvasElement;
-                if (canvas) {
-                    const renderer = shaderCache.getRenderer(artId, unitId, canvas);
-                    if (renderer) {
-                        if (isManualTrigger) {
-                     renderer.render(); return;
-                        }
-                        const paramDef = artCapability.params.find(p => p.id === paramId);
-                        if (isUpstreamTrigger || isLutParam || !paramDef) {
-                            renderer.render();
-                        } else if (paramDef) {
-                            try {
-                                renderer.setUniform(paramId, effectiveValue);
-                                renderer.render();
-                                if (!isFinal) return;
-                            } catch (e) {
-                                console.error(`[Shader] Render failed:`, e);
-                            }
-                        }
-                    }
-                }
-                void syncService.performWorkflowSync();
-                return;
-          }
-
-          // Dispatch Action
-          try {
-            await api.dispatchAction({
-                     action: "update_node_param",
-                     payload: {
-                         node_id: unitId,
-                         param_key: paramId,
-                         value: effectiveValue,
-                         input_image: inputImage,
-                         art_id: artId,
-                         all_params: activeParams,
-                         disabled_params: disabledParams,
-                         origin_workflow_id: unit.data?.originWorkflowId,
-                         origin_node_id: unit.data?.originNodeId
-                     }
-            });
-
-          } catch (e) {
-              console.error("Failed to update param:", e);
-          }
+        void syncService.performWorkflowSync();
     };
 
     return { handleParamChange };

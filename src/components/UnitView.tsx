@@ -4,7 +4,6 @@ import { graphStore } from "../store/graphStore";
 import {
   activeStickerEditTargetId,
   draggingStickerId,
-  enhancementNotices,
   isCleanView,
   isSelecting,
   longCaptureSession,
@@ -18,7 +17,6 @@ import { Unit, Link } from "../types/unit";
 import { ArtCapability } from "../services/protocol";
 import { addOrUpdateRect, removeRect, updatePortOffset } from "../services/uiRegistry";
 import { computeMinifiedStickerAnnotationViewport, computeMinifiedStickerViewport } from "../services/stickerEditing";
-import { ShaderPreview } from "./ShaderPreview";
 import { UnitParamsPanel } from "./UnitParamsPanel";
 import { UnitAddNodeMenu } from "./UnitAddNodeMenu";
 import { UnitPorts } from "./UnitPorts";
@@ -26,7 +24,6 @@ import { StickerAnnotationLayer } from "./StickerAnnotationLayer";
 import { StickerTopStrip } from "./StickerTopStrip";
 import { DISABLED_PREFIX } from "../constants";
 import { isStickerSurfaceDoubleClickTarget } from "../services/stickerDoubleClick";
-import { resolveEffectiveNodeParams } from "../services/graphImageResolution";
 import { normalizeImageSourceForDisplay } from "../services/imageSource";
 import { api, isTauriRuntimeAvailable } from "../services/api";
 import { stickerContextMenuController } from "../services/stickerContextMenuController";
@@ -134,44 +131,7 @@ export const UnitView: Component<Props> = (props) => {
       props.onDoubleTap(event);
   };
   const showSelectionBorder = () => true;
-  const isShaderArt = () => isArt() && props.capability?.execution_type === 'shader';
-  const effectiveParams = () =>
-      isArt()
-          ? resolveEffectiveNodeParams({
-                units: graphStore.units,
-                links: graphStore.links,
-                capabilities: graphStore.capabilities,
-                unitId: props.unit.id,
-                manualParams: props.params,
-            })
-          : props.params;
-  const getArtId = () => props.unit.artId;
   const getArtErrorMessage = () => liveUnit().data.errorMessage || "Art execution failed";
-  const getConnectedImageForPort = (portName: string) => {
-      const link = props.connectedLinks?.find((candidate) => candidate.toPortId === portName);
-      return link ? props.resolveUnitImage?.(link.fromUnitId) : undefined;
-  };
-  const getShaderInputSrc = () =>
-      getConnectedImageForPort("input") ||
-      getConnectedImageForPort("input_image") ||
-      getConnectedImageForPort("image") ||
-      liveUnit().data.src ||
-      "";
-  const getShaderReferenceSrc = () => {
-      const connected = getConnectedImageForPort("reference");
-      if (connected) return connected;
-
-      const reference = props.params.reference;
-      if (typeof reference !== "string" || reference.length === 0) return undefined;
-      return props.resolveUnitImage?.(reference) || reference;
-  };
-  const getCapabilityArtPath = () => {
-      const artPath = props.capability?.execution?.artPath;
-      return typeof artPath === "string" && artPath.length > 0 ? artPath : undefined;
-  };
-  const isContextualShader = () =>
-      !!props.capability?.params?.some((param) => param.widget === "image_link" || param.id === "reference") ||
-      !!props.capability?.inputs?.some((input) => input.name === "reference");
 
   // Dynamic Style for the container
   const currentPos = () => {
@@ -597,48 +557,6 @@ export const UnitView: Component<Props> = (props) => {
       detachPendingNativeDragListeners();
   });
 
-  const getRenderedImageFrame = () => {
-      const ocr = props.unit.data.ocrResult;
-      if (!ocr?.width || !ocr?.height) {
-          return null;
-      }
-
-      if (isMinified()) {
-          return {
-              left: 0,
-              top: 0,
-              width: props.unit.w,
-              height: props.unit.h,
-              scaleX: props.unit.w / ocr.width,
-              scaleY: props.unit.h / ocr.height,
-          };
-      }
-
-      const scale = Math.min(props.unit.w / ocr.width, props.unit.h / ocr.height);
-      const width = ocr.width * scale;
-      const height = ocr.height * scale;
-
-      return {
-          left: (props.unit.w - width) / 2,
-          top: (props.unit.h - height) / 2,
-          width,
-          height,
-          scaleX: scale,
-          scaleY: scale,
-      };
-  };
-
-  const getOcrBlockBounds = (block: { boxPoints: { x: number; y: number }[] }) => {
-      const xs = block.boxPoints.map((point) => point.x);
-      const ys = block.boxPoints.map((point) => point.y);
-      return {
-          minX: Math.min(...xs),
-          maxX: Math.max(...xs),
-          minY: Math.min(...ys),
-          maxY: Math.max(...ys),
-      };
-  };
-
   const getPortColor = (type: string, isHover: boolean) => {
       // Type-based colors (Tailwind classes or CSS variables?)
       // We need to return a class string for the background color.
@@ -911,42 +829,6 @@ export const UnitView: Component<Props> = (props) => {
             "opacity": getOpacity(),
             "z-index": "1" // Ensure it covers the tucked-under ports
         }}>
-            {/* SHADER ART: Use ShaderPreview for real-time rendering */}
-            <Show when={isShaderArt() && getArtId()}>
-                {/* Wrapper for Crop/Minify Logic - Mimics img tag behavior */}
-                <div style={(() => {
-                    if (isMinified()) {
-                         const viewport = getMinifiedViewport();
-                         return {
-                             "position": "absolute",
-                             "width": `${viewport.width}px`,
-                             "height": `${viewport.height}px`,
-                             "left": `-${viewport.offsetX}px`,
-                             "top": `-${viewport.offsetY}px`,
-                             "pointer-events": "auto"
-                         };
-                    }
-                    return { "width": "100%", "height": "100%" };
-                })()}>
-                    <ShaderPreview
-                        unitId={props.unit.id}
-                        artId={getArtId()!}
-                        params={effectiveParams()}
-                        artPath={getCapabilityArtPath()}
-                        inputImageSrc={getShaderInputSrc()}
-                        referenceImageSrc={getShaderReferenceSrc()}
-                        requiresReference={isContextualShader()}
-                        width={isMinified() ? getMinifiedViewport().width : props.unit.w}
-                        height={isMinified() ? getMinifiedViewport().height : props.unit.h}
-                        opacity={1}
-                        resolveUnitImage={props.resolveUnitImage}
-                        onRendered={(dataUrl) => props.onRendered(props.unit.id, dataUrl)}
-                    />
-                </div>
-            </Show>
-
-            {/* Standard Image Layer (hidden for Shader Arts) */}
-            <Show when={!isShaderArt()}>
             <img
                 class="sticker-img"
                 // Drag-Out to Save (HTML5 Drag)
@@ -1087,9 +969,8 @@ export const UnitView: Component<Props> = (props) => {
                     };
                 })()}
             />
-            </Show>
 
-            <Show when={!isShaderArt() && liveUnit().data.rasterizedAnnotationLayerSrc}>
+            <Show when={liveUnit().data.rasterizedAnnotationLayerSrc}>
                 {(layerSrc) => (
                     <div
                         class="sticker-rasterized-annotation-layer-viewport absolute"
@@ -1158,97 +1039,6 @@ export const UnitView: Component<Props> = (props) => {
                 </div>
             </Show>
 
-            <Show when={!isMinified() && props.unit.data.ocrResult?.textBlocks?.length}>
-                <div
-                    class="absolute inset-0 pointer-events-none"
-                    style={{
-                        "z-index": 15,
-                    }}
-                >
-                    <For each={props.unit.data.ocrResult?.textBlocks || []}>{(block) => {
-                        const frame = getRenderedImageFrame();
-                        if (!frame) {
-                            return null;
-                        }
-
-                        const bounds = getOcrBlockBounds(block);
-                        const label = props.unit.data.showTranslated && block.translatedText
-                            ? block.translatedText
-                            : block.text;
-
-                        return (
-                            <div
-                                class="absolute rounded-sm border border-white/40 shadow-[0_2px_10px_rgba(0,0,0,0.35)]"
-                                style={{
-                                    left: `${frame.left + bounds.minX * frame.scaleX}px`,
-                                    top: `${frame.top + bounds.minY * frame.scaleY}px`,
-                                    width: `${Math.max((bounds.maxX - bounds.minX) * frame.scaleX, 18)}px`,
-                                    height: `${Math.max((bounds.maxY - bounds.minY) * frame.scaleY, 18)}px`,
-                                    color: block.colorHex,
-                                    "background-color": `${block.bgColorHex}40`,
-                                }}
-                            >
-                                <div
-                                    class="absolute left-0 top-0 max-w-full truncate px-1 py-[1px] text-[10px] font-medium leading-tight"
-                                    style={{
-                                        color: block.colorHex,
-                                        "background-color": `${block.bgColorHex}cc`,
-                                    }}
-                                    title={label}
-                                >
-                                    {label}
-                                </div>
-                            </div>
-                        );
-                    }}</For>
-                </div>
-            </Show>
-
-            <Show when={enhancementNotices[props.unit.id]}>
-                {(notice) => (
-                    <div
-                        class="enhancement-notice absolute left-2 right-2 top-2 rounded-xl border border-amber-300/35 bg-slate-950/90 p-3 text-left text-white shadow-2xl backdrop-blur-md"
-                        style={{ "z-index": 40, "pointer-events": "auto" }}
-                        onMouseDown={(event) => {
-                            event.stopPropagation();
-                        }}
-                        onMouseUp={(event) => {
-                            event.stopPropagation();
-                        }}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                        }}
-                        onDblClick={(event) => {
-                            event.stopPropagation();
-                        }}
-                    >
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <div class="text-[11px] font-semibold text-amber-100">
-                                    {notice().title}
-                                </div>
-                                <div class="mt-1 text-[10px] leading-snug text-white/70">
-                                    {notice().message}
-                                </div>
-                            </div>
-                            <button
-                                class="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                                onMouseDown={(event) => {
-                                    event.stopPropagation();
-                                }}
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    uiActions.dismissEnhancementNotice(props.unit.id);
-                                }}
-                            >
-                                知道了
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </Show>
-
-            {/* Minified Border Overlay (Dashed, Rectangle) */}
             <Show when={isMinified()}>
                 <div class="mini-overlay" style={{
                     "position": "absolute", "top":0, "left":0, "right":0, "bottom":0,

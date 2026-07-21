@@ -29,10 +29,10 @@ const isPrimaryImageInput = (input: ArtInputPort): boolean =>
     ["input", "input_image", "image"].includes(lowerString(input.name));
 
 /**
- * ArtLoom capabilities can expose the same node variables in both `inputs`
- * and `params`. The duplicated scalar values are parameter controls, not
- * visual connection ports. Duplicated image-link params are also handled by
- * their parameter row target, otherwise nodes like Color Transfer show two
+ * Capabilities can expose the same node variables in both `inputs` and
+ * `params`. The duplicated scalar values are parameter controls, not visual
+ * connection ports. Duplicated image-link params are also handled by their
+ * parameter row target, otherwise nodes like Color Transfer show two
  * equivalent reference-image endpoints.
  */
 export const isCapabilityInputPort = (

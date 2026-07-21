@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createEffect, createSignal, Show, ErrorBoundary } from "solid-js";
-import { api, isTauriRuntimeAvailable, listenBrowserArtLoomMethod, type TeaTicketSummary, type VoiceSettingsSummary } from "./services/api";
+import { api, isTauriRuntimeAvailable } from "./services/api";
 import { listen } from "@tauri-apps/api/event";
 import { installErrorDiagnostics } from "./services/errorDiagnostics";
 import { logger } from "./services/logger";
@@ -43,9 +43,7 @@ import {
 } from "./store/uiStore";
 
 
-import { artLoom } from "./services/client";
 import { syncService } from "./services/syncService";
-import { shaderCache } from "./services/shaderCache";
 import type { BootProfile } from "./services/bootProfile";
 import { captureStickerEditSnapshot } from "./services/stickerHistory";
 import { removeAnnotationById } from "./services/stickerAnnotationMutations";
@@ -56,14 +54,6 @@ import {
     shouldStartCanvasSelectionFromTarget,
     type CaptureSelectionMode,
 } from "./services/captureState";
-import {
-    normalizeWorkflowSnapshotPayload,
-    type WorkflowSnapshotPayload,
-} from "./services/workflowPayload";
-import { normalizeImageSourceForDisplay } from "./services/imageSource";
-import { buildUnitPortsFromCapability } from "./services/artNodeFactory";
-import { deriveUnitExecutionConfig } from "./services/nodeExecutionConfig";
-import { refreshArtLoomCapabilitiesOnStartup } from "./services/artLoomStartup";
 
 // Hooks
 import { useDraggable } from "./hooks/useDraggable";
@@ -73,26 +63,7 @@ import { useLinking } from "./hooks/useLinking";
 import { useUnitActions } from "./hooks/useUnitActions";
 import { useClipboard } from "./hooks/useClipboard";
 import { useFileDrop } from "./hooks/useFileDrop";
-import type { ArtDelivery, ArtCapability } from "./services/protocol";
 import type { Unit, Link } from "./types/unit";
-
-type VoiceStatus = "idle" | "recording" | "transcribing" | "completed" | "failed" | "cancelled" | "unknown";
-
-type VoiceHotkeyPayload = {
-    shortcut: string;
-    event: unknown;
-    kind: string;
-    statusHint: string;
-};
-
-type VoiceSessionPayload = {
-    id: string;
-    status: string;
-    transcript?: string | null;
-    outputText?: string | null;
-    error?: string | null;
-    sessionLogPath?: string | null;
-};
 
 type OverlaySyntheticMousePayload = {
     x?: number;
@@ -106,40 +77,10 @@ type OverlaySyntheticMousePayload = {
     nativeDragPreflight?: boolean;
 };
 
-const resolveVoiceHotkeyStatus = (payload: VoiceHotkeyPayload): VoiceStatus => {
-    switch (payload.statusHint) {
-        case "recording":
-        case "transcribing":
-        case "cancelled":
-            return payload.statusHint;
-        default:
-            return "unknown";
-    }
-};
-
-const resolveVoiceSessionStatus = (payload: VoiceSessionPayload): VoiceStatus => {
-    switch (payload.status) {
-        case "recording":
-        case "transcribing":
-        case "completed":
-        case "failed":
-        case "cancelled":
-            return payload.status;
-        default:
-            return "unknown";
-    }
-};
-
 export default function App() {
   let portsLayerRef: HTMLDivElement | undefined;
   let activeBootProfile: BootProfile | null = null;
   const tauriRuntime = isTauriRuntimeAvailable();
-  const [, setVoiceStatus] = createSignal<VoiceStatus>("idle");
-  const [, setLastVoiceHotkey] = createSignal<VoiceHotkeyPayload | null>(null);
-  const [lastVoiceSession, setLastVoiceSession] = createSignal<VoiceSessionPayload | null>(null);
-  const [, setVoiceSettings] = createSignal<VoiceSettingsSummary | null>(null);
-  const [lastTeaTicket, setLastTeaTicket] = createSignal<TeaTicketSummary | null>(null);
-  const [lastTeaTicketError, setLastTeaTicketError] = createSignal<string | null>(null);
 
   // Hooks Integration
   const { startDrag, handleDragMove, handleDragEnd } = useDraggable();
@@ -152,7 +93,7 @@ export default function App() {
       cancelAutoLongCaptureSession,
       notifyAutoLongCaptureWheel,
   } = useSelection();
-  const { handleParamChange, handleDoubleClick, spawnConnectedNode, performOcrAction, toggleTranslationAction, propagateFromUnit } = useUnitActions();
+  const { handleParamChange, handleDoubleClick, spawnConnectedNode, propagateFromUnit } = useUnitActions();
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
       onLinkCreated: (sourceId) => {
           graphStore.actions.propagateStickerEditsFrom(sourceId);
@@ -499,16 +440,6 @@ export default function App() {
       }
   };
 
-  const isContextualShaderArt = (art: ArtCapability) =>
-      art.execution_type === "shader" &&
-      ((art.params || []).some((param) => param.widget === "image_link" || param.id === "reference") ||
-          (art.inputs || []).some((input) => input.name === "reference"));
-
-  const getCapabilityArtPath = (art: ArtCapability) => {
-      const artPath = art.execution?.artPath;
-      return typeof artPath === "string" && artPath.length > 0 ? artPath : undefined;
-  };
-
   const toggleStickerToolbarVisibility = () => {
       const stickerId = selectedStickerId();
       if (tauriRuntime) {
@@ -561,310 +492,6 @@ export default function App() {
       await syncService.performWorkflowSync();
   };
 
-  const summarizeSelectedUnitsForTea = () => {
-      const ids = selectedUnitIds.length > 0
-          ? [...selectedUnitIds]
-          : selectedStickerId()
-              ? [selectedStickerId()!]
-              : [];
-      if (ids.length === 0) return "";
-
-      const idSet = new Set(ids);
-      return graphStore.units
-          .filter((unit) => idSet.has(unit.id))
-          .map((unit) => [
-              `id=${unit.id}`,
-              `type=${unit.type}`,
-              `art=${unit.artId || "none"}`,
-              `originWorkflow=${unit.data?.originWorkflowId || "none"}`,
-              `originNode=${unit.data?.originNodeId || "none"}`,
-          ].join(" "))
-          .join("\n");
-  };
-
-  const buildTeaTicketText = (trigger: string) => {
-      const selectedSummary = summarizeSelectedUnitsForTea();
-      const voiceOutput = lastVoiceSession()?.outputText || lastVoiceSession()?.transcript || "";
-      return [
-          `Hook desktop ticket request (${trigger})`,
-          `units: ${graphStore.units.length}`,
-          `links: ${graphStore.links.length}`,
-          selectedSummary ? `selected_units:\n${selectedSummary}` : "selected_units: none",
-          voiceOutput ? `voice_context:\n${voiceOutput}` : "voice_context: none",
-          "requested_action: Analyze this Hook context and propose the next AI work-order plan.",
-      ].join("\n");
-  };
-
-  const createTeaTicketFromCurrentHookState = async (trigger = "panel") => {
-      const selectedSummary = summarizeSelectedUnitsForTea();
-      const voiceOutput = lastVoiceSession()?.outputText || lastVoiceSession()?.transcript || null;
-      setLastTeaTicketError(null);
-
-      try {
-          const ticket = await api.createTeaTicket({
-              source: "hook-desktop",
-              text: buildTeaTicketText(trigger),
-              context: {
-                  active_window: null,
-                  selection_text: selectedSummary || voiceOutput,
-                  ocr_text: lastVoiceSession()?.transcript || null,
-                  screenshot_ref: null,
-                  cwd: null,
-                  app: "hook",
-              },
-              attachments: [],
-          });
-          setLastTeaTicket(ticket);
-          void api.debugLogEvent("tea-ticket-created", `id=${ticket.id} status=${ticket.status}`);
-      } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          setLastTeaTicketError(message);
-          void api.debugLogEvent("tea-ticket-create-failed", message);
-      }
-  };
-
-  const refreshCapabilities = async () => {
-      const handshake = await artLoom.connect();
-      const arts = handshake.capabilities?.art_definitions || [];
-      graphStore.setCapabilities(arts);
-
-      const shaderArts = arts.filter((art: ArtCapability) => art.execution_type === "shader");
-      shaderArts
-          .filter((art) => !isContextualShaderArt(art))
-          .forEach((art: ArtCapability) => {
-          void shaderCache.prefetchShader(art.id, getCapabilityArtPath(art));
-      });
-  };
-
-  const buildPortsFromCapability = (type: "sticker" | "art", artId?: string) => {
-      const capability = graphStore.capabilities.find((item) => item.id === artId);
-      return buildUnitPortsFromCapability(type, capability);
-  };
-
-  const instantiateWorkflowSnapshot = async (payload: WorkflowSnapshotPayload) => {
-      const incomingNodes = payload.nodes;
-      const incomingEdges = payload.edges;
-      if (incomingNodes.length === 0) return;
-
-      const isReferenceMode = payload.mode === "reference" && !!payload.workflow_id;
-      const incomingOriginNodeIds = new Set(
-          incomingNodes
-              .map((node) => (typeof node.id === "string" ? node.id : undefined))
-              .filter((nodeId): nodeId is string => !!nodeId)
-      );
-      const existingReferenceUnitsByOrigin = new Map<string, Unit>();
-      if (isReferenceMode) {
-          graphStore.units.forEach((unit) => {
-              const originWorkflowId = unit.data?.originWorkflowId;
-              const originNodeId = unit.data?.originNodeId;
-              if (
-                  originWorkflowId === payload.workflow_id &&
-                  originNodeId &&
-                  incomingOriginNodeIds.has(originNodeId)
-              ) {
-                  existingReferenceUnitsByOrigin.set(originNodeId, unit);
-              }
-          });
-      }
-
-      const idMap = new Map<string, string>();
-      incomingNodes.forEach((node) => {
-          const existingUnit =
-              isReferenceMode && typeof node.id === "string"
-                  ? existingReferenceUnitsByOrigin.get(node.id)
-                  : undefined;
-          idMap.set(node.id, existingUnit?.id || crypto.randomUUID());
-      });
-
-      const instantiatedUnits: Unit[] = incomingNodes.map((node) => {
-          const localId = idMap.get(node.id)!;
-          const nodeType: "sticker" | "art" = node.type === "sticker" ? "sticker" : "art";
-          const artId = node.data?.artId || node.data?.art_id || undefined;
-          const capability = graphStore.capabilities.find((item) => item.id === artId);
-          const { inputs, outputs } = buildPortsFromCapability(nodeType, artId);
-          const executionConfig = deriveUnitExecutionConfig({
-              capability,
-              explicitConfig: node.data?.executionConfig,
-          });
-
-          return {
-              id: localId,
-              type: nodeType,
-              artId,
-              x: node.position?.x ?? 0,
-              y: node.position?.y ?? 0,
-              w: node.data?.w ?? node.measured?.width ?? 240,
-              h: node.data?.h ?? node.measured?.height ?? 180,
-              params: node.data?.params || {},
-              inputs,
-              outputs,
-              data: {
-                  src: node.data?.src,
-                  previewSrc: node.data?.previewSrc,
-                  rasterizedAnnotationLayerSrc: node.data?.rasterizedAnnotationLayerSrc,
-                  minified: node.data?.minified ?? false,
-                  savedRect: node.data?.savedRect,
-                  cropOffset: node.data?.cropOffset,
-                  opacityNormal: node.data?.opacityNormal ?? 1,
-                  opacityMini: node.data?.opacityMini ?? 0.9,
-                  executionConfig,
-                  originWorkflowId: isReferenceMode ? payload.workflow_id || undefined : undefined,
-                  originNodeId: isReferenceMode ? node.id : undefined,
-              },
-          };
-      });
-
-      const instantiatedLinks: Link[] = incomingEdges
-          .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
-          .map((edge) => ({
-              id: crypto.randomUUID(),
-              fromUnitId: idMap.get(edge.source)!,
-              fromPortId: edge.sourceHandle || "output",
-              toUnitId: idMap.get(edge.target)!,
-              toPortId: edge.targetHandle || "input",
-          }));
-
-      const referencedLocalIds = new Set(instantiatedUnits.map((unit) => unit.id));
-      const linkKey = (link: Link) =>
-          `${link.fromUnitId}::${link.fromPortId || ""}::${link.toUnitId}::${link.toPortId || ""}`;
-
-      graphStore.setUnits((prev) => {
-          const nextById = new Map(prev.map((unit) => [unit.id, unit] as const));
-          instantiatedUnits.forEach((unit) => {
-              nextById.set(unit.id, unit);
-          });
-          return Array.from(nextById.values());
-      });
-      graphStore.setLinks((prev) => {
-          const next = prev.filter(
-              (link) => !(referencedLocalIds.has(link.fromUnitId) && referencedLocalIds.has(link.toUnitId))
-          );
-          const seen = new Set(next.map(linkKey));
-          instantiatedLinks.forEach((link) => {
-              const key = linkKey(link);
-              if (!seen.has(key)) {
-                  seen.add(key);
-                  next.push(link);
-              }
-          });
-          return next;
-      });
-      graphStore.setUnitParams((prev) => {
-          const next = { ...prev };
-          instantiatedUnits.forEach((unit) => {
-              next[unit.id] = unit.params || {};
-          });
-          return next;
-      });
-      graphStore.setUnitExecConfig((prev) => {
-          const next = { ...prev };
-          instantiatedUnits.forEach((unit) => {
-              if (unit.data.executionConfig) {
-                  next[unit.id] = unit.data.executionConfig;
-              } else {
-                  delete next[unit.id];
-              }
-          });
-          return next;
-      });
-
-      selectionActions.clear();
-      uiActions.setSelectedStickerAnnotation(null);
-      await api.setMouseMonitorActive(true);
-      await syncService.updateBackendRects();
-      await syncService.performWorkflowSync();
-  };
-
-  const handleArtDelivery = async (delivery: ArtDelivery) => {
-      const unitId = delivery.art_id;
-      const unit = graphStore.units.find((item) => item.id === unitId);
-      if (!unit) return;
-
-      if (delivery.status !== 200) {
-          graphStore.actions.updateUnitData(unitId, {
-              processing: false,
-              nodeStatus: "error",
-              errorMessage: delivery.error || "Art execution failed",
-          });
-          await syncService.performWorkflowSync();
-          return;
-      }
-
-      let previewSrc: string | undefined;
-      let filePath: string | undefined;
-      let resultHandle: string | undefined;
-      let outputValues: Record<string, unknown> | undefined;
-
-      switch (delivery.delivery.type) {
-          case "shared_memory":
-          case "shm":
-              if (delivery.delivery.handle && delivery.delivery.size && delivery.delivery.width && delivery.delivery.height) {
-                  previewSrc = await api.readSharedMemory(
-                      delivery.delivery.handle,
-                      delivery.delivery.size,
-                      delivery.delivery.width,
-                      delivery.delivery.height
-                  );
-                  resultHandle = delivery.delivery.handle;
-              }
-              break;
-          case "base64":
-              previewSrc = delivery.delivery.data;
-              break;
-          case "file_path":
-              filePath = delivery.delivery.path;
-              if (filePath) {
-                  previewSrc = normalizeImageSourceForDisplay(filePath);
-              }
-              break;
-          case "shader":
-              graphStore.actions.updateUnitData(unitId, {
-                  processing: false,
-                  nodeStatus: "completed",
-                  progress: 1,
-                  errorMessage: undefined,
-              });
-              await syncService.performWorkflowSync();
-              return;
-          case "value":
-          case "json":
-          case "text":
-          case "number":
-              outputValues = {
-                  output: delivery.delivery.value ?? delivery.delivery.data,
-                  ...(delivery.delivery.outputs || {}),
-              };
-              break;
-          default:
-              break;
-      }
-
-      const nextOutputs: Record<string, unknown> = {
-          ...(unit.data.outputs || {}),
-          ...(outputValues || {}),
-      };
-      if (previewSrc) {
-          nextOutputs.output = previewSrc;
-          nextOutputs.output_image = previewSrc;
-      }
-      if (filePath) {
-          nextOutputs.file_path = filePath;
-      }
-
-      graphStore.actions.updateUnitData(unitId, {
-          previewSrc: previewSrc || unit.data.previewSrc,
-          filePath,
-          resultHandle,
-          outputs: nextOutputs,
-          processing: false,
-          progress: 1,
-          nodeStatus: "completed",
-          errorMessage: undefined,
-      });
-      propagateFromUnit(unitId);
-      await syncService.performWorkflowSync();
-  };
-
   const deleteSelectedUnitOrAnnotation = () => {
       const annotationId = selectedStickerAnnotationId();
       const stickerId = selectedStickerId();
@@ -910,7 +537,6 @@ export default function App() {
               // does not leak history/panel/notice entries for its dead id.
               uiActions.clearStickerHistory(id);
               uiActions.clearUnitUiState(id);
-              uiActions.dismissEnhancementNotice(id);
           });
 
           selectionActions.clear();
@@ -1047,19 +673,6 @@ export default function App() {
                   uiActions.setStickerTransformMode("scale");
               }
           },
-          onToggleOcr: async () => {
-               // OCR Logic moved to centralized handler or here (it's small)
-               const id = selectedStickerId();
-               if (!id) return;
-               logger.debug("Triggering OCR explicitly...");
-               await api.triggerOcrEvent();
-
-          },
-          onToggleTranslation: async () => {
-               const id = selectedStickerId();
-               if (!id) return;
-               await toggleTranslationAction(id);
-          }
       }
   });
 
@@ -1110,7 +723,7 @@ export default function App() {
           if (tauriRuntimeAvailable) {
               void api.debugLogEvent(
                   "boot-profile-loaded",
-                  `startupMode=${bootProfile.startupMode} initialUiMode=${bootProfile.initialUiMode} autoStartCapture=${bootProfile.autoStartCapture} artLoomEnabled=${bootProfile.artLoomEnabled}`,
+                  `startupMode=${bootProfile.startupMode} initialUiMode=${bootProfile.initialUiMode} autoStartCapture=${bootProfile.autoStartCapture}`,
               );
           }
       } catch (error) {
@@ -1118,25 +731,6 @@ export default function App() {
           if (tauriRuntimeAvailable) {
               void api.debugLogEvent(
                   "boot-profile-failed",
-                  error instanceof Error ? error.message : String(error),
-              );
-          }
-      }
-
-      try {
-          const settings = await api.getVoiceSettingsSummary();
-          setVoiceSettings(settings);
-          if (tauriRuntimeAvailable) {
-              void api.debugLogEvent(
-                  "voice-settings-loaded",
-                  `shortcut=${settings.shortcut} trigger=${settings.triggerMode} audio=${settings.audioBackend} provider=${settings.providerKind} output=${settings.outputMode}`,
-              );
-          }
-      } catch (error) {
-          console.warn("Failed to load voice settings summary:", error);
-          if (tauriRuntimeAvailable) {
-              void api.debugLogEvent(
-                  "voice-settings-failed",
                   error instanceof Error ? error.message : String(error),
               );
           }
@@ -1154,16 +748,6 @@ export default function App() {
       }
 
       if (tauriRuntimeAvailable) {
-          // Register desktop listeners before handshake/session restore,
-          // otherwise the first instantiate broadcast can arrive before the UI is listening.
-          const unlistenOcr = await listen("trigger-ocr", async () => {
-              logger.debug("Backend Triggered OCR");
-              const id = selectedStickerId();
-              if (id) {
-                  await performOcrAction(id);
-              }
-          });
-
           const unlistenCapture = await listen("trigger-capture", () => {
               logger.debug("Backend Triggered Capture Mode");
               void api.debugLogEvent("trigger-capture-listener");
@@ -1216,30 +800,6 @@ export default function App() {
               void api.debugLogEvent("trigger-paste-listener");
               if (!selectedStickerId()) return;
               void handlePaste();
-          });
-
-           const unlistenCreateTeaTicket = await listen("trigger-create-tea-ticket", () => {
-               logger.debug("Backend Triggered Tea Ticket Creation");
-               void api.debugLogEvent("trigger-create-tea-ticket-listener");
-               void createTeaTicketFromCurrentHookState("tray");
-           });
-
-           const unlistenVoiceHotkey = await listen<VoiceHotkeyPayload>("voice-hotkey-event", (event) => {
-               setLastVoiceHotkey(event.payload);
-               setVoiceStatus(resolveVoiceHotkeyStatus(event.payload));
-              void api.debugLogEvent(
-                  "voice-hotkey-listener",
-                  `kind=${event.payload.kind} status=${event.payload.statusHint}`,
-              );
-          });
-
-          const unlistenVoiceSession = await listen<VoiceSessionPayload>("voice-session-event", (event) => {
-              setLastVoiceSession(event.payload);
-              setVoiceStatus(resolveVoiceSessionStatus(event.payload));
-              void api.debugLogEvent(
-                  "voice-session-listener",
-                  `id=${event.payload.id} status=${event.payload.status}`,
-              );
           });
 
           const unlistenEscape = await listen("trigger-escape", () => {
@@ -1377,56 +937,7 @@ export default function App() {
               },
           );
 
-          const unlistenInstantiate = await listen("art/instantiate", async (event) => {
-              logger.debug("Received workflow instantiation payload");
-              await instantiateWorkflowSnapshot(normalizeWorkflowSnapshotPayload(event.payload));
-          });
-
-          const unlistenCapabilitiesUpdated = await listen("art/capabilities_updated", async () => {
-              logger.debug("Capabilities changed, refreshing handshake state");
-              try {
-                  await refreshCapabilities();
-              } catch (e) {
-                  console.error("Failed to refresh capabilities", e);
-              }
-          });
-
-          const unlistenConnectionState = await listen<{ connected?: boolean }>(
-              "art/loom_connection_state",
-              async (event) => {
-                  if (event.payload?.connected) {
-                      logger.debug("ArtLoom desktop bridge connected, refreshing capabilities");
-                      try {
-                          await refreshCapabilities();
-                      } catch (e) {
-                          console.error("Failed to refresh capabilities after reconnect", e);
-                      }
-                  } else {
-                      console.warn("ArtLoom desktop bridge disconnected");
-                  }
-              },
-          );
-
-          const unlistenProgress = await artLoom.listenForProgress((artId, progress) => {
-              graphStore.actions.updateUnitData(artId, {
-                  processing: true,
-                  nodeStatus: "running",
-                  progress,
-              });
-          });
-
-          const unlistenDelivery = await artLoom.listenForDelivery((delivery) => {
-              handleArtDelivery(delivery).catch((error) => {
-                  console.error("Failed to process art delivery", error);
-                  graphStore.actions.updateUnitData(delivery.art_id, {
-                      processing: false,
-                      nodeStatus: "error",
-                  });
-              });
-          });
-
           cleanups.push(
-              unlistenOcr,
               unlistenCapture,
               unlistenLongCapture,
               unlistenLongCaptureFinish,
@@ -1435,9 +946,6 @@ export default function App() {
               unlistenOpenImage,
               unlistenCopy,
               unlistenPaste,
-               unlistenCreateTeaTicket,
-               unlistenVoiceHotkey,
-               unlistenVoiceSession,
               unlistenEscape,
               unlistenDelete,
               unlistenCaptureDown,
@@ -1448,11 +956,6 @@ export default function App() {
               unlistenOverlayMouseUp,
               unlistenOverlayMouseWheel,
               unlistenOverlayContextMenu,
-              unlistenInstantiate,
-              unlistenCapabilitiesUpdated,
-              unlistenConnectionState,
-              unlistenProgress,
-              unlistenDelivery,
           );
 
           onWindowMouseMove = (e: MouseEvent) => {
@@ -1465,15 +968,6 @@ export default function App() {
 
           window.addEventListener("mousemove", onWindowMouseMove);
           window.addEventListener("mouseup", onWindowMouseUp);
-      }
-
-      try {
-          await refreshArtLoomCapabilitiesOnStartup(
-              bootProfile?.artLoomEnabled ?? false,
-              refreshCapabilities,
-          );
-      } catch (e) {
-          console.warn("ArtLoom bridge unavailable during startup; continuing in standalone mode.", e);
       }
 
       await syncService.restoreSession(bootProfile || undefined);
@@ -1489,27 +983,6 @@ export default function App() {
       if (bootProfile?.autoStartCapture) {
           await api.debugLogEvent("boot-autostart-capture");
           await api.triggerCaptureMode();
-      }
-
-      if (!tauriRuntimeAvailable) {
-          logger.debug("Running in browser preview mode; attaching browser IPC listeners.");
-          const stopInstantiate = listenBrowserArtLoomMethod("art_hook/instantiate", (payload) => {
-              instantiateWorkflowSnapshot(normalizeWorkflowSnapshotPayload(payload)).catch((error) => {
-                  console.error("Browser instantiate handler failed:", error);
-              });
-          });
-          const stopCapabilitiesUpdated = listenBrowserArtLoomMethod("art_loom/arts_updated", async () => {
-              try {
-                  await refreshCapabilities();
-              } catch (error) {
-                  console.error("Failed to refresh browser preview capabilities:", error);
-              }
-          });
-          onCleanup(() => {
-              stopInstantiate();
-              stopCapabilitiesUpdated();
-          });
-          return;
       }
 
       onCleanup(() => {
@@ -1835,17 +1308,6 @@ export default function App() {
                 </div>
             )}
         </Show>
-
-        <div hidden aria-hidden="true" data-testid="hook-tea-automation-surface">
-            <button
-                type="button"
-                data-testid="tea-ticket-button"
-                onClick={() => void createTeaTicketFromCurrentHookState("automation")}
-            />
-            <output data-testid="tea-ticket-output">
-                {lastTeaTicket()?.id || lastTeaTicketError() || ""}
-            </output>
-        </div>
 
         <StickerContextMenuLayer />
 

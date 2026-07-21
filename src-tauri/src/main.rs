@@ -29,46 +29,6 @@ fn main() {
         }
         return;
     }
-    if args.iter().any(|arg| arg == "--loom-brain-plan-smoke") {
-        match hook_lib::loom_brain_plan_smoke_report_json() {
-            Ok(report) => {
-                if let Ok(path) = std::env::var("HOOK_LOOM_BRAIN_PLAN_OUTPUT") {
-                    if let Err(error) = std::fs::write(&path, &report) {
-                        eprintln!(
-                            "failed to write Loom brain plan smoke output to {path}: {error}"
-                        );
-                        std::process::exit(1);
-                    }
-                }
-                println!("{report}");
-            }
-            Err(error) => {
-                eprintln!("Loom brain plan smoke failed: {error}");
-                std::process::exit(1);
-            }
-        }
-        return;
-    }
-    if args.iter().any(|arg| arg == "--talk-voice-capture-smoke") {
-        match hook_lib::talk_capture_smoke_report_json() {
-            Ok(report) => {
-                if let Ok(path) = std::env::var("HOOK_TALK_VOICE_CAPTURE_OUTPUT") {
-                    if let Err(error) = std::fs::write(&path, &report) {
-                        eprintln!(
-                            "failed to write Talk voice capture smoke output to {path}: {error}"
-                        );
-                        std::process::exit(1);
-                    }
-                }
-                println!("{report}");
-            }
-            Err(error) => {
-                eprintln!("Talk voice capture smoke failed: {error}");
-                std::process::exit(1);
-            }
-        }
-        return;
-    }
 
     hook_lib::run()
 }

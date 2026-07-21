@@ -5,17 +5,6 @@ import type {
     StickerImageEditState,
 } from "./stickerEditing";
 
-export interface OcrBlock {
-    text: string;
-    boxPoints: {x: number, y: number}[];
-    boxScore: number;
-    textScore: number;
-    colorHex: string;
-    bgColorHex: string;
-    translatedText?: string;
-    translating?: boolean;
-}
-
 export interface Port {
     id: string;
     type: 'image' | 'text' | 'number' | 'boolean' | 'any';
@@ -32,25 +21,12 @@ export interface UnitData {
     opacityNormal?: number;
     opacityMini?: number;
 
-    // UI State
-    hideOcr?: boolean;
-    showTranslated?: boolean;
-
     // Visibility Control
     portVisibility?: Record<string, boolean>; // Key: specific port name, Value: true (visible) / false. Default if missing = true? or false?
     // Let's assume default is TRUE (show all), and we use this to hide specific ones.
 
     // Disabled Params Stash (Value restoration)
     disabledParamValues?: Record<string, any>;
-
-    // OCR Results
-    ocrResult?: {
-        fullText: string;
-        textBlocks: OcrBlock[];
-        width?: number;
-        height?: number;
-        scaleFactor?: number;
-    };
 
     // Art Specific
     processing?: boolean;

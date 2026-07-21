@@ -165,14 +165,6 @@ export const [globalAddNodeMenu, setGlobalAddNodeMenu] = createSignal<{
     y: 0,
 });
 
-export interface EnhancementNotice {
-    feature: "OCR" | "Translation";
-    title: string;
-    message: string;
-}
-
-export const [enhancementNotices, setEnhancementNotices] = createStore<Record<string, EnhancementNotice | undefined>>({});
-
 // Unit-Specific UI State (e.g. Panels open/close)
 // Key: Unit ID
 export const [unitUiState, setUnitUiState] = createStore<Record<string, { showActions: boolean; showParams: boolean }>>({});
@@ -289,12 +281,6 @@ export const uiActions = {
                 showParams: false,
             }));
         });
-    },
-    showEnhancementNotice: (unitId: string, notice: EnhancementNotice) => {
-        setEnhancementNotices(unitId, notice);
-    },
-    dismissEnhancementNotice: (unitId: string) => {
-        setEnhancementNotices(unitId, undefined);
     },
     clearUnitUiState: (unitId: string) => {
         setUnitUiState(unitId, undefined!);
