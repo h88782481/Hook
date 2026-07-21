@@ -741,7 +741,8 @@ export const scaleAnnotationAroundPivot = (
 
 /**
  * Scale annotation geometry from the origin (then optional translation).
- * Implemented via pivot scaling so style/type branches stay in one place.
+ * Used by frame resize and link propagation — preserves top-left anchors.
+ * Interactive gizmo scaling uses {@link scaleAnnotationAroundPivot} instead.
  */
 export const scaleAnnotation = (
     annotation: StickerAnnotation,
@@ -750,11 +751,71 @@ export const scaleAnnotation = (
     offsetX = 0,
     offsetY = 0,
 ): StickerAnnotation => {
-    const scaled = scaleAnnotationAroundPivot(annotation, { x: 0, y: 0 }, { x: scaleX, y: scaleY });
-    if (offsetX === 0 && offsetY === 0) {
-        return scaled;
+    if (
+        annotation.type === "rect" ||
+        annotation.type === "round-rect" ||
+        annotation.type === "ellipse" ||
+        annotation.type === "triangle" ||
+        annotation.type === "polygon"
+    ) {
+        return {
+            ...annotation,
+            x: annotation.x * scaleX + offsetX,
+            y: annotation.y * scaleY + offsetY,
+            w: annotation.w * scaleX,
+            h: annotation.h * scaleY,
+            style: scaleAnnotationStyle(annotation.style, scaleX, scaleY),
+        };
     }
-    return translateAnnotation(scaled, offsetX, offsetY);
+
+    if (annotation.type === "mosaic" || annotation.type === "blur") {
+        return {
+            ...annotation,
+            x: annotation.x * scaleX + offsetX,
+            y: annotation.y * scaleY + offsetY,
+            w: annotation.w * scaleX,
+            h: annotation.h * scaleY,
+            style: scaleAnnotationStyle(annotation.style, scaleX, scaleY),
+            points: annotation.points?.map((point) => ({
+                x: point.x * scaleX + offsetX,
+                y: point.y * scaleY + offsetY,
+            })),
+            brushWidth:
+                annotation.brushWidth === undefined
+                    ? undefined
+                    : scaleStrokeWidth(annotation.brushWidth, scaleX, scaleY),
+            strength:
+                annotation.strength === undefined
+                    ? undefined
+                    : scaleStrokeWidth(annotation.strength, scaleX, scaleY),
+        };
+    }
+
+    if (annotation.type === "text" || annotation.type === "serial") {
+        return {
+            ...annotation,
+            x: annotation.x * scaleX + offsetX,
+            y: annotation.y * scaleY + offsetY,
+            fontSize:
+                annotation.fontSize === undefined
+                    ? undefined
+                    : scaleStrokeWidth(annotation.fontSize, scaleX, scaleY),
+            style: scaleAnnotationStyle(annotation.style, scaleX, scaleY),
+        };
+    }
+
+    const lineAnnotation = annotation as Extract<
+        StickerAnnotation,
+        { type: "line" | "polyline" | "arrow" | "brush" | "highlighter" }
+    >;
+    return {
+        ...lineAnnotation,
+        points: lineAnnotation.points.map((point) => ({
+            x: point.x * scaleX + offsetX,
+            y: point.y * scaleY + offsetY,
+        })),
+        style: scaleAnnotationStyle(lineAnnotation.style, scaleX, scaleY),
+    };
 };
 
 // Minimum sides for a polygon; fewer would render a degenerate shape.
