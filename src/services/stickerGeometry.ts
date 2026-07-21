@@ -637,7 +637,7 @@ const rotateAnnotationAroundPivot = (
     };
 };
 
-const scaleAnnotationAroundPivot = (
+export const scaleAnnotationAroundPivot = (
     annotation: StickerAnnotation,
     pivot: StickerPoint,
     scale: AnnotationScale,
@@ -717,17 +717,17 @@ const scaleAnnotationAroundPivot = (
             };
         }
 
-        const fontSize = annotation.fontSize === undefined ? undefined : nextFontSize;
+        const fontSize = nextFontSize;
         const nextWidth = measureTextWidth(
             annotation.text,
-            fontSize ?? DEFAULT_TEXT_FONT_SIZE,
+            fontSize,
             "500",
             annotation.fontFamily,
         );
         return {
             ...annotation,
             x: nextCenter.x - nextWidth / 2,
-            y: nextCenter.y - (fontSize ?? DEFAULT_TEXT_FONT_SIZE) / 2,
+            y: nextCenter.y - fontSize / 2,
             fontSize,
             style: scaleAnnotationStyle(annotation.style, scale),
         };

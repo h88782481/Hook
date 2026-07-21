@@ -72,6 +72,7 @@ import {
     resizeBoxAnnotation,
     rotateAnnotationsAroundGroupCenter,
     rotateAnnotationsAroundOwnCenters,
+    scaleAnnotationAroundPivot,
     scaleAnnotationsAroundGroupCenter,
     scaleAnnotationsAroundOwnCenters,
     type LineEndpointHandle,
@@ -324,7 +325,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
               };
         const transformed = interaction.pivotMode === "own"
             ? scaleAnnotationsAroundOwnCenters(interaction.baseAnnotations, scale)
-            : scaleAnnotationsAroundGroupCenter(interaction.baseAnnotations, scale);
+            : interaction.baseAnnotations.map((annotation) =>
+                  scaleAnnotationAroundPivot(annotation, interaction.pivot, scale),
+              );
         const replacements = new Map(transformed.map((annotation) => [annotation.id, annotation]));
         return annotationState().elements.map((annotation) => replacements.get(annotation.id) ?? annotation);
     };
@@ -538,6 +541,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             const existing = getPendingTextExistingAnnotation(draft);
             if (!existing || existing.text === text) {
                 uiActions.setSelectedStickerAnnotation(draft.annotationId);
+                uiActions.setStickerEditMode("select");
                 return;
             }
             rememberCurrentState();
@@ -545,6 +549,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 annotationState: updateTextAnnotationById(annotationState(), draft.annotationId, text),
             }, { propagateEdit: true });
             uiActions.setSelectedStickerAnnotation(draft.annotationId);
+            uiActions.setStickerEditMode("select");
             return;
         }
 
@@ -565,6 +570,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         };
         await commitAnnotation(annotation);
         uiActions.setSelectedStickerAnnotation(annotation.id);
+        uiActions.setStickerEditMode("select");
     };
 
     const handlePendingTextInputKeyDown = (event: KeyboardEvent & { currentTarget: HTMLInputElement }) => {
@@ -868,6 +874,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             axis?: MoveAxisMode;
             pivotMode?: TransformPivotMode;
             selectionIds?: string[];
+            pivot?: StickerPoint;
         },
     ) => {
         if (annotations.length < 1) return false;
@@ -888,7 +895,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             baseAnnotations: targetAnnotations.map((annotation) => cloneStickerAnnotation(annotation)),
             pivotMode: options?.pivotMode ?? (targetAnnotations.length > 1 && event.shiftKey ? "own" : "group"),
             axis: options?.axis ?? "xy",
-            pivot: getAnnotationGroupCenter(targetAnnotations),
+            pivot: options?.pivot ?? getAnnotationGroupCenter(targetAnnotations),
         });
         return true;
     };
@@ -1601,6 +1608,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             return;
         }
 
+        const boundsHandleHit = findSelectedBoundsHandleAtPoint(point);
+        if (boundsHandleHit && beginBoundsHandleInteraction(event, boundsHandleHit)) {
+            return;
+        }
+
         switch (stickerToolSettings.domain) {
             case "existing":
                 await handleExistingPointerDown(event, point, hit, currentSelectionIds);
@@ -1799,6 +1811,57 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         { handle: "sw" as const, x: bounds.x, y: bounds.y + bounds.h },
         { handle: "se" as const, x: bounds.x + bounds.w, y: bounds.y + bounds.h },
     ];
+    const OPPOSITE_BOUNDS_HANDLE: Record<ResizeHandle, ResizeHandle> = {
+        nw: "se",
+        ne: "sw",
+        sw: "ne",
+        se: "nw",
+    };
+    const HANDLE_HIT_RADIUS_PX = 10;
+    const findSelectedBoundsHandleAtPoint = (point: StickerPoint) => {
+        if (stickerToolSettings.transformMode !== "select") return null;
+        const selected = selectedAnnotations();
+        if (selected.length !== 1) return null;
+        const annotation = selected[0];
+        if (annotation.type === "line" || annotation.type === "polyline" || annotation.type === "arrow"
+            || annotation.type === "brush" || annotation.type === "highlighter") {
+            return null;
+        }
+        if ("rotation" in annotation && annotation.rotation) return null;
+        const bounds = getAnnotationBounds(annotation);
+        if (!bounds || bounds.w <= 0 || bounds.h <= 0) return null;
+        for (const handle of getBoundsHandlePoints(bounds)) {
+            if (Math.hypot(point.x - handle.x, point.y - handle.y) <= HANDLE_HIT_RADIUS_PX) {
+                return { annotation, handle: handle.handle, bounds };
+            }
+        }
+        return null;
+    };
+    const beginBoundsHandleInteraction = (
+        event: PointerEvent,
+        hit: NonNullable<ReturnType<typeof findSelectedBoundsHandleAtPoint>>,
+    ) => {
+        event.stopPropagation();
+        event.preventDefault();
+        const { annotation, handle, bounds } = hit;
+        uiActions.setSelectedStickerAnnotation(annotation.id);
+        if ("w" in annotation && "h" in annotation) {
+            captureHostPointer(event.pointerId);
+            setResizeAnnotation({
+                annotationId: annotation.id,
+                handle,
+                current: toLocalPoint(event),
+                original: annotation,
+            });
+            return true;
+        }
+        const opposite = OPPOSITE_BOUNDS_HANDLE[handle];
+        const pivotHandle = getBoundsHandlePoints(bounds).find((item) => item.handle === opposite);
+        return beginDirectTransform(event, [annotation], "scale", {
+            axis: "xy",
+            pivot: pivotHandle ? { x: pivotHandle.x, y: pivotHandle.y } : undefined,
+        });
+    };
     const renderSelectionBoundsRect = (bounds: { x: number; y: number; w: number; h: number }) => (
         <rect
             x={bounds.x - 4}
@@ -2340,7 +2403,16 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                                         onPointerDown={(event) => {
                                                             event.stopPropagation();
                                                             event.preventDefault();
-                                                            beginDirectTransform(event, [value], "scale", { axis: "xy" });
+                                                            const opposite = OPPOSITE_BOUNDS_HANDLE[handle.handle];
+                                                            const pivotHandle = getBoundsHandlePoints(bounds).find(
+                                                                (item) => item.handle === opposite,
+                                                            );
+                                                            beginDirectTransform(event, [value], "scale", {
+                                                                axis: "xy",
+                                                                pivot: pivotHandle
+                                                                    ? { x: pivotHandle.x, y: pivotHandle.y }
+                                                                    : undefined,
+                                                            });
                                                         }}
                                                     />
                                                 )}

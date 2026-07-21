@@ -462,8 +462,11 @@ export function useSelection() {
         await api.debugLogEvent("auto-long-capture-start", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
         await api.setMouseMonitorActive(false);
         await api.setOverlayClickThrough(true);
+        // Avoid WDA_EXCLUDEFROMCAPTURE on the fullscreen overlay: it makes the
+        // OS cursor flicker while the pointer moves over the capture region.
+        // Visual chrome over the region is hidden instead (see CanvasSelection).
         try {
-            await api.setOverlayCaptureExclusion(true);
+            await api.setOverlayCaptureExclusion(false);
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-overlay-exclusion-failed",

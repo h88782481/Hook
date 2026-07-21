@@ -51,26 +51,17 @@ export const CanvasSelection: Component = () => {
 
       <Show when={longCaptureSession()}>
         {(session) => (
-            <div
-                class="absolute z-[110] pointer-events-none"
-                style={{
-                    left: `${session().rect.x}px`,
-                    top: `${session().rect.y}px`,
-                    width: `${session().rect.w}px`,
-                    height: `${session().rect.h}px`,
-                    outline: "2px solid rgba(217, 255, 56, 0.95)",
-                    "outline-offset": "0px",
-                }}
-            >
+            <Show when={session().status === "capturing"}>
                 <div
-                    class="hook-capture-chip absolute left-0 px-2 py-1 text-[11px] font-semibold"
+                    class="hook-capture-chip absolute z-[110] pointer-events-none px-2 py-1 text-[11px] font-semibold"
                     style={{
-                        top: session().rect.y >= 32 ? "-30px" : `${session().rect.h + 8}px`,
+                        left: `${session().rect.x}px`,
+                        top: session().rect.y >= 32 ? `${session().rect.y - 30}px` : `${session().rect.y + session().rect.h + 8}px`,
                     }}
                 >
                     长截图区域 {Math.round(session().rect.w)} x {Math.round(session().rect.h)}
                 </div>
-            </div>
+            </Show>
         )}
       </Show>
 

@@ -1262,12 +1262,12 @@ export default function App() {
         <Show when={longCaptureSession()}>
             {(session) => (
                 <div class="hook-terminal-shell hook-terminal-shell--strong hook-capture-status-shell absolute right-5 top-5 z-[120] px-4 py-3 text-xs pointer-events-none">
-                    <div class="hook-capture-status-title mb-1 text-sm font-semibold">??????</div>
-                    <div>??? {session().frameCount} ?</div>
-                    <div>??? {session().duplicateCount ?? 0} ?????</div>
-                    <div>?? {session().axis ?? "????"}</div>
-                    <div class="hook-capture-status-copy mt-1">{session().lastMessage ?? "????????Hook ????????????????"}</div>
-                    <div class="hook-capture-status-shortcut mt-2">Enter/Ctrl+3 ???Esc ??</div>
+                    <div class="hook-capture-status-title mb-1 text-sm font-semibold">长截图录制中</div>
+                    <div>已保留 {session().frameCount} 帧</div>
+                    <div>已忽略 {session().duplicateCount ?? 0} 张重复画面</div>
+                    <div>方向 {session().axis ?? "自动检测"}</div>
+                    <div class="hook-capture-status-copy mt-1">{session().lastMessage ?? "请慢速向下滚动，Hook 会录制非重复画面，完成后统一拼接"}</div>
+                    <div class="hook-capture-status-shortcut mt-2">Enter/Ctrl+3 完成，Esc 取消</div>
                 </div>
             )}
         </Show>
