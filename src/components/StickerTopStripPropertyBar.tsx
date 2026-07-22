@@ -19,7 +19,7 @@ import {
     scaleStickerFrame,
     toggleStickerBorder,
 } from "../services/stickerEditing";
-import { normalizePaletteColor } from "../utils/colorUtils";
+import { isTransparentColor, normalizePaletteColor } from "../utils/colorUtils";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import { flipRasterizedAnnotationLayer } from "../services/stickerBitmapLayers";
 import { flipStickerEditDataForFrame } from "../services/stickerEditTransforms";
@@ -881,9 +881,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     }> = (fieldProps) => {
         let buttonRef: HTMLButtonElement | undefined;
         const current = createMemo(() => stickerToolSettings[fieldProps.slot]);
-        const isTransparent = createMemo(
-            () => current().trim().toLowerCase() === "transparent" || current().trim().toLowerCase() === "#00000000",
-        );
+        const isTransparent = createMemo(() => isTransparentColor(current()));
 
         return (
             <button
@@ -922,11 +920,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         onOpen: (button: HTMLButtonElement) => void;
     }> = (fieldProps) => {
         let buttonRef: HTMLButtonElement | undefined;
-        const isTransparent = createMemo(
-            () =>
-                fieldProps.value.trim().toLowerCase() === "transparent"
-                || fieldProps.value.trim().toLowerCase() === "#00000000",
-        );
+        const isTransparent = createMemo(() => isTransparentColor(fieldProps.value));
 
         return (
             <button

@@ -70,8 +70,7 @@ export const StickerContextMenuLayer = () => {
     };
 
     const persistLayoutAndSession = () => {
-        void syncService.updateBackendRects();
-        void syncService.scheduleSessionSync();
+        void syncService.notifyLayoutChange({ persist: true });
     };
 
     const handleCloseSticker = () => {

@@ -120,8 +120,7 @@ export function useSelection() {
         if (stickerToolbarDefaultVisible()) {
             uiActions.showStickerToolbar(newSticker.id);
         }
-        await syncService.updateBackendRects();
-        void syncService.scheduleSessionSync();
+        await syncService.notifyLayoutChange({ persist: true });
         await api.debugLogEvent("selection-capture-success", `cssW=${cssW} cssH=${cssH}`);
 
         // Record the capture in the screenshot history (downscaled thumbnail).

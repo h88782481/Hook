@@ -181,8 +181,7 @@ export function useDraggable() {
             }
 
             if (changed) {
-                 await syncService.updateBackendRects();
-                 await syncService.scheduleSessionSync();
+                 await syncService.notifyLayoutChange({ persist: true });
             }
         }
 

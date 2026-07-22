@@ -27,13 +27,13 @@ import {
 import { buildStrokePath, getStrokeDashArray } from "./stickerStrokePath";
 import { DEFAULT_TEXT_FONT_SIZE } from "./stickerTextDefaults";
 
-export type AnnotationRotation = {
+type AnnotationRotation = {
     cx: number;
     cy: number;
     degrees: number;
 };
 
-export type ShapePaintStyle = {
+type ShapePaintStyle = {
     stroke: string;
     strokeWidth: number;
     fill: string | undefined;
@@ -43,18 +43,18 @@ export type ShapePaintStyle = {
     drawFill: boolean;
 };
 
-export type ShapePaintGeometry =
+type ShapePaintGeometry =
     | { kind: "ellipse"; cx: number; cy: number; rx: number; ry: number }
     | { kind: "rect"; x: number; y: number; w: number; h: number; rx: number; ry: number }
     | { kind: "polygon"; points: StickerPoint[]; cornerRadius: number };
 
-export type ShapePaintSpec = {
+type ShapePaintSpec = {
     rotation: AnnotationRotation | null;
     style: ShapePaintStyle;
     geometry: ShapePaintGeometry;
 };
 
-export type LinePaintSpec = {
+type LinePaintSpec = {
     shaftPoints: StickerPoint[];
     pathD: string;
     arrowHead: StickerPoint[] | null;
@@ -63,13 +63,13 @@ export type LinePaintSpec = {
     dashCap: "butt" | "round";
 };
 
-export type TextPaintDefaults = {
+type TextPaintDefaults = {
     textFontSize?: number;
     textFontFamily?: string;
     serialFontFamily?: string;
 };
 
-export type TextPaintLayout = {
+type TextPaintLayout = {
     isSerial: boolean;
     text: string;
     fontSize: number;
@@ -119,7 +119,7 @@ export const applyCanvasRotation = (
     context.translate(-rotation.cx, -rotation.cy);
 };
 
-export const buildArrowHeadPathD = (points: StickerPoint[]) =>
+const buildArrowHeadPathD = (points: StickerPoint[]) =>
     points.length === 3
         ? `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y} L ${points[2].x} ${points[2].y} Z`
         : "";

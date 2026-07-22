@@ -471,7 +471,7 @@ fn find_fixed_chrome_candidate(
     best
 }
 
-pub(crate) fn is_near_duplicate_image(pub(crate) fn is_near_duplicate_image(previous: &RgbImage, current: &RgbImage) -> bool {
+pub(crate) fn is_near_duplicate_image(previous: &RgbImage, current: &RgbImage) -> bool {
     if previous.width() != current.width() || previous.height() != current.height() {
         return false;
     }

@@ -118,6 +118,14 @@ export const syncService = {
         }
     },
 
+    /** Push hit-map rects; optionally debounce-persist the session. */
+    notifyLayoutChange: async (options?: { persist?: boolean }) => {
+        await syncService.updateBackendRects();
+        if (options?.persist) {
+            scheduler.schedule();
+        }
+    },
+
     restoreSession: async (bootProfile?: BootProfile) => {
         try {
             const sessionData = await api.loadSession();
@@ -140,7 +148,7 @@ export const syncService = {
                 stickerStore.setRecycleBin(sessionData.recycleBin as any);
                 stickerStore.setReferenceLibrary(sessionData.referenceLibrary as any);
 
-                syncService.updateBackendRects();
+                await syncService.updateBackendRects();
                 if (bootProfile?.initialUiMode === "overlay" && loadedStickers.length > 0) {
                     await api.setMouseMonitorActive(true);
                     await syncService.updateBackendRects();

@@ -545,8 +545,7 @@ export default function App() {
           selectionActions.clear();
           uiActions.hideStickerToolbar();
 
-          void syncService.updateBackendRects();
-          void syncService.scheduleSessionSync();
+          void syncService.notifyLayoutChange({ persist: true });
       }
   };
 
@@ -1254,8 +1253,7 @@ export default function App() {
                 if (selectedStickerId() === id) {
                     uiActions.hideStickerToolbar();
                 }
-                syncService.updateBackendRects();
-                syncService.scheduleSessionSync();
+                void syncService.notifyLayoutChange({ persist: true });
             }}
 
             onLinkStart={startLinking}

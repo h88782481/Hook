@@ -473,7 +473,7 @@ const normalizeRotation = (rotation: number | undefined, deltaDegrees = 0) => {
     return next;
 };
 
-const measureTextWidth = (
+export const measureTextWidth = (
     text: string,
     fontSize: number,
     fontWeight: "500" | "700" = "500",

@@ -730,8 +730,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         uiActions.clearStickerUiState(props.stickerId);
         selectionActions.clear();
         uiActions.hideStickerToolbar();
-        void syncService.updateBackendRects();
-        void syncService.scheduleSessionSync();
+        void syncService.notifyLayoutChange({ persist: true });
     };
 
     createEffect(() => {

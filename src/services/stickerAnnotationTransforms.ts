@@ -1,12 +1,11 @@
 import type {
     ContentEraserStroke,
     StickerAnnotation,
-    StickerTextAnnotation,
 } from "../types/stickerEditing";
 import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
-import { scaleAnnotation, scaleStrokeWidth } from "./stickerGeometry";
-import { DEFAULT_TEXT_FONT_SIZE, DEFAULT_TEXT_WIDTH_FACTOR } from "./stickerTextDefaults";
+import { measureTextWidth, scaleAnnotation, scaleStrokeWidth } from "./stickerGeometry";
+import { DEFAULT_TEXT_FONT_SIZE } from "./stickerTextDefaults";
 
 export type StickerFrame = Pick<Sticker, "w" | "h">;
 export type FlipAxis = "x" | "y";
@@ -34,22 +33,6 @@ const mirrorPoint = (
     x: axis === "x" ? frame.w - point.x : point.x,
     y: axis === "y" ? frame.h - point.y : point.y,
 });
-
-const measureAnnotationTextWidth = (annotation: StickerTextAnnotation, fontSize: number) => {
-    if (typeof document !== "undefined" && typeof document.createElement === "function") {
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        if (context) {
-            context.font = `${annotation.type === "serial" ? "700" : "500"} ${fontSize}px "Segoe UI", sans-serif`;
-            const width = context.measureText(annotation.text).width;
-            if (Number.isFinite(width) && width > 0) {
-                return width;
-            }
-        }
-    }
-
-    return Math.max(fontSize, annotation.text.length * fontSize * DEFAULT_TEXT_WIDTH_FACTOR);
-};
 
 /** Mirror an annotation across the sticker frame on the given axis. */
 export const flipAnnotation = (
@@ -96,7 +79,12 @@ export const flipAnnotation = (
             };
         }
 
-        const textWidth = measureAnnotationTextWidth(annotation, fontSize);
+        const textWidth = measureTextWidth(
+            annotation.text,
+            fontSize,
+            "500",
+            annotation.fontFamily ?? "Segoe UI",
+        );
         return {
             ...annotation,
             x: axis === "x" ? frame.w - annotation.x - textWidth : annotation.x,
