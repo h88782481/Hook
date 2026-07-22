@@ -106,7 +106,7 @@ export function useLinking(options: UseLinkingOptions = {}) {
 
              stickerStore.actions.addLink(newLink);
              options.onLinkCreated?.(sourceId, targetStickerId, targetPortId);
-             syncService.scheduleSessionSync();
+             syncService.notify({ persist: true });
         }
         setLinkingState({ isLinking: false, sourceStickerId: null, sourcePortId: null, startX: 0, startY: 0 });
     };

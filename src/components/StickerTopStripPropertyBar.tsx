@@ -101,14 +101,6 @@ const FillColorIcon: Component<MiniIconProps> = (props) => (
     </svg>
 );
 
-const ConstraintIcon: Component<MiniIconProps> = (props) => (
-    <svg class={props.class} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="10" height="10" rx="1.4" />
-        <path d="M5.5 8h5" />
-        <path d="M8 5.5v5" />
-    </svg>
-);
-
 const SquareConstraintGlyphIcon: Component<MiniIconProps> = (props) => (
     <svg class={props.class} viewBox="0 0 16 16" fill="none">
         <text
@@ -309,14 +301,6 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             props.tool === "shape-triangle" ||
             props.tool === "shape-polygon",
     );
-    const supportsFillColor = createMemo(
-        () =>
-            props.tool === "shape-rect" ||
-            props.tool === "shape-round-rect" ||
-            props.tool === "shape-ellipse" ||
-            props.tool === "shape-triangle" ||
-            props.tool === "shape-polygon",
-    );
     const shapeStrokeColorSlot = createMemo<ShapeColorSettingKey>(() => {
         switch (props.tool) {
             case "shape-ellipse":
@@ -442,7 +426,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 flippedY: axis === "y" ? !current.flippedY : current.flippedY,
             },
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const resetCrop = () => {
@@ -461,14 +445,14 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 cropRect: undefined,
             },
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const updateStickerOpacityValue = (next: number) => {
         if (!unit()) return;
         if (!pushCurrentStickerHistory()) return;
         stickerStore.actions.setStickerOpacity(props.stickerId, next);
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const scaleStickerCanvas = (factor: number) => {
@@ -481,7 +465,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             w: currentSticker.w,
             h: currentSticker.h,
         }, factor));
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const updateStickerFrameCornerRadiusValue = (next: number) => {
@@ -496,7 +480,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 cornerRadius: clamped,
             },
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const commitCropOpacityDraft = () => {
@@ -528,7 +512,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         stickerStore.actions.updateStickerData(props.stickerId, {
             imageEditState: toggleStickerBorder(current, stickerColorState.activeColor),
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const applySelectedAnnotationFontFamilyChange = (annotationType: "text" | "serial", fontFamily: string) => {
@@ -544,7 +528,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         stickerStore.actions.updateStickerData(props.stickerId, {
             annotationState: updateTextAnnotationFontFamilyById(currentState, selectedAnnotation.id, trimmed),
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const updateSelectedTextAnnotationStyle = (updater: (annotation: StickerTextAnnotation) => StickerTextAnnotation) => {
@@ -564,7 +548,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 ),
             },
         });
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const patchSelectedTextAnnotationFontSize = (next: number) => {
@@ -776,7 +760,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             height: bounds.height,
             name: "STICKER_TOP_STRIP_MENU",
         });
-        void syncService.updateBackendRects();
+        void syncService.notify({ layout: true });
         return true;
     };
 
@@ -816,7 +800,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             cancelDropdownRectSync();
             window.removeEventListener("resize", handleResize);
             removeRect(dropdownRectId);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         });
     });
 

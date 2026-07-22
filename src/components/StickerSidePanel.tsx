@@ -21,7 +21,7 @@ export const StickerSidePanel: Component<StickerSidePanelProps> = (props) => {
               acceptUpstream,
           },
       });
-      void syncService.scheduleSessionSync();
+      void syncService.notify({ persist: true });
   };
 
   return (

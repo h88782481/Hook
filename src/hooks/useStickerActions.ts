@@ -63,7 +63,7 @@ export function useStickerActions() {
                 stickerStore.actions.updateStickerData(id, { minified: false });
             }
             setTimeout(() => {
-                void syncService.notifyLayoutChange({ persist: true });
+                void syncService.notify({ layout: true, persist: true });
             }, 100);
             return;
         }
@@ -104,7 +104,7 @@ export function useStickerActions() {
         );
 
         setTimeout(() => {
-            void syncService.notifyLayoutChange({ persist: true });
+            void syncService.notify({ layout: true, persist: true });
         }, 100);
     };
 

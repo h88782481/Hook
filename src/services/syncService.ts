@@ -86,42 +86,54 @@ const executeSyncCycle = async () => {
 
 const scheduler = new SyncScheduler(executeSyncCycle);
 
-export const syncService = {
-    updateBackendRects: async () => {
-        const dpr = window.devicePixelRatio || 1;
+const pushPinRects = async () => {
+    const dpr = window.devicePixelRatio || 1;
 
-        const rects = stickerStore.stickers.map((u) => ({
-            id: u.id,
-            x: Math.round(u.x * dpr),
-            y: Math.round(u.y * dpr),
-            width: Math.round(u.w * dpr),
-            height: Math.round(u.h * dpr),
-            name: u.data.minified ? "MINI" : "FULL",
-        }));
+    const rects = stickerStore.stickers.map((u) => ({
+        id: u.id,
+        x: Math.round(u.x * dpr),
+        y: Math.round(u.y * dpr),
+        width: Math.round(u.w * dpr),
+        height: Math.round(u.h * dpr),
+        name: u.data.minified ? "MINI" : "FULL",
+    }));
 
-        const overlays = extraRects();
-        overlays.forEach((r) => {
-            rects.push({
-                id: r.name,
-                x: Math.round(r.x * dpr),
-                y: Math.round(r.y * dpr),
-                width: Math.round(r.width * dpr),
-                height: Math.round(r.height * dpr),
-                name: r.name,
-            });
+    const overlays = extraRects();
+    overlays.forEach((r) => {
+        rects.push({
+            id: r.name,
+            x: Math.round(r.x * dpr),
+            y: Math.round(r.y * dpr),
+            width: Math.round(r.width * dpr),
+            height: Math.round(r.height * dpr),
+            name: r.name,
         });
+    });
 
-        try {
-            await api.updatePinRects(rects);
-        } catch (e) {
-            console.error("Failed to update backend rects:", e);
+    try {
+        await api.updatePinRects(rects);
+    } catch (e) {
+        console.error("Failed to update backend rects:", e);
+    }
+};
+
+export type SyncNotifyOptions = {
+    /** Push pin hit-map rects to the backend mouse monitor. */
+    layout?: boolean;
+    /** Debounce-persist the session to disk. */
+    persist?: boolean;
+};
+
+export const syncService = {
+    /**
+     * Single sync entry: layout (pin rects) and/or persist (session save).
+     * Prefer this over calling layout/persist plumbing separately.
+     */
+    notify: async (options: SyncNotifyOptions = {}) => {
+        if (options.layout) {
+            await pushPinRects();
         }
-    },
-
-    /** Push hit-map rects; optionally debounce-persist the session. */
-    notifyLayoutChange: async (options?: { persist?: boolean }) => {
-        await syncService.updateBackendRects();
-        if (options?.persist) {
+        if (options.persist) {
             scheduler.schedule();
         }
     },
@@ -148,18 +160,14 @@ export const syncService = {
                 stickerStore.setRecycleBin(sessionData.recycleBin as any);
                 stickerStore.setReferenceLibrary(sessionData.referenceLibrary as any);
 
-                await syncService.updateBackendRects();
+                await pushPinRects();
                 if (bootProfile?.initialUiMode === "overlay" && loadedStickers.length > 0) {
                     await api.setMouseMonitorActive(true);
-                    await syncService.updateBackendRects();
+                    await pushPinRects();
                 }
             }
         } catch (e) {
             console.error("Session Load Failed:", e);
         }
-    },
-
-    scheduleSessionSync: async () => {
-        scheduler.schedule();
     },
 };

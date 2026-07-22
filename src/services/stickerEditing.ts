@@ -124,7 +124,6 @@ const createDefaultStickerToolProfiles = (): StickerCreateToolProfiles => ({
 
 export const createDefaultStickerToolSettings = (): StickerToolSettings => ({
     domain: "existing",
-    mode: "select",
     transformMode: "select",
     activeCanvasTool: "idle",
     activeTool: "shape-rect",
@@ -184,6 +183,13 @@ const clampPointToStickerBounds = (
     y: clamp(point.y, 0, bounds.h),
 });
 
+export const normalizeDragRect = (start: StickerPoint, end: StickerPoint) => ({
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    w: Math.abs(end.x - start.x),
+    h: Math.abs(end.y - start.y),
+});
+
 export const clampCropRectToStickerBounds = (
     start: StickerPoint,
     current: StickerPoint,
@@ -191,12 +197,7 @@ export const clampCropRectToStickerBounds = (
 ) => {
     const safeStart = clampPointToStickerBounds(start, bounds);
     const safeCurrent = clampPointToStickerBounds(current, bounds);
-    return {
-        x: Math.min(safeStart.x, safeCurrent.x),
-        y: Math.min(safeStart.y, safeCurrent.y),
-        w: Math.abs(safeCurrent.x - safeStart.x),
-        h: Math.abs(safeCurrent.y - safeStart.y),
-    };
+    return normalizeDragRect(safeStart, safeCurrent);
 };
 
 export const clampShapeRectToStickerBounds = (
@@ -258,6 +259,37 @@ export const clampShapeRectToStickerBounds = (
         w: Math.abs(constrainedCurrent.x - safeStart.x),
         h: Math.abs(constrainedCurrent.y - safeStart.y),
     };
+};
+
+export type RectFromDragOptions = {
+    /** When set, clamp the drag into sticker bounds. */
+    bounds?: { w: number; h: number };
+    /** Regular shape draft (supports aspect lock + snap). Crop uses simpler clamp. */
+    kind?: "free" | "crop" | "shape";
+    lockAspect?: boolean;
+    snapStep?: number;
+};
+
+/** Single entry for drag-rect drafts used by annotation / crop creation. */
+export const rectFromDrag = (
+    start: StickerPoint,
+    end: StickerPoint,
+    options?: RectFromDragOptions,
+) => {
+    const kind = options?.kind ?? (options?.bounds ? "crop" : "free");
+    if (kind === "free" || !options?.bounds) {
+        return normalizeDragRect(start, end);
+    }
+    if (kind === "shape") {
+        return clampShapeRectToStickerBounds(
+            start,
+            end,
+            options.bounds,
+            options.lockAspect ?? false,
+            options.snapStep,
+        );
+    }
+    return clampCropRectToStickerBounds(start, end, options.bounds);
 };
 
 export const constrainLinearToolEndpoint = (

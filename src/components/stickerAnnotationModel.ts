@@ -186,10 +186,3 @@ export const isStraightLineMode = (mode: DraftLine["mode"]) =>
 
 export const isMeasuredLineMode = (mode: DraftLine["mode"]) =>
     mode === "line" || mode === "arrow";
-
-export const normalizeRect = (start: StickerPoint, end: StickerPoint) => ({
-    x: Math.min(start.x, end.x),
-    y: Math.min(start.y, end.y),
-    w: Math.abs(end.x - start.x),
-    h: Math.abs(end.y - start.y),
-});

@@ -40,7 +40,7 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
         stickerResizeSyncTimer = window.setTimeout(() => {
             stickerResizeSyncTimer = null;
             stickerStore.actions.propagateStickerEditsFrom(stickerId);
-            void syncService.scheduleSessionSync();
+            void syncService.notify({ persist: true });
         }, STICKER_RESIZE_SYNC_DEBOUNCE_MS);
     };
 
@@ -51,7 +51,7 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
 
         stickerAppearanceSyncTimer = window.setTimeout(() => {
             stickerAppearanceSyncTimer = null;
-            void syncService.scheduleSessionSync();
+            void syncService.notify({ persist: true });
         }, STICKER_APPEARANCE_SYNC_DEBOUNCE_MS);
     };
 

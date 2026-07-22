@@ -181,7 +181,7 @@ export function useDraggable() {
             }
 
             if (changed) {
-                 await syncService.notifyLayoutChange({ persist: true });
+                 await syncService.notify({ layout: true, persist: true });
             }
         }
 

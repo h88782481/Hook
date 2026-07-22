@@ -1,9 +1,13 @@
 import type {
+    StickerCanvasTool,
     StickerCreateTool,
     StickerCreateToolProfiles,
+    StickerEditingDomain,
+    StickerToolMode,
     StickerToolProfileSettingKey,
     StickerToolProfileSettings,
     StickerToolSettings,
+    StickerTransformMode,
 } from "../types/stickerEditing";
 import { createDefaultStickerToolSettings } from "./stickerEditing";
 
@@ -75,17 +79,34 @@ const TOOL_PROFILE_KEYS_BY_TOOL: Record<StickerCreateTool, readonly StickerToolP
     "color-picker": [],
 };
 
-const isEditingDomain = (value: unknown): value is StickerToolSettings["domain"] =>
-    typeof value === "string" && STICKER_EDITING_DOMAINS.includes(value as StickerToolSettings["domain"]);
+const isEditingDomain = (value: unknown): value is StickerEditingDomain =>
+    typeof value === "string" && STICKER_EDITING_DOMAINS.includes(value as StickerEditingDomain);
 
-const isTransformMode = (value: unknown): value is StickerToolSettings["transformMode"] =>
-    typeof value === "string" && STICKER_TRANSFORM_MODES.includes(value as StickerToolSettings["transformMode"]);
+const isTransformMode = (value: unknown): value is StickerTransformMode =>
+    typeof value === "string" && STICKER_TRANSFORM_MODES.includes(value as StickerTransformMode);
 
-const isCanvasTool = (value: unknown): value is StickerToolSettings["activeCanvasTool"] =>
-    typeof value === "string" && STICKER_CANVAS_TOOLS.includes(value as StickerToolSettings["activeCanvasTool"]);
+const isCanvasTool = (value: unknown): value is StickerCanvasTool =>
+    typeof value === "string" && STICKER_CANVAS_TOOLS.includes(value as StickerCanvasTool);
 
-const isCreateTool = (value: unknown): value is StickerToolSettings["activeTool"] =>
-    typeof value === "string" && STICKER_CREATE_TOOLS.includes(value as StickerToolSettings["activeTool"]);
+const isCreateTool = (value: unknown): value is StickerCreateTool =>
+    typeof value === "string" && STICKER_CREATE_TOOLS.includes(value as StickerCreateTool);
+
+/**
+ * Expand a tool-mode write into domain + the active split field.
+ * Non-active memory fields are left unset so callers can merge onto previous settings.
+ */
+export const resolveToolCursorFromMode = (
+    mode: StickerToolMode,
+): Pick<StickerToolSettings, "domain"> &
+    Partial<Pick<StickerToolSettings, "transformMode" | "activeCanvasTool" | "activeTool">> => {
+    if (isTransformMode(mode)) {
+        return { domain: "existing", transformMode: mode };
+    }
+    if (isCanvasTool(mode)) {
+        return { domain: "sticker", activeCanvasTool: mode };
+    }
+    return { domain: "create", activeTool: mode };
+};
 
 const isToolProfileSettingKey = (value: string): value is StickerToolProfileSettingKey =>
     (TOOL_PROFILE_SETTING_KEYS as readonly string[]).includes(value);
@@ -170,56 +191,35 @@ const applyActiveToolProfile = (settings: StickerToolSettings): StickerToolSetti
     return next;
 };
 
-const normalizeModeFields = (
+const normalizeCursorFields = (
     value: Partial<StickerToolSettings> | null | undefined,
     defaults: StickerToolSettings,
-) => {
-    const transformMode = isTransformMode(value?.transformMode)
-        ? value.transformMode
-        : defaults.transformMode;
-
-    const activeCanvasTool = isCanvasTool(value?.activeCanvasTool)
+) => ({
+    domain: isEditingDomain(value?.domain) ? value.domain : defaults.domain,
+    transformMode: isTransformMode(value?.transformMode) ? value.transformMode : defaults.transformMode,
+    activeCanvasTool: isCanvasTool(value?.activeCanvasTool)
         ? value.activeCanvasTool
-        : defaults.activeCanvasTool;
-
-    const activeTool = isCreateTool(value?.activeTool)
-        ? value.activeTool
-        : defaults.activeTool;
-
-    const domain = isEditingDomain(value?.domain)
-        ? value.domain
-        : defaults.domain;
-
-    const mode =
-        domain === "existing"
-            ? transformMode
-            : domain === "sticker"
-              ? activeCanvasTool
-              : activeTool;
-
-    return {
-        domain,
-        mode,
-        transformMode,
-        activeCanvasTool,
-        activeTool,
-    };
-};
+        : defaults.activeCanvasTool,
+    activeTool: isCreateTool(value?.activeTool) ? value.activeTool : defaults.activeTool,
+});
 
 export const normalizeStickerToolSettings = (
     value: Partial<StickerToolSettings> | null | undefined,
 ): StickerToolSettings => {
     const defaults = createDefaultStickerToolSettings();
-    const normalizedModeFields = normalizeModeFields(value, defaults);
+    const { mode: _droppedMode, ...sanitized } = (value ?? {}) as Partial<StickerToolSettings> & {
+        mode?: unknown;
+    };
+    const cursor = normalizeCursorFields(sanitized, defaults);
     const next: StickerToolSettings = {
         ...defaults,
-        ...value,
-        ...normalizedModeFields,
-        toolProfiles: normalizeToolProfiles(value?.toolProfiles, cloneDefaultToolProfiles()),
+        ...sanitized,
+        ...cursor,
+        toolProfiles: normalizeToolProfiles(sanitized.toolProfiles, cloneDefaultToolProfiles()),
         brushHighlighterEnabled:
-            value?.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
-        textFontFamily: normalizeFontFamily(value?.textFontFamily, defaults.textFontFamily),
-        serialFontFamily: normalizeFontFamily(value?.serialFontFamily, defaults.serialFontFamily),
+            sanitized.brushHighlighterEnabled ?? defaults.brushHighlighterEnabled,
+        textFontFamily: normalizeFontFamily(sanitized.textFontFamily, defaults.textFontFamily),
+        serialFontFamily: normalizeFontFamily(sanitized.serialFontFamily, defaults.serialFontFamily),
     };
 
     return applyActiveToolProfile(next);

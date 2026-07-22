@@ -79,7 +79,7 @@ export function useClipboard() {
                             },
                         });
                         uiActions.setSelectedStickerAnnotation(duplicated.createdAnnotationId);
-                        await syncService.scheduleSessionSync();
+                        await syncService.notify({ persist: true });
                         return;
                     }
                 }
@@ -264,7 +264,7 @@ export function useClipboard() {
 
         stickerStore.actions.addSticker(newSticker);
         selectionActions.set([newSticker.id]);
-        syncService.updateBackendRects();
+        syncService.notify({ layout: true });
 
         // Debug Logs
         logger.debug("Paste:", { isCascade, newX, newY, nextCascadeX: clip.nextCascadeX });
@@ -295,7 +295,7 @@ export function useClipboard() {
             },
         });
         stickerStore.actions.addSticker(newSticker);
-        syncService.updateBackendRects();
+        syncService.notify({ layout: true });
         return newSticker.id;
     };
 

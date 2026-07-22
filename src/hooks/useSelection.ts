@@ -85,7 +85,7 @@ export function useSelection() {
         await api.setOverlayClickThrough(true);
         if (stickerStore.stickers.length > 0) {
             await api.setMouseMonitorActive(true);
-            await syncService.updateBackendRects();
+            await syncService.notify({ layout: true });
         }
     };
 
@@ -120,7 +120,7 @@ export function useSelection() {
         if (stickerToolbarDefaultVisible()) {
             uiActions.showStickerToolbar(newSticker.id);
         }
-        await syncService.notifyLayoutChange({ persist: true });
+        await syncService.notify({ layout: true, persist: true });
         await api.debugLogEvent("selection-capture-success", `cssW=${cssW} cssH=${cssH}`);
 
         // Record the capture in the screenshot history (downscaled thumbnail).
@@ -694,7 +694,7 @@ export function useSelection() {
             await api.setOverlayClickThrough(true);
             if (stickerStore.stickers.length > 0) {
                 await api.setMouseMonitorActive(true);
-                await syncService.updateBackendRects();
+                await syncService.notify({ layout: true });
             }
             return;
         }
@@ -738,7 +738,7 @@ export function useSelection() {
                     await api.setOverlayClickThrough(true);
                     if (stickerStore.stickers.length > 0) {
                         await api.setMouseMonitorActive(true);
-                        await syncService.updateBackendRects();
+                        await syncService.notify({ layout: true });
                     }
                 }
             } finally {
@@ -746,7 +746,7 @@ export function useSelection() {
                     resetSelection();
                     await api.setOverlayClickThrough(true);
                     await api.setMouseMonitorActive(true);
-                    await syncService.updateBackendRects();
+                    await syncService.notify({ layout: true });
                 }
             }
         }, 50);

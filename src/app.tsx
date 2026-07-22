@@ -471,7 +471,7 @@ export default function App() {
               }
               if (stickerStore.stickers.length > 0) {
                   await api.setMouseMonitorActive(true);
-                  await syncService.updateBackendRects();
+                  await syncService.notify({ layout: true });
               }
           })();
       }, 0);
@@ -492,7 +492,7 @@ export default function App() {
       if (!snapshot) return;
       stickerStore.actions.restoreStickerEditSnapshot(id, snapshot);
       stickerStore.actions.propagateStickerEditsFrom(id);
-      await syncService.scheduleSessionSync();
+      await syncService.notify({ persist: true });
   };
 
   const deleteSelectedStickerOrAnnotation = () => {
@@ -507,7 +507,7 @@ export default function App() {
               });
               stickerStore.actions.propagateStickerEditsFrom(stickerId);
               uiActions.setSelectedStickerAnnotation(null);
-              void syncService.scheduleSessionSync();
+              void syncService.notify({ persist: true });
               return;
           }
       }
@@ -545,7 +545,7 @@ export default function App() {
           selectionActions.clear();
           uiActions.hideStickerToolbar();
 
-          void syncService.notifyLayoutChange({ persist: true });
+          void syncService.notify({ layout: true, persist: true });
       }
   };
 
@@ -564,7 +564,7 @@ export default function App() {
               if (stickerId) {
                   setActiveStickerEditTargetId(stickerId);
               }
-              void syncService.scheduleSessionSync();
+              void syncService.notify({ persist: true });
               return;
           }
 
@@ -579,7 +579,7 @@ export default function App() {
           if (stickerId) {
               setActiveStickerEditTargetId(stickerId);
           }
-          void syncService.scheduleSessionSync();
+          void syncService.notify({ persist: true });
       } catch (error) {
           console.error("Open image for edit failed", error);
           await api.debugLogEvent(
@@ -628,7 +628,7 @@ export default function App() {
                   await api.showOverlayHost(true);
                   if (stickerStore.stickers.length > 0) {
                       await api.setMouseMonitorActive(true);
-                      await syncService.updateBackendRects();
+                      await syncService.notify({ layout: true });
                   }
               }
           },
@@ -821,7 +821,7 @@ export default function App() {
                       await api.setOverlayClickThrough(true);
                       if (stickerStore.stickers.length > 0) {
                           await api.setMouseMonitorActive(true);
-                          await syncService.updateBackendRects();
+                          await syncService.notify({ layout: true });
                       }
                   })();
                   return;
@@ -1002,12 +1002,10 @@ export default function App() {
       });
   });
 
-  // NEW: Automatic Backend Sync when UI Layout Changes (Units or Panels)
-  // We use createEffect to track signal dependencies accessed in updateBackendRects
+  // Push pin rects when sticker geometry / overlay pin registry changes.
   createEffect(() => {
-      // Access signals to subscribe (implicit in updateBackendRects, but we make it explicit for clarity if needed)
-      // data: stickerStore.stickers, extraRects()
-      syncService.updateBackendRects();
+      // Track store/registry reads inside notify({ layout: true }) -> pushPinRects.
+      syncService.notify({ layout: true });
   });
 
   createEffect(() => {
@@ -1231,7 +1229,7 @@ export default function App() {
                     y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
                 };
                 createImageSticker(thumbnail, center);
-                void syncService.scheduleSessionSync();
+                void syncService.notify({ persist: true });
             }}
         />
 
@@ -1246,7 +1244,7 @@ export default function App() {
                 if (selectedStickerId() === id) {
                     uiActions.hideStickerToolbar();
                 }
-                void syncService.notifyLayoutChange({ persist: true });
+                void syncService.notify({ layout: true, persist: true });
             }}
 
             onLinkStart={startLinking}
@@ -1259,7 +1257,7 @@ export default function App() {
                     previewSrc: dataUrl,
                 });
                 propagateFromSticker(id);
-                void syncService.scheduleSessionSync();
+                void syncService.notify({ persist: true });
             }}
 
             resolveLinkedImage={resolveLinkedImage}

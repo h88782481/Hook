@@ -66,11 +66,11 @@ export const StickerContextMenuLayer = () => {
     });
 
     const persistSession = () => {
-        void syncService.scheduleSessionSync();
+        void syncService.notify({ persist: true });
     };
 
     const persistLayoutAndSession = () => {
-        void syncService.notifyLayoutChange({ persist: true });
+        void syncService.notify({ layout: true, persist: true });
     };
 
     const handleCloseSticker = () => {
@@ -217,7 +217,7 @@ export const StickerContextMenuLayer = () => {
     createEffect(() => {
         if (!stickerContextMenuController.state.isOpen || !menuRootRef) {
             removeRect(CONTEXT_MENU_RECT_ID);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
             return;
         }
 
@@ -239,7 +239,7 @@ export const StickerContextMenuLayer = () => {
                 height: rect.height,
                 name: CONTEXT_MENU_RECT_NAME,
             });
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         };
 
         requestAnimationFrame(syncRect);
@@ -253,7 +253,7 @@ export const StickerContextMenuLayer = () => {
         onCleanup(() => {
             observer?.disconnect();
             removeRect(CONTEXT_MENU_RECT_ID);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         });
     });
 

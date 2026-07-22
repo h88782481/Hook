@@ -17,13 +17,12 @@ import {
 } from "../services/stickerHistory";
 import type {
     StickerColorState,
-    StickerEditingDomain,
-    StickerCanvasTool,
     StickerCreateTool,
     StickerToolSettings,
     StickerToolMode,
     StickerTransformMode,
 } from "../types/stickerEditing";
+import { resolveToolCursorFromMode } from "../services/toolSettings";
 import type { CaptureRect, LongCaptureAxis, LongCaptureDirection } from "../services/captureState";
 import {
     addColorToHistory,
@@ -34,7 +33,7 @@ import {
     type ScreenshotHistoryEntry,
 } from "../services/historyModel";
 import { api } from "../services/api";
-import { applyStickerToolSettingsPatch, normalizeStickerToolSettings } from "../services/toolSettings";
+import { applyStickerToolSettingsPatch } from "../services/toolSettings";
 import type { ClipboardStickerPayload } from "../types/stickerModel";
 
 // Selection: selectedStickerIds is the single source of truth.
@@ -198,109 +197,34 @@ export const uiActions = {
             return { ...prev, showSidePanel: !current };
         });
     },
-    closePopups: (id: string) => {
-        setStickerUiState(id, (prev) => ({
-            ...prev,
-            showSidePanel: false,
-        }));
-    },
-    closeAllPopups: () => {
-        // Collapse every sticker's side popups. Iterate the keys currently
-        // present in the store rather than leaving this as a no-op.
-        Object.keys(stickerUiState).forEach((id) => {
-            setStickerUiState(id, (prev) => ({
-                ...prev,
-                showSidePanel: false,
-            }));
-        });
-    },
     clearStickerUiState: (stickerId: string) => {
         setStickerUiState(stickerId, undefined!);
     },
-    setStickerEditMode: (mode: StickerToolSettings["mode"]) => {
+    /** Convenience writer: StickerToolMode → domain + active split field. */
+    setStickerEditMode: (mode: StickerToolMode) => {
         setStickerColorPickerReturnMode(null);
-        if (mode === "select" || mode === "move" || mode === "rotate" || mode === "scale") {
-            setStickerToolSettings((prev) =>
-                applyStickerToolSettingsPatch(prev, {
-                    domain: "existing",
-                    mode,
-                    transformMode: mode,
-                }),
-            );
-            return;
-        }
-
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                domain: mode === "crop" || mode === "content-eraser" ? "sticker" : "create",
-                mode,
-                activeCanvasTool:
-                    mode === "crop" || mode === "content-eraser"
-                        ? mode
-                        : prev.activeCanvasTool,
-                activeTool:
-                    mode === "idle" || mode === "crop" || mode === "content-eraser"
-                        ? prev.activeTool
-                        : mode,
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode(mode)),
         );
     },
     setStickerTransformMode: (transformMode: StickerTransformMode) => {
         setStickerColorPickerReturnMode(null);
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                domain: "existing",
-                mode: transformMode,
-                transformMode,
-            }),
-        );
-        void persistToolSettings();
-    },
-    setStickerEditingDomain: (domain: StickerEditingDomain) => {
-        setStickerColorPickerReturnMode(null);
-        setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                domain,
-                activeCanvasTool: domain === "sticker" ? "idle" : prev.activeCanvasTool,
-                mode:
-                    domain === "existing"
-                        ? prev.transformMode
-                        : domain === "sticker"
-                          ? "idle"
-                          : prev.activeTool,
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode(transformMode)),
         );
         void persistToolSettings();
     },
     setStickerActiveTool: (activeTool: StickerCreateTool) => {
         setStickerColorPickerReturnMode(null);
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                domain: "create",
-                mode: activeTool,
-                activeTool,
-            }),
-        );
-        void persistToolSettings();
-    },
-    setStickerCanvasTool: (activeCanvasTool: StickerCanvasTool) => {
-        setStickerColorPickerReturnMode(null);
-        setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                domain: "sticker",
-                mode: activeCanvasTool,
-                activeCanvasTool,
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode(activeTool)),
         );
         void persistToolSettings();
     },
     beginStickerScreenColorPick: (returnMode?: StickerCreateTool | null) => {
         setStickerColorPickerReturnMode(returnMode && returnMode !== "color-picker" ? returnMode : null);
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                mode: "color-picker",
-                activeTool: "color-picker",
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode("color-picker")),
         );
     },
     consumeStickerColorPickerReturnMode: () => {
@@ -355,27 +279,18 @@ export const uiActions = {
         setIsHistoryPanelOpen(open);
     },
 
-    setActiveStickerEditTarget: (stickerId: string | null) => {
-        setActiveStickerEditTargetId(stickerId);
-    },
     showStickerToolbar: (stickerId: string) => {
         setActiveStickerEditTargetId(stickerId);
         setSelectedStickerAnnotationIds([]);
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                mode: "select",
-                transformMode: "select",
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode("select")),
         );
     },
     hideStickerToolbar: () => {
         setActiveStickerEditTargetId(null);
         setSelectedStickerAnnotationIds([]);
         setStickerToolSettings((prev) =>
-            applyStickerToolSettingsPatch(prev, {
-                mode: "select",
-                transformMode: "select",
-            }),
+            applyStickerToolSettingsPatch(prev, resolveToolCursorFromMode("select")),
         );
         setStickerEditCancelToken((value) => value + 1);
     },

@@ -29,8 +29,6 @@ import type {
 import type { Sticker } from "../types/stickerModel";
 import { clamp, wheelZoomScaleFactor } from "../utils/math";
 import {
-    clampCropRectToStickerBounds,
-    clampShapeRectToStickerBounds,
     constrainLinearToolEndpoint,
     buildSerialAnnotationMetrics,
     computeNextCropFrame,
@@ -39,6 +37,7 @@ import {
     HIGHLIGHTER_LAYER_OPACITY,
     createEmptyImageEditState,
     nextSerialLabel,
+    rectFromDrag,
 } from "../services/stickerEditing";
 import {
     captureStickerEditSnapshot,
@@ -98,7 +97,6 @@ import {
     isMeasuredLineMode,
     isRegularShapeMode,
     isStraightLineMode,
-    normalizeRect,
     resolveMoveGizmoAxisAtPoint,
     resolveScaleGizmoAxisAtPoint,
     type ColorPickerPreview,
@@ -229,6 +227,28 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const effectiveTransformMode = createMemo<StickerTransformMode>(() =>
         isStickerSelectionFallback() ? "select" : stickerToolSettings.transformMode,
     );
+    const resolveDraftShapeRect = (
+        start: StickerPoint,
+        current: StickerPoint,
+        mode: DraftShape["mode"],
+        options?: { constrainSquare?: boolean; snapStep?: number },
+    ) => {
+        if (!isBoundedBoxMode(mode)) {
+            return rectFromDrag(start, current);
+        }
+        if (isRegularShapeMode(mode)) {
+            return rectFromDrag(start, current, {
+                bounds: { w: props.width, h: props.height },
+                kind: "shape",
+                lockAspect: options?.constrainSquare,
+                snapStep: options?.snapStep,
+            });
+        }
+        return rectFromDrag(start, current, {
+            bounds: { w: props.width, h: props.height },
+            kind: "crop",
+        });
+    };
     const selectedAnnotationCenter = createMemo(() =>
         selectedAnnotations().length > 0 ? getAnnotationGroupCenter(selectedAnnotations()) : { x: props.width / 2, y: props.height / 2 },
     );
@@ -352,7 +372,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         } else {
             patchStickerDataLocally(patch);
         }
-        await syncService.scheduleSessionSync();
+        await syncService.notify({ persist: true });
     };
 
     const rememberCurrentState = (includeImageData = false) => {
@@ -686,7 +706,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (shouldSync) {
             stickerStore.actions.updateStickerEditData(props.stickerId, {}, { markLocalEdit: true });
             propagateStickerEditFromCurrent();
-            await syncService.scheduleSessionSync();
+            await syncService.notify({ persist: true });
         }
         return true;
     };
@@ -991,27 +1011,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                     const effectiveSnapStep = stickerToolSettings.shapeSnapStep > 0
                         ? stickerToolSettings.shapeSnapStep
                         : isRegularShapeStepSnapActive(prev.mode, event) ? 10 : undefined;
-                    const clampedRect = constrainSquare
-                        ? clampShapeRectToStickerBounds(
-                              prev.start,
-                              nextPoint,
-                              { w: props.width, h: props.height },
-                              true,
-                              effectiveSnapStep,
-                          )
-                        : isRegularShapeMode(prev.mode)
-                          ? clampShapeRectToStickerBounds(
-                                prev.start,
-                                nextPoint,
-                                { w: props.width, h: props.height },
-                                false,
-                                effectiveSnapStep,
-                            )
-                          : clampCropRectToStickerBounds(
-                                prev.start,
-                                nextPoint,
-                                { w: props.width, h: props.height },
-                            );
+                    const clampedRect = resolveDraftShapeRect(prev.start, nextPoint, prev.mode, {
+                        constrainSquare,
+                        snapStep: effectiveSnapStep,
+                    });
                     return {
                         ...prev,
                         constrainSquare,
@@ -1165,23 +1168,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         }
 
         if (shape) {
-            const rect =
-                isBoundedBoxMode(shape.mode)
-                    ? isRegularShapeMode(shape.mode) && shape.constrainSquare
-                        ? clampShapeRectToStickerBounds(shape.start, shape.current, {
-                              w: props.width,
-                              h: props.height,
-                          }, true, shape.snapStep)
-                        : isRegularShapeMode(shape.mode)
-                          ? clampShapeRectToStickerBounds(shape.start, shape.current, {
-                                w: props.width,
-                                h: props.height,
-                            }, false, shape.snapStep)
-                        : clampCropRectToStickerBounds(shape.start, shape.current, {
-                              w: props.width,
-                              h: props.height,
-                          })
-                    : normalizeRect(shape.start, shape.current);
+            const rect = resolveDraftShapeRect(shape.start, shape.current, shape.mode, {
+                constrainSquare: shape.constrainSquare,
+                snapStep: shape.snapStep,
+            });
             if (rect.w < 4 || rect.h < 4) return;
             if (shape.mode === "crop") {
                 rememberCurrentState();
@@ -1740,22 +1730,10 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const draftShapeRect = createMemo(() => {
         const draft = draftShape();
         if (!draft) return null;
-        return isBoundedBoxMode(draft.mode)
-            ? isRegularShapeMode(draft.mode) && draft.constrainSquare
-                ? clampShapeRectToStickerBounds(draft.start, draft.current, {
-                      w: props.width,
-                      h: props.height,
-                  }, true, draft.snapStep)
-                : isRegularShapeMode(draft.mode)
-                  ? clampShapeRectToStickerBounds(draft.start, draft.current, {
-                        w: props.width,
-                        h: props.height,
-                    }, false, draft.snapStep)
-                  : clampCropRectToStickerBounds(draft.start, draft.current, {
-                        w: props.width,
-                        h: props.height,
-                    })
-            : normalizeRect(draft.start, draft.current);
+        return resolveDraftShapeRect(draft.start, draft.current, draft.mode, {
+            constrainSquare: draft.constrainSquare,
+            snapStep: draft.snapStep,
+        });
     });
     const draftShapeMode = createMemo(() => draftShape()?.mode);
     const draftShapeMeasurement = createMemo(() => {

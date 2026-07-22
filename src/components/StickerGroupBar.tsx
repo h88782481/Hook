@@ -52,7 +52,7 @@ export const StickerGroupBar: Component = () => {
                                 ...current,
                                 name: nextName,
                             });
-                            void syncService.scheduleSessionSync();
+                            void syncService.notify({ persist: true });
                         }}
                     >
                         重命名组
@@ -69,7 +69,7 @@ export const StickerGroupBar: Component = () => {
                             if (!confirmed) return;
                             stickerStore.actions.deleteStickerGroup(groupId);
                             uiActions.setActiveStickerGroup(null);
-                            void syncService.scheduleSessionSync();
+                            void syncService.notify({ persist: true });
                         }}
                     >
                         删除组
@@ -89,7 +89,7 @@ export const StickerGroupBar: Component = () => {
                             selectionActions.clear();
                             uiActions.hideStickerToolbar();
                             uiActions.setActiveStickerGroup(null);
-                            void syncService.scheduleSessionSync();
+                            void syncService.notify({ persist: true });
                         }}
                     >
                         关闭组

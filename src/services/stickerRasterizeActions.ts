@@ -58,7 +58,7 @@ export const rasterizeStickerAnnotations = async (params: {
                 annotationIds,
             ),
         );
-        await syncService.scheduleSessionSync();
+        await syncService.notify({ persist: true });
         return true;
     } catch (error) {
         console.error("Rasterize sticker annotations failed", error);

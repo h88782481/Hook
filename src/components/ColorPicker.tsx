@@ -256,7 +256,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
                 height: rect.height,
                 name: COLOR_PICKER_RECT_NAME,
             });
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         };
 
         // Sync after layout settles so getBoundingClientRect reflects final position.
@@ -271,7 +271,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
         onCleanup(() => {
             observer?.disconnect();
             removeRect(COLOR_PICKER_RECT_ID);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         });
     });
 

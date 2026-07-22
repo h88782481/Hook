@@ -454,7 +454,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
             height: bounds.height,
             name: "STICKER_TOP_STRIP_MENU",
         });
-        void syncService.updateBackendRects();
+        void syncService.notify({ layout: true });
         return true;
     };
 
@@ -523,7 +523,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
         if (!openMenu()) {
             removeRect(openMenuRectId);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
             return;
         }
 
@@ -535,7 +535,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
             cancelOpenToolbarMenuRectSync();
             window.removeEventListener("resize", handleResize);
             removeRect(openMenuRectId);
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         });
     });
 
@@ -667,7 +667,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         if (!snapshot) return;
         stickerStore.actions.restoreStickerEditSnapshot(props.stickerId, snapshot);
         stickerStore.actions.propagateStickerEditsFrom(props.stickerId);
-        await syncService.scheduleSessionSync();
+        await syncService.notify({ persist: true });
     };
 
     const runHistoryAction = async (mode: HistoryActionMode) => {
@@ -730,7 +730,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         uiActions.clearStickerUiState(props.stickerId);
         selectionActions.clear();
         uiActions.hideStickerToolbar();
-        void syncService.notifyLayoutChange({ persist: true });
+        void syncService.notify({ layout: true, persist: true });
     };
 
     createEffect(() => {
@@ -743,7 +743,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         const rafId = window.requestAnimationFrame(() => {
             if (!stripRef) return;
             addOrUpdateRect(buildStripInteractiveRect(stripRef, props.stickerId));
-            void syncService.updateBackendRects();
+            void syncService.notify({ layout: true });
         });
 
         onCleanup(() => window.cancelAnimationFrame(rafId));
@@ -752,7 +752,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     onCleanup(() => {
         removeRect(`sticker-top-strip-${props.stickerId}`);
         removeRect(openMenuRectId);
-        void syncService.updateBackendRects();
+        void syncService.notify({ layout: true });
     });
 
     return (

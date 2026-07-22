@@ -62,9 +62,14 @@ export type StickerCreateToolProfiles = Partial<
     Record<StickerCreateTool, Partial<StickerToolProfileSettings>>
 >;
 
+/**
+ * Tool cursor: `domain` + the active split field
+ * (`transformMode` / `activeCanvasTool` / `activeTool`).
+ * Split fields also remember the last tool per domain when switching.
+ * Writers may use `StickerToolMode` via `resolveToolCursorFromMode` / `setStickerEditMode`.
+ */
 export interface StickerToolSettings {
     domain: StickerEditingDomain;
-    mode: StickerToolMode;
     transformMode: StickerTransformMode;
     activeCanvasTool: StickerCanvasTool;
     activeTool: StickerCreateTool;

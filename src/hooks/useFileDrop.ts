@@ -80,7 +80,7 @@ export function useFileDrop() {
                     });
 
                     window.setTimeout(() => {
-                        void syncService.scheduleSessionSync();
+                        void syncService.notify({ persist: true });
                     }, 50);
                     return;
                 }
@@ -97,7 +97,7 @@ export function useFileDrop() {
                 });
 
                 stickerStore.actions.addSticker(newSticker);
-                void syncService.updateBackendRects();
+                void syncService.notify({ layout: true });
             } catch (error) {
                 console.error("File Drop Failed:", error);
             }
