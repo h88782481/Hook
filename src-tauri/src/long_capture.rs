@@ -242,7 +242,6 @@ impl RollingLineSignature {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-struct SignatureDeltaHint {#[derive(Clone, Copy, Debug, Default)]
 struct SignatureDeltaHint {
     match_count: usize,
     min_current_line: u32,
@@ -578,7 +577,7 @@ fn cross_axis_weights(
     weights
 }
 
-fn local_texture_strength(fn local_texture_strength(image: &RgbImage, x: u32, y: u32) -> u32 {
+fn local_texture_strength(image: &RgbImage, x: u32, y: u32) -> u32 {
     let pixel = image.get_pixel(x, y).0;
     let mut strength = 0;
 
@@ -706,7 +705,7 @@ fn overlap_score(
     )
 }
 
-fn score_confidence(fn score_confidence(match_ratio: f64, mean_diff: f64) -> f64 {
+fn score_confidence(match_ratio: f64, mean_diff: f64) -> f64 {
     let diff_score = (1.0 - (mean_diff / 64.0)).clamp(0.0, 1.0);
     (0.70 * match_ratio + 0.30 * diff_score).clamp(0.0, 1.0)
 }
@@ -870,7 +869,7 @@ fn analyze_direction(
     best
 }
 
-fn direction_axis(fn direction_axis(direction: LongCaptureDirection) -> LongCaptureAxis {
+fn direction_axis(direction: LongCaptureDirection) -> LongCaptureAxis {
     match direction {
         LongCaptureDirection::Down | LongCaptureDirection::Up => LongCaptureAxis::Vertical,
         LongCaptureDirection::Right | LongCaptureDirection::Left => LongCaptureAxis::Horizontal,
@@ -1983,7 +1982,7 @@ fn aligned_signature_match_counts(
         false,
     )
 }
-fn aggregate_signature_cross_axis_offset_count(fn aggregate_signature_cross_axis_offset_count(cross_len: u32) -> u64 {
+fn aggregate_signature_cross_axis_offset_count(cross_len: u32) -> u64 {
     let edge_ignore = aggregate_signature_edge_ignore(cross_len);
     let offsets = sampled_cross_axis_offsets(cross_len, edge_ignore);
     if offsets.is_empty() {
@@ -2039,7 +2038,7 @@ fn aligned_signature_fuzzy_match_counts(
     )
 }
 
-fn aggregate_match_required_windows(fn aggregate_match_required_windows(min_match_windows: u32, overlap_windows: u32) -> u32 {
+fn aggregate_match_required_windows(min_match_windows: u32, overlap_windows: u32) -> u32 {
     min_match_windows.max(((overlap_windows as f64) * 0.65).ceil().max(1.0) as u32)
 }
 
@@ -2310,7 +2309,7 @@ fn aggregate_boundary_fuzzy_match_confirms(
         && (texture_score >= 12.0 || content_ratio >= 0.01)
 }
 
-fn aggregate_match_from_adjacent_signatures(fn aggregate_match_from_adjacent_signatures(
+fn aggregate_match_from_adjacent_signatures(
     aggregate: &LongCaptureAggregate,
     previous_signatures: &AxisSignatureList,
     current: &RgbImage,
