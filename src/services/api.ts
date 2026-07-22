@@ -161,8 +161,19 @@ export const api = {
     triggerCaptureMode: (): Promise<void> =>
         safeInvoke("trigger_capture_mode", undefined, () => undefined, false),
 
-    setCaptureInputActive: (active: boolean): Promise<void> =>
-        safeInvoke("set_capture_input_active", { active }, () => undefined, false),
+    setCaptureInputActive: (
+        active: boolean,
+        options?: { sampleColor?: boolean },
+    ): Promise<void> =>
+        safeInvoke(
+            "set_capture_input_active",
+            {
+                active,
+                sampleColor: options?.sampleColor ?? false,
+            },
+            () => undefined,
+            false,
+        ),
 
     debugLogEvent: (event: string, detail?: string): Promise<void> =>
         safeInvoke("append_runtime_log", { event, detail }, () => undefined, false),

@@ -2009,7 +2009,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         let disposed = false;
         const unlisteners: Array<() => void> = [];
 
-        void api.setCaptureInputActive(true);
+        void api.setCaptureInputActive(true, { sampleColor: true });
         void listen<GlobalColorPickerMousePayload>("capture/global_mouse_move", (event) => {
             if (disposed) return;
             applyDesktopColorPickerSample(event.payload, false);

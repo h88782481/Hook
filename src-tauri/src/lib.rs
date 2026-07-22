@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -40,6 +40,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_OR,
 };
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
     GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
@@ -698,18 +700,33 @@ fn sample_screen_color_physical(_x: i32, _y: i32) -> Result<ScreenColorSample, S
 }
 
 fn capture_window_metrics(window: &tauri::WebviewWindow) -> Option<CaptureWindowMetrics> {
+    // current_monitor() is relatively expensive; cache briefly so capture mouse-move
+    // IPC stays cheap enough that Windows won't silently unload the LL hook.
+    static CACHE: OnceLock<Mutex<Option<(Instant, CaptureWindowMetrics)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some((fetched_at, metrics)) = guard.as_ref() {
+            if fetched_at.elapsed() < Duration::from_millis(250) {
+                return Some(*metrics);
+            }
+        }
+    }
+
     let monitor = window.current_monitor().ok().flatten()?;
     let position = monitor.position();
     let physical_size = monitor.size();
     let scale_factor = monitor.scale_factor();
-
-    Some(CaptureWindowMetrics {
+    let metrics = CaptureWindowMetrics {
         physical_origin_x: position.x as f64,
         physical_origin_y: position.y as f64,
         scale_factor,
         logical_width: physical_size.width as f64 / scale_factor,
         logical_height: physical_size.height as f64 / scale_factor,
-    })
+    };
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((Instant::now(), metrics));
+    }
+    Some(metrics)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -727,8 +744,17 @@ fn emit_capture_mouse_event(
     modifiers: ModifierSnapshot,
     native_drag_preflight: bool,
 ) {
-    let sample =
-        sample_screen_color_physical(global_x.round() as i32, global_y.round() as i32).ok();
+    // GetPixel on every mouse move stalls the LL hook consumer on physical machines
+    // (high poll rate / multi-monitor). Only sample when the color picker asks for it.
+    #[cfg(target_os = "windows")]
+    let sample = if CAPTURE_COLOR_SAMPLE_ACTIVE.load(Ordering::SeqCst) {
+        sample_screen_color_physical(global_x.round() as i32, global_y.round() as i32).ok()
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "windows"))]
+    let sample: Option<ScreenColorSample> = None;
+
     if let Some(metrics) = capture_window_metrics(window) {
         let local = normalize_global_physical_to_local_logical(global_x, global_y, metrics);
         let payload = match sample {
@@ -898,6 +924,8 @@ static OVERLAY_KEYBOARD_EVENT_SENDER: OnceLock<mpsc::SyncSender<OverlayKeyboardH
     OnceLock::new();
 #[cfg(target_os = "windows")]
 static CAPTURE_MOUSE_HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static CAPTURE_COLOR_SAMPLE_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
 static OVERLAY_KEYBOARD_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
@@ -1679,9 +1707,24 @@ fn set_capture_cursor_crosshair() {}
 
 #[cfg(target_os = "windows")]
 fn clear_capture_cursor_crosshair() {
-    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.swap(false, Ordering::SeqCst) {
-        let _ = unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) };
-        append_runtime_log_line("capture_cursor_crosshair_restored");
+    if !CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.load(Ordering::SeqCst) {
+        return;
+    }
+    // Only clear the override flag after SPI_SETCURSORS succeeds; otherwise the
+    // system can stay on IDC_CROSS forever (common when capture teardown races).
+    for attempt in 0..3 {
+        let restored =
+            unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) }.is_ok();
+        if restored {
+            CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(false, Ordering::SeqCst);
+            append_runtime_log_line("capture_cursor_crosshair_restored");
+            return;
+        }
+        append_runtime_log_line(&format!(
+            "capture_cursor_crosshair_restore_failed :: attempt={}",
+            attempt + 1
+        ));
+        std::thread::sleep(Duration::from_millis(16));
     }
 }
 
@@ -1693,6 +1736,9 @@ fn set_capture_input_runtime_active(active: bool) {
     {
         CAPTURE_MOUSE_HOOK_ACTIVE.store(active, Ordering::SeqCst);
         append_runtime_log_line(&format!("capture_mouse_hook_active :: {}", active));
+        if !active {
+            CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
+        }
     }
 
     if active {
@@ -3443,8 +3489,45 @@ fn sync_overlay_input_shield_from_runtime_state(window: &tauri::WebviewWindow) {
 fn sync_overlay_input_shield_from_runtime_state(_window: &tauri::WebviewWindow) {}
 
 #[cfg(target_os = "windows")]
+fn is_window_dwm_cloaked(hwnd: HWND) -> bool {
+    let mut cloaked: u32 = 0;
+    let ok = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut u32 as *mut core::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        )
+    }
+    .is_ok();
+    ok && cloaked != 0
+}
+
+#[cfg(target_os = "windows")]
+fn abort_capture_if_virtual_desktop_cloaked(app: &tauri::AppHandle, hwnd: HWND) {
+    if !CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    if !is_window_dwm_cloaked(hwnd) {
+        return;
+    }
+    // Virtual-desktop switch cloaks the overlay on the previous desktop, but
+    // SetSystemCursor is system-wide — leave capture without teardown and the
+    // crosshair sticks on every desktop.
+    append_runtime_log_line("capture_aborted_virtual_desktop_switch");
+    set_capture_input_runtime_active(false);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("trigger-escape", ());
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn reassert_overlay_topmost_window(hwnd: HWND) {
     if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+        return;
+    }
+    // Cloaked windows (other virtual desktop) should not fight Z-order.
+    if is_window_dwm_cloaked(hwnd) {
         return;
     }
 
@@ -3512,6 +3595,7 @@ fn install_overlay_topmost_maintenance_thread(window: &tauri::WebviewWindow) {
         return;
     }
 
+    let app_handle = window.app_handle().clone();
     let _ = std::thread::Builder::new()
         .name("hook-overlay-topmost-maintenance".to_string())
         .spawn(move || loop {
@@ -3519,11 +3603,11 @@ fn install_overlay_topmost_maintenance_thread(window: &tauri::WebviewWindow) {
                 OVERLAY_TOPMOST_MAINTENANCE_INTERVAL_MS,
             ));
 
-            let needs_topmost_maintenance =
-                OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst)
-                    || CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst)
-                    || OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst)
-                    || OVERLAY_INPUT_SHIELD_DIRECT_DRAG_ACTIVE.load(Ordering::SeqCst);
+            let capture_active = CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst);
+            let needs_topmost_maintenance = OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst)
+                || capture_active
+                || OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst)
+                || OVERLAY_INPUT_SHIELD_DIRECT_DRAG_ACTIVE.load(Ordering::SeqCst);
             if !needs_topmost_maintenance {
                 continue;
             }
@@ -3533,6 +3617,9 @@ fn install_overlay_topmost_maintenance_thread(window: &tauri::WebviewWindow) {
                 .copied()
                 .map(|value| HWND(value as *mut core::ffi::c_void))
             {
+                if capture_active {
+                    abort_capture_if_virtual_desktop_cloaked(&app_handle, main_hwnd);
+                }
                 reassert_overlay_topmost_window(main_hwnd);
             }
             if let Some(shield_hwnd) = overlay_input_shield_hwnd() {
@@ -4269,10 +4356,22 @@ fn set_capture_input_active(
     state: tauri::State<SharedCaptureInputState>,
     hit_map: tauri::State<SharedHitMap>,
     active: bool,
+    sample_color: Option<bool>,
 ) {
     if let Ok(mut guard) = state.active.lock() {
         *guard = active;
-        append_runtime_log_line(&format!("set_capture_input_active :: {}", active));
+        append_runtime_log_line(&format!(
+            "set_capture_input_active :: active={} sample_color={}",
+            active,
+            sample_color.unwrap_or(false)
+        ));
+        #[cfg(target_os = "windows")]
+        {
+            CAPTURE_COLOR_SAMPLE_ACTIVE.store(
+                active && sample_color.unwrap_or(false),
+                Ordering::SeqCst,
+            );
+        }
         set_capture_input_runtime_active(active);
     }
 
@@ -4347,6 +4446,8 @@ fn hide_to_tray_impl(window: &tauri::WebviewWindow) {
 
 fn enter_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_capture_mode");
+    #[cfg(target_os = "windows")]
+    CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
     set_capture_input_runtime_active(true);
     show_overlay_host_impl(window, true);
 
@@ -4362,6 +4463,8 @@ fn enter_capture_mode(window: &tauri::WebviewWindow) {
 
 fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_long_capture_mode");
+    #[cfg(target_os = "windows")]
+    CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
     set_capture_input_runtime_active(true);
     show_overlay_host_impl(window, true);
 
