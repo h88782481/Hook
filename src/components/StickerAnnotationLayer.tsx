@@ -12,6 +12,7 @@ import {
     stickerEditCancelToken,
     stickerColorState,
     stickerToolSettings,
+    setAnnotationTextEditing,
     uiActions,
 } from "../store/uiStore";
 import type {
@@ -514,6 +515,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             : stickerToolSettings.textFontFamily);
 
     const beginPendingTextInput = (point: StickerPoint, existing?: StickerTextAnnotation) => {
+        setAnnotationTextEditing(true);
         setPendingTextInput({
             annotationId: existing?.id,
             x: existing?.x ?? point.x,
@@ -524,10 +526,28 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             fontFamily: resolveTextAnnotationFontFamily(existing),
         });
         uiActions.setSelectedStickerAnnotation(existing?.id ?? null);
-        setTimeout(() => {
-            pendingTextInputRef?.focus();
-            pendingTextInputRef?.select();
-        }, 0);
+        const focusInput = () => {
+            const input = pendingTextInputRef;
+            if (!input) return false;
+            input.focus({ preventScroll: true });
+            input.select();
+            return document.activeElement === input;
+        };
+        void api.focusOverlayWindow().finally(() => {
+            // Overlay is WS_EX_NOACTIVATE; focusOverlayWindow briefly activates it so IME/keys reach the input.
+            requestAnimationFrame(() => {
+                if (focusInput()) return;
+                window.setTimeout(() => {
+                    if (!focusInput()) {
+                        window.setTimeout(() => void focusInput(), 40);
+                    }
+                }, 0);
+            });
+        });
+    };
+
+    const endPendingTextEditing = () => {
+        setAnnotationTextEditing(false);
     };
 
     const commitPendingTextInput = async () => {
@@ -536,6 +556,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
 
         const text = draft.value.trim();
         setPendingTextInput(null);
+        endPendingTextEditing();
         if (!text) return;
 
         if (draft.annotationId) {
@@ -575,6 +596,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     };
 
     const handlePendingTextInputKeyDown = (event: KeyboardEvent & { currentTarget: HTMLInputElement }) => {
+        event.stopPropagation();
         if (event.key === "Enter") {
             event.preventDefault();
             void commitPendingTextInput();
@@ -582,6 +604,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         if (event.key === "Escape") {
             event.preventDefault();
             setPendingTextInput(null);
+            endPendingTextEditing();
         }
     };
 
@@ -1486,16 +1509,19 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const handleCreatePointerDown = async (event: PointerEvent, point: StickerPoint) => {
         const activeTool = stickerToolSettings.activeTool;
         event.stopPropagation();
-        event.preventDefault();
 
         if (activeTool === "color-picker") {
+            event.preventDefault();
             return;
         }
 
         if (activeTool === "text") {
+            // Do not preventDefault: WebView needs the pointer gesture to allow subsequent input focus.
             beginPendingTextInput(point);
             return;
         }
+
+        event.preventDefault();
 
         if (activeTool === "serial") {
             const label = nextSerialLabel(annotationState());
@@ -2030,6 +2056,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         setResizeAnnotation(null);
         setReshapeLine(null);
         setPendingTextInput(null);
+        setAnnotationTextEditing(false);
     });
 
     createEffect(() => {
@@ -2752,7 +2779,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             <Show when={pendingTextInput()}>
                 {(draft) => (
                     <input
-                        ref={pendingTextInputRef}
+                        ref={(el) => {
+                            pendingTextInputRef = el;
+                        }}
                         class="absolute z-[20] border bg-transparent px-0 py-0 font-medium outline-none placeholder:text-[rgba(247,252,230,0.55)]"
                         style={{
                             ...pendingTextInputStyle(),
@@ -2762,15 +2791,30 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                         aria-label="输入标注文本"
                         value={draft().value}
                         placeholder="输入文本，Enter 确认"
+                        autofocus
                         onInput={(event) =>
                             setPendingTextInput((current) =>
                                 current ? { ...current, value: event.currentTarget.value } : current,
                             )
                         }
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => {
+                            event.stopPropagation();
+                            void api.focusOverlayWindow();
+                        }}
+                        onMouseDown={(event) => {
+                            event.stopPropagation();
+                            void api.focusOverlayWindow();
+                        }}
                         onClick={(event) => event.stopPropagation()}
-                        onBlur={() => void commitPendingTextInput()}
+                        onBlur={() => {
+                            // Defer: focusOverlayWindow may briefly blur then re-focus the window.
+                            window.setTimeout(() => {
+                                if (pendingTextInputRef && document.activeElement === pendingTextInputRef) {
+                                    return;
+                                }
+                                void commitPendingTextInput();
+                            }, 0);
+                        }}
                         onKeyDown={(event) => handlePendingTextInputKeyDown(event)}
                     />
                 )}

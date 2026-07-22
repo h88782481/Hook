@@ -394,57 +394,61 @@ main {
 .group:hover .group-hover\:text-white { color: white !important; }
 .group:hover .group-hover\:text-gray-200 { color: #e5e7eb !important; }
 
-/* Settings window */
+/* Settings window — Win11 Fluent light (default) */
 html.hook-settings-root,
 body.hook-settings-body {
-  background: #0b0e12 !important;
+  background: #f3f3f3 !important;
   overflow: auto !important;
-  color: var(--theme-text);
+  color: #1a1a1a;
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .hook-settings-page {
   min-height: 100%;
   box-sizing: border-box;
-  padding: 24px 28px 32px;
-  background:
-    radial-gradient(1200px 500px at 10% -10%, rgba(217, 255, 56, 0.12), transparent 55%),
-    linear-gradient(180deg, #10151c 0%, #0b0e12 100%);
-  color: var(--theme-text);
-  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  padding: 20px 24px 28px;
+  background: #f3f3f3;
+  color: #1a1a1a;
 }
 
-.hook-settings-header {
+.hook-settings-titlebar {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
-.hook-settings-header h1 {
+.hook-settings-titlebar h1 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #1a1a1a;
 }
 
-.hook-settings-header p {
+.hook-settings-titlebar p {
   margin: 6px 0 0;
-  color: var(--theme-text-muted);
+  color: #5c5c5c;
   font-size: 13px;
 }
 
-.hook-settings-section {
-  border: 1px solid var(--theme-border);
-  background: rgba(15, 19, 24, 0.88);
-  padding: 16px 18px;
-  margin-bottom: 16px;
+.hook-settings-card {
+  background: #fafafa;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  padding: 4px 16px 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
-.hook-settings-section h2 {
-  margin: 0 0 12px;
+.hook-settings-card h2 {
+  margin: 12px 0 4px;
   font-size: 14px;
   font-weight: 600;
+  color: #1a1a1a;
 }
 
 .hook-settings-section-head {
@@ -452,17 +456,18 @@ body.hook-settings-body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-top: 8px;
 }
 
 .hook-settings-section-head h2 {
-  margin: 0;
+  margin: 4px 0;
 }
 
 .hook-settings-hint {
-  margin: 0 0 12px;
-  color: var(--theme-text-muted);
+  margin: 0 0 4px;
+  color: #5c5c5c;
   font-size: 12px;
+  line-height: 1.45;
 }
 
 .hook-settings-row {
@@ -470,32 +475,68 @@ body.hook-settings-body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 14px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-.hook-settings-row:first-of-type {
+.hook-settings-card > .hook-settings-row:first-of-type {
   border-top: none;
-  padding-top: 4px;
+}
+
+.hook-settings-row-text {
+  min-width: 0;
 }
 
 .hook-settings-row-title {
-  font-size: 13px;
-  font-weight: 560;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
 }
 
 .hook-settings-row-desc {
   margin-top: 4px;
-  color: var(--theme-text-muted);
+  color: #5c5c5c;
   font-size: 12px;
   line-height: 1.45;
-  max-width: 320px;
+  max-width: 340px;
 }
 
-.hook-settings-row input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--theme-signal);
+.hook-settings-toggle {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: #8a8a8a;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+  outline: none;
+}
+
+.hook-settings-toggle.on {
+  background: #005fb8;
+  border-color: #005fb8;
+}
+
+.hook-settings-toggle:focus-visible {
+  box-shadow: 0 0 0 2px #f3f3f3, 0 0 0 4px #005fb8;
+}
+
+.hook-settings-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 160ms ease;
+}
+
+.hook-settings-toggle.on .hook-settings-toggle-thumb {
+  transform: translateX(20px);
 }
 
 .hook-settings-shortcut-actions {
@@ -508,11 +549,74 @@ body.hook-settings-body {
 .hook-settings-shortcut {
   min-width: 118px;
   text-align: center;
-  padding: 6px 10px;
-  border: 1px solid var(--theme-border);
-  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  font-family: inherit;
   font-size: 12px;
-  color: var(--theme-signal);
+  color: #1a1a1a;
+}
+
+.hook-settings-shortcut.recording {
+  border-color: #005fb8;
+  color: #005fb8;
+  background: #f0f6fc;
+}
+
+.hook-settings-shortcut.unbound {
+  color: #8a8a8a;
+  font-style: normal;
+}
+
+.hook-settings-btn {
+  appearance: none;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  color: #1a1a1a;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.hook-settings-btn:hover {
+  background: #f9f9f9;
+  border-color: rgba(0, 0, 0, 0.16);
+}
+
+.hook-settings-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.hook-settings-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.hook-settings-btn.ghost:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.hook-settings-btn.compact {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.hook-settings-btn.accent {
+  background: #005fb8;
+  border-color: #005fb8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.hook-settings-btn.accent:hover {
+  background: #0056a5;
+  border-color: #0056a5;
+  filter: none;
 }
 
 .hook-settings-footer {
@@ -520,31 +624,26 @@ body.hook-settings-body {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 8px;
-}
-
-.hook-settings-save {
-  border-color: var(--theme-border-strong) !important;
-  color: #111 !important;
-  background: var(--theme-signal) !important;
-}
-
-.hook-settings-save:hover {
-  filter: brightness(1.05);
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .hook-settings-message {
-  color: var(--theme-success);
+  color: #0f7b0f;
   font-size: 12px;
+  max-width: 360px;
+  line-height: 1.4;
+  margin-right: auto;
 }
 
 .hook-settings-error {
-  color: var(--theme-danger);
+  color: #c42b1c;
   font-size: 12px;
+  margin-right: auto;
 }
 
 .hook-settings-loading {
-  color: var(--theme-text-muted);
-  padding: 40px 0;
+  color: #5c5c5c;
+  padding: 48px 0;
   text-align: center;
 }

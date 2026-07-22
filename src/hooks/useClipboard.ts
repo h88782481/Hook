@@ -8,14 +8,62 @@ import { syncService } from "../services/syncService";
 import { renderStickerComposite } from "../services/stickerExport";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
 import { duplicateAnnotationById } from "../services/stickerAnnotationMutations";
+import type { Sticker } from "../types/stickerModel";
 
+/** Copy a sticker image to internal + system clipboard (ignores annotation selection). */
+export async function copyStickerImageById(stickerId: string): Promise<boolean> {
+    const unit = stickerStore.stickers.find((item) => item.id === stickerId);
+    if (!unit) return false;
+
+    const mp = mousePos();
+    const s = unwrap(unit);
+    const content = stickerContentPayloadFromSticker(s);
+    const nextClipState: ClipboardStickerPayload = {
+        ...content,
+        src: content.src || "",
+        dragOutFilePath: content.dragOutFilePath || content.filePath,
+        w: s.w,
+        h: s.h,
+        offsetX: mp.x - s.x,
+        offsetY: mp.y - s.y,
+        originalId: s.id,
+        originalX: s.x,
+        originalY: s.y,
+        nextCascadeX: s.x + 20,
+        nextCascadeY: s.y + 20,
+    };
+
+    setClipboard(nextClipState);
+    logger.debug("Copied sticker to internal clipboard", { stickerId });
+
+    try {
+        const exportBase64 = await renderStickerComposite(unit as Sticker);
+        if (s.data.src) {
+            const path = await api.copyStickerImageToSmartClipboard(exportBase64);
+            setClipboard((current) =>
+                current && current.originalId === s.id
+                    ? {
+                          ...current,
+                          dragOutFilePath: path,
+                      }
+                    : current,
+            );
+            logger.info(`Copied to smart system clipboard as image/file: ${path}`);
+        } else {
+            await navigator.clipboard.writeText(JSON.stringify(nextClipState));
+        }
+        return true;
+    } catch (error) {
+        console.error("Clipboard write failed", error);
+        return false;
+    }
+}
 
 export function useClipboard() {
 
     const handleCopy = async () => {
         const id = selectedStickerId();
         const annotationId = selectedStickerAnnotationId();
-        const mp = mousePos();
 
         if (id) {
             const unit = stickerStore.stickers.find(u => u.id === id);
@@ -36,54 +84,7 @@ export function useClipboard() {
                     }
                 }
 
-                const s = unwrap(unit);
-                const content = stickerContentPayloadFromSticker(s);
-
-                const nextClipState: ClipboardStickerPayload = {
-                    ...content,
-                    src: content.src || "",
-                    dragOutFilePath: content.dragOutFilePath || content.filePath,
-                    w: s.w,
-                    h: s.h,
-                    offsetX: mp.x - s.x,
-                    offsetY: mp.y - s.y,
-                    originalId: s.id,
-                    originalX: s.x,
-                    originalY: s.y,
-                    nextCascadeX: s.x + 20,
-                    nextCascadeY: s.y + 20,
-                };
-
-                setClipboard(nextClipState);
-
-                const dpr = window.devicePixelRatio || 1;
-                logger.debug("Copy Internal:", {
-                    dpr,
-                    mp,
-                    unit: {x: s.x, y: s.y},
-                    offset: {x: nextClipState.offsetX, y: nextClipState.offsetY}
-                });
-                logger.debug("Copied to internal clipboard");
-
-                try {
-                    const exportBase64 = await renderStickerComposite(unit);
-                    if (s.data.src) {
-                        const path = await api.copyStickerImageToSmartClipboard(exportBase64);
-                        setClipboard((current) =>
-                            current && current.originalId === s.id
-                                ? {
-                                      ...current,
-                                      dragOutFilePath: path,
-                                  }
-                                : current,
-                        );
-                        logger.info(`Copied to smart system clipboard as image/file: ${path}`);
-                    } else {
-                        await navigator.clipboard.writeText(JSON.stringify(nextClipState));
-                    }
-                } catch (e) {
-                    console.error("Clipboard write failed", e);
-                }
+                await copyStickerImageById(id);
                 return;
             }
         }

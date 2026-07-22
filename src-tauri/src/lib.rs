@@ -4956,6 +4956,10 @@ fn register_configured_global_shortcuts(
     ];
 
     for (name, binding, flag) in bindings {
+        if binding.is_unbound() {
+            append_runtime_log_line(&format!("register_shortcut_skipped_unbound :: name={}", name));
+            continue;
+        }
         match binding.to_shortcut() {
             Ok(shortcut) => {
                 if let Err(error) = app.global_shortcut().register(shortcut) {
@@ -5419,6 +5423,38 @@ pub fn run() {
                                                 enter_long_capture_mode(&window);
                                                 return;
                                             }
+                                        }
+                                    }
+
+                                    if matches!(key, rdev::Key::PrintScreen)
+                                        && input_state.last_capture_trigger.elapsed()
+                                            > std::time::Duration::from_millis(500)
+                                    {
+                                        if app_settings::binding_is_print_screen(
+                                            &settings.shortcuts.capture,
+                                        ) && !capture_global_registered_for_rdev
+                                            .load(Ordering::Relaxed)
+                                        {
+                                            input_state.last_capture_trigger =
+                                                std::time::Instant::now();
+                                            append_runtime_log_line(
+                                                "rdev_printscreen_capture_triggered",
+                                            );
+                                            enter_capture_mode(&window);
+                                            return;
+                                        }
+                                        if app_settings::binding_is_print_screen(
+                                            &settings.shortcuts.long_capture,
+                                        ) && !long_capture_global_registered_for_rdev
+                                            .load(Ordering::Relaxed)
+                                        {
+                                            input_state.last_capture_trigger =
+                                                std::time::Instant::now();
+                                            append_runtime_log_line(
+                                                "rdev_printscreen_long_capture_triggered",
+                                            );
+                                            enter_long_capture_mode(&window);
+                                            return;
                                         }
                                     }
 

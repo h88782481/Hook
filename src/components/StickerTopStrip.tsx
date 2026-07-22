@@ -17,6 +17,7 @@ import type { StickerRasterizeScope } from "../services/stickerRasterize";
 import { rasterizeStickerAnnotations } from "../services/stickerRasterizeActions";
 import { syncService } from "../services/syncService";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
+import { copyStickerImageById } from "../hooks/useClipboard";
 import {
     draggingStickerId,
     selectedStickerAnnotationId,
@@ -313,6 +314,20 @@ const RasterizeAllToolIcon: Component<TopStripIconProps> = (props) => (
         <rect x="13" y="5" width="6.5" height="6.5" rx="1.1" />
         <rect x="4.5" y="13.5" width="6.5" height="6.5" rx="1.1" />
         <rect x="13" y="13.5" width="6.5" height="6.5" rx="1.1" />
+    </svg>
+);
+
+const ConfirmCopyToolIcon: Component<TopStripIconProps> = (props) => (
+    <svg
+        class={props.class}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <path d="M5 12.5 10 17.5 19 7.5" />
     </svg>
 );
 
@@ -699,6 +714,13 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         }
     };
 
+    const runConfirmCopy = async () => {
+        setOpenMenu(null);
+        // Always copy the whole sticker image (not annotation duplicate path).
+        uiActions.setSelectedStickerAnnotation(null);
+        await copyStickerImageById(props.stickerId);
+    };
+
     createEffect(() => {
         if (typeof window === "undefined" || !stripRef) return;
 
@@ -725,7 +747,11 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         <Portal>
             <div
                 ref={stripRef}
-                class="hook-terminal-shell hook-terminal-shell--strong pointer-events-none fixed z-[1210] box-border"
+                class="hook-terminal-shell hook-terminal-shell--strong pointer-events-none fixed z-[1210] box-border flex"
+                classList={{
+                    "flex-col": layout().placement === "above",
+                    "flex-col-reverse": layout().placement === "below",
+                }}
                 style={{
                     left: `${layout().container.left}px`,
                     top: `${layout().container.top}px`,
@@ -1237,6 +1263,19 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                 </For>
                             </div>
                         </Show>
+                    </div>
+
+                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                        <button
+                            type="button"
+                            class={`${toolbarButtonLeftBorderClass} text-[var(--theme-signal,#d9ff38)] hover:bg-white/10`}
+                            aria-label="完成并复制截图"
+                            title="完成并复制到剪贴板"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={() => void runConfirmCopy()}
+                        >
+                            <ConfirmCopyToolIcon class="h-7 w-7" />
+                        </button>
                     </div>
                 </div>
             </div>

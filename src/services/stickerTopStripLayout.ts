@@ -1,7 +1,7 @@
 import { clamp } from "../utils/math";
 
 const STICKER_TOP_STRIP_SLOT_WIDTH = 50;
-const STICKER_TOP_STRIP_SLOT_COUNT = 10;
+const STICKER_TOP_STRIP_SLOT_COUNT = 11;
 const STICKER_TOP_STRIP_MIN_WIDTH = STICKER_TOP_STRIP_SLOT_WIDTH * STICKER_TOP_STRIP_SLOT_COUNT;
 export const STICKER_TOP_STRIP_HEIGHT = 50;
 const STICKER_TOP_STRIP_PROPERTY_BAR_HEIGHT = 40;
@@ -24,6 +24,8 @@ interface StickerTopStripLayout {
     container: StickerTopStripFrame;
     mainBar: StickerTopStripFrame;
     propertyBar: StickerTopStripFrame | null;
+    /** Prefer keeping the main strip flush against the sticker edge. */
+    placement: "above" | "below";
 }
 
 export const computeStickerTopStripLayout = (
@@ -46,25 +48,36 @@ export const computeStickerTopStripLayout = (
     const canFitAbove = preferredAboveTop >= 0;
     const canFitBelow = preferredBelowTop + totalHeight <= safeViewportHeight;
 
+    // Prefer below the sticker; fall back to above when there isn't enough room.
+    let placement: "above" | "below";
     let containerTop: number;
-    if (canFitAbove) {
-        containerTop = preferredAboveTop;
-    } else if (canFitBelow) {
+    if (canFitBelow) {
+        placement = "below";
         containerTop = preferredBelowTop;
+    } else if (canFitAbove) {
+        placement = "above";
+        containerTop = preferredAboveTop;
     } else {
         const availableAbove = clamp(Math.round(anchor.y), 0, safeViewportHeight);
         const availableBelow = Math.max(
             0,
             safeViewportHeight - Math.round(anchor.y + anchor.h),
         );
-        containerTop = availableAbove >= availableBelow ? 0 : maxTop;
+        placement = availableBelow > availableAbove ? "below" : "above";
+        containerTop = placement === "below" ? maxTop : 0;
     }
 
     const top = clamp(containerTop, 0, maxTop);
+    const placeBelow = placement === "below";
+
+    // Keep the main tool strip flush against the sticker edge.
+    // Below: [main][property]  |  Above: [property][main]
+    const mainBarTop = placeBelow ? top : top + propertyBarHeight;
+    const propertyBarTop = placeBelow ? top + STICKER_TOP_STRIP_HEIGHT : top;
     const propertyBar = showPropertyBar
         ? {
               left,
-              top,
+              top: propertyBarTop,
               width,
               height: STICKER_TOP_STRIP_PROPERTY_BAR_HEIGHT,
           }
@@ -79,10 +92,11 @@ export const computeStickerTopStripLayout = (
         },
         mainBar: {
             left,
-            top: top + propertyBarHeight,
+            top: mainBarTop,
             width,
             height: STICKER_TOP_STRIP_HEIGHT,
         },
         propertyBar,
+        placement,
     };
 };

@@ -100,6 +100,8 @@ export const [selectedStickerAnnotationId, setSelectedStickerAnnotationId] = cre
 export const [selectedStickerAnnotationIds, setSelectedStickerAnnotationIds] = createStore<string[]>([]);
 export const [activeStickerGroupId, setActiveStickerGroupId] = createSignal<string | null>(null);
 export const [stickerEditCancelToken, setStickerEditCancelToken] = createSignal(0);
+/** True while sticker annotation text input is focused; disables overlay key hook so typing works. */
+export const [annotationTextEditing, setAnnotationTextEditing] = createSignal(false);
 export const [stickerToolSettings, setStickerToolSettings] = createStore<StickerToolSettings>(
     createDefaultStickerToolSettings(),
 );

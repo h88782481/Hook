@@ -41,6 +41,7 @@ import {
     selectedStickerAnnotationId,
     longCaptureSession,
     draggingStickerId,
+    annotationTextEditing,
 } from "./store/uiStore";
 
 
@@ -591,7 +592,9 @@ export default function App() {
 
   createEffect(() => {
       if (!tauriRuntime) return;
-      void api.setOverlayKeyboardCaptureActive(Boolean(selectedStickerId()) && !isSelecting());
+      void api.setOverlayKeyboardCaptureActive(
+          Boolean(selectedStickerId()) && !isSelecting() && !annotationTextEditing(),
+      );
   });
 
   // Shortcuts

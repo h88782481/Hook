@@ -27,13 +27,30 @@ impl ShortcutBinding {
         }
     }
 
+    pub fn unbound() -> Self {
+        Self {
+            key: String::new(),
+            modifiers: Vec::new(),
+        }
+    }
+
+    pub fn is_unbound(&self) -> bool {
+        self.key.trim().is_empty()
+    }
+
     pub fn to_shortcut(&self) -> Result<Shortcut, String> {
+        if self.is_unbound() {
+            return Err("Shortcut is unbound".to_string());
+        }
         let modifiers = parse_modifiers(&self.modifiers)?;
         let code = parse_code(&self.key)?;
         Ok(Shortcut::new(Some(modifiers), code))
     }
 
     pub fn display_label(&self) -> String {
+        if self.is_unbound() {
+            return "未绑定".to_string();
+        }
         let mut parts: Vec<String> = self
             .modifiers
             .iter()
@@ -145,20 +162,17 @@ pub fn save_app_settings_to_disk(settings: &AppSettings) -> Result<(), String> {
 }
 
 fn normalize_app_settings(mut settings: AppSettings) -> AppSettings {
-    let defaults = ShortcutSettings::default();
-    if settings.shortcuts.capture.key.trim().is_empty() {
-        settings.shortcuts.capture = defaults.capture;
-    }
-    if settings.shortcuts.long_capture.key.trim().is_empty() {
-        settings.shortcuts.long_capture = defaults.long_capture;
-    }
-    if settings.shortcuts.toggle_toolbar.key.trim().is_empty() {
-        settings.shortcuts.toggle_toolbar = defaults.toggle_toolbar;
-    }
-    if settings.shortcuts.open_image.key.trim().is_empty() {
-        settings.shortcuts.open_image = defaults.open_image;
-    }
+    normalize_binding(&mut settings.shortcuts.capture);
+    normalize_binding(&mut settings.shortcuts.long_capture);
+    normalize_binding(&mut settings.shortcuts.toggle_toolbar);
+    normalize_binding(&mut settings.shortcuts.open_image);
     settings
+}
+
+fn normalize_binding(binding: &mut ShortcutBinding) {
+    if binding.key.trim().is_empty() {
+        *binding = ShortcutBinding::unbound();
+    }
 }
 
 pub fn parse_modifiers(modifiers: &[String]) -> Result<Modifiers, String> {
@@ -240,6 +254,7 @@ pub fn parse_code(key: &str) -> Result<Code, String> {
         "ArrowDown" | "Down" => Ok(Code::ArrowDown),
         "ArrowLeft" | "Left" => Ok(Code::ArrowLeft),
         "ArrowRight" | "Right" => Ok(Code::ArrowRight),
+        "PrintScreen" | "PrtSc" | "PrtScn" | "Snapshot" => Ok(Code::PrintScreen),
         other => Err(format!("Unsupported shortcut key: {other}")),
     }
 }
@@ -256,6 +271,7 @@ fn display_key(key: &str) -> String {
         "Digit7" => "7".into(),
         "Digit8" => "8".into(),
         "Digit9" => "9".into(),
+        "PrintScreen" | "PrtSc" | "PrtScn" | "Snapshot" => "PrtSc".into(),
         k if k.starts_with("Key") && k.len() == 4 => k[3..].to_string(),
         other => other.to_string(),
     }
@@ -359,4 +375,11 @@ pub fn binding_digit(binding: &ShortcutBinding) -> Option<u8> {
         "Digit9" | "9" => Some(9),
         _ => None,
     }
+}
+
+pub fn binding_is_print_screen(binding: &ShortcutBinding) -> bool {
+    matches!(
+        binding.key.as_str(),
+        "PrintScreen" | "PrtSc" | "PrtScn" | "Snapshot"
+    ) && binding.modifiers.is_empty()
 }
