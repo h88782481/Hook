@@ -37,7 +37,7 @@ import {
     uiActions,
 } from "../store/uiStore";
 import type { StickerTextAnnotation, StickerToolSettings } from "../types/stickerEditing";
-import { clamp } from "../utils/math";
+import { clamp, parseClampedInt } from "../utils/math";
 
 interface StickerTopStripPropertyBarProps {
     stickerId: string;
@@ -463,20 +463,6 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         void syncService.scheduleSessionSync();
     };
 
-    const parseCanvasStepperValue = (
-        raw: string | null,
-        fallback: number,
-        min: number,
-        max: number,
-    ) => {
-        if (raw == null) return fallback;
-        const trimmed = raw.trim();
-        if (!trimmed) return fallback;
-        const parsed = Number.parseInt(trimmed, 10);
-        if (Number.isNaN(parsed)) return fallback;
-        return clamp(parsed, min, max);
-    };
-
     const updateStickerOpacityValue = (next: number) => {
         const currentSticker = unit();
         if (!currentSticker) return;
@@ -518,7 +504,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const commitCropOpacityDraft = () => {
         const fallback = getEditableOpacityPercent();
-        const nextPercent = parseCanvasStepperValue(cropOpacityDraft(), fallback, 0, 100);
+        const nextPercent = parseClampedInt(cropOpacityDraft(), fallback, 0, 100);
         setCropOpacityDraft(null);
         if (nextPercent === fallback) return;
         updateStickerOpacityValue(nextPercent / 100);
@@ -531,7 +517,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             return;
         }
         const fallback = getEditableCanvasWidth();
-        const nextWidth = parseCanvasStepperValue(cropCanvasWidthDraft(), fallback, 32, 8192);
+        const nextWidth = parseClampedInt(cropCanvasWidthDraft(), fallback, 32, 8192);
         setCropCanvasWidthDraft(null);
         if (nextWidth === fallback) return;
         scaleStickerCanvas(nextWidth / Math.max(currentSticker.w, 1));
@@ -539,7 +525,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const commitCropCornerRadiusDraft = () => {
         const fallback = getEditableFrameCornerRadius();
-        const nextRadius = parseCanvasStepperValue(cropCornerRadiusDraft(), fallback, 0, 128);
+        const nextRadius = parseClampedInt(cropCornerRadiusDraft(), fallback, 0, 128);
         setCropCornerRadiusDraft(null);
         if (nextRadius === fallback) return;
         updateStickerFrameCornerRadiusValue(nextRadius);
@@ -668,7 +654,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const commitSelectedTextSizeDraft = () => {
         const fallback = selectedExistingTextSize();
-        const nextSize = parseCanvasStepperValue(selectedTextSizeDraft(), fallback, 8, 96);
+        const nextSize = parseClampedInt(selectedTextSizeDraft(), fallback, 8, 96);
         setSelectedTextSizeDraft(null);
         if (nextSize === fallback) return;
         patchSelectedTextAnnotationFontSize(nextSize);
@@ -676,7 +662,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
 
     const commitSelectedSerialRadiusDraft = () => {
         const fallback = selectedExistingSerialRadius();
-        const nextRadius = parseCanvasStepperValue(selectedSerialRadiusDraft(), fallback, 8, 96);
+        const nextRadius = parseClampedInt(selectedSerialRadiusDraft(), fallback, 8, 96);
         setSelectedSerialRadiusDraft(null);
         if (nextRadius === fallback) return;
         patchSelectedSerialAnnotationRadius(nextRadius);

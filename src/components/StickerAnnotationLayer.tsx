@@ -83,7 +83,8 @@ import {
 } from "../services/stickerGeometry";
 import { updateTextAnnotationById } from "../services/stickerAnnotationMutations";
 import { syncService } from "../services/syncService";
-import { renderStickerEffectOverlay, StickerEffectDraftOverlay, buildStrokePath } from "./StickerEffectOverlay";
+import { renderStickerEffectOverlay, StickerEffectDraftOverlay } from "./StickerEffectOverlay";
+import { buildStrokePath } from "../services/stickerStrokePath";
 import {
     annotationRenderRank,
     getScaleGizmoHandleRects,
@@ -212,12 +213,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             (stickerToolSettings.domain === "sticker" && stickerToolSettings.activeCanvasTool === "crop") ||
             (draftShape() ? isBoundedBoxMode(draftShape()!.mode) : false),
     );
-    const selectedAnnotationIds = createMemo(() => {
-        if (selectedStickerAnnotationIds.length > 0) {
-            return [...selectedStickerAnnotationIds];
-        }
-        return selectedStickerAnnotationId() ? [selectedStickerAnnotationId()!] : [];
-    });
+    const selectedAnnotationIds = createMemo(() => [...selectedStickerAnnotationIds]);
     const selectedAnnotations = createMemo(() => {
         const idSet = new Set(selectedAnnotationIds());
         return annotationState().elements.filter((annotation) => idSet.has(annotation.id));
@@ -1434,7 +1430,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             currentSelectionIds.length === 0;
         if (shouldPassThroughToStickerDrag) {
             uiActions.setSelectedStickerAnnotations([]);
-            uiActions.setSelectedStickerAnnotation(null);
             return;
         }
 
@@ -1502,7 +1497,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         event.preventDefault();
         if (!hit) {
             uiActions.setSelectedStickerAnnotations([]);
-            uiActions.setSelectedStickerAnnotation(null);
         }
     };
 

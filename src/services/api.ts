@@ -28,11 +28,6 @@ export interface PreciseSelectionResult {
     h: number;
 }
 
-export interface ScreenColorSample {
-    hex: string;
-    rgb: { r: number; g: number; b: number };
-}
-
 export interface ToolSettingsData {
     stickerToolSettings?: Record<string, unknown> | null;
 }

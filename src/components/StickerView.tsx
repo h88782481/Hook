@@ -83,8 +83,7 @@ export const StickerView: Component<Props> = (props) => {
 
   const liveSticker = () => stickerStore.stickers.find((unit) => unit.id === props.unit.id) || props.unit;
   const isMinified = () => !!liveSticker().data.minified;
-  const hasSelectedExistingAnnotations = () =>
-      selectedStickerAnnotationIds.length > 0 || selectedStickerAnnotationId() !== null;
+  const hasSelectedExistingAnnotations = () => selectedStickerAnnotationIds.length > 0;
   const shouldBlockContainerMouseDown = () => {
       if (activeStickerEditTargetId() !== props.unit.id) return false;
       if (stickerToolSettings.domain !== "existing") {

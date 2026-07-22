@@ -581,12 +581,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     );
     const isHistoryEnabled = createMemo(() => (currentHistoryAction() === "undo" ? canUndo() : canRedo()));
     const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
-    const selectedAnnotationIds = createMemo(() => {
-        if (selectedStickerAnnotationIds.length > 0) {
-            return [...selectedStickerAnnotationIds];
-        }
-        return selectedStickerAnnotationId() ? [selectedStickerAnnotationId()!] : [];
-    });
+    const selectedAnnotationIds = createMemo(() => [...selectedStickerAnnotationIds]);
     const selectedExistingAnnotationType = createMemo<StickerAnnotation["type"] | null>(() => {
         const annotationIds = selectedAnnotationIds();
         if (annotationIds.length !== 1) return null;

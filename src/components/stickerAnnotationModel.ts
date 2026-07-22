@@ -1,6 +1,10 @@
-import type { ScreenColorSample } from "../services/api";
 import { pointToSegmentDistance } from "../services/stickerGeometry";
 import type { StickerPoint } from "../types/stickerEditing";
+
+export type ScreenColorSample = {
+    hex: string;
+    rgb: { r: number; g: number; b: number };
+};
 
 export type TransformAxisMode = "xy" | "x" | "y";
 

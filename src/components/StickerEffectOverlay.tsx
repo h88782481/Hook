@@ -1,6 +1,7 @@
 import { Show, type Component } from "solid-js";
 
 import { BLUR_EFFECT_OVERLAY_FILL, buildMosaicTextureDataUrl } from "../services/stickerEffects";
+import { buildStrokePath } from "../services/stickerStrokePath";
 import type { StickerPoint } from "../types/stickerEditing";
 
 type StickerEffectOverlayParams = {
@@ -24,17 +25,6 @@ type StickerEffectOverlayParams = {
     imageSrc?: string;
     stickerWidth?: number;
     stickerHeight?: number;
-};
-
-// Build the SVG path that traces the brush stroke. A single point still needs a
-// tiny segment so the round line cap paints a dot.
-export const buildStrokePath = (points: StickerPoint[]) => {
-    if (points.length === 0) return "";
-    if (points.length === 1) {
-        const p = points[0];
-        return `M ${p.x} ${p.y} L ${p.x + 0.01} ${p.y}`;
-    }
-    return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
 };
 
 // Mosaic grid <pattern> defs. The mosaic is a grid of square cells, each colored

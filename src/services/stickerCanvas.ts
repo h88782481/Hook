@@ -1,13 +1,14 @@
 import type { StickerPoint } from "../types/stickerEditing";
 import { toDisplayImageSrc } from "./imageSource";
+import {
+    getDashSegments,
+    getStrokeDashArray,
+    traceStrokePolyline,
+    type StickerDashPattern,
+} from "./stickerStrokePath";
 
-export type StickerDashPattern = "solid" | "dash-1" | "dash-2";
-
-/** Shared dash segment ratios. SVG uses as-is; canvas scales by stroke width. */
-const DASH_PATTERN_SEGMENTS: Record<"dash-1" | "dash-2", readonly number[]> = {
-    "dash-1": [8, 4],
-    "dash-2": [4, 2, 1, 2],
-};
+export type { StickerDashPattern };
+export { getStrokeDashArray };
 
 /**
  * Render-order rank for sticker annotations. Censoring effects sit at the bottom
@@ -16,24 +17,6 @@ const DASH_PATTERN_SEGMENTS: Record<"dash-1" | "dash-2", readonly number[]> = {
  */
 export const annotationRenderRank = (type: string) =>
     type === "blur" ? 0 : type === "mosaic" ? 1 : 2;
-
-export const getStrokeDashArray = (dashPattern?: StickerDashPattern) => {
-    if (!dashPattern || dashPattern === "solid") return undefined;
-    return DASH_PATTERN_SEGMENTS[dashPattern].join(" ");
-};
-
-/**
- * Resolve a canvas line-dash array (in px) from the annotation dash pattern,
- * scaled by stroke width so the pattern stays proportional.
- */
-const getDashSegments = (
-    dashPattern: StickerDashPattern | undefined,
-    width: number,
-): number[] => {
-    if (!dashPattern || dashPattern === "solid") return [];
-    const unit = Math.max(1, width);
-    return DASH_PATTERN_SEGMENTS[dashPattern].map((segment) => segment * unit);
-};
 
 /**
  * Apply line dash pattern to canvas context, guarded against incomplete mock implementations.
@@ -59,7 +42,7 @@ export const drawStrokePath = (
         color: string;
         width: number;
         opacity?: number;
-        dashPattern?: "solid" | "dash-1" | "dash-2";
+        dashPattern?: StickerDashPattern;
     },
 ) => {
     if (points.length < 1) return;
@@ -79,10 +62,11 @@ export const drawStrokePath = (
 
     // Multi-point: draw as a polyline
     context.beginPath();
-    context.moveTo(points[0].x, points[0].y);
-    for (let index = 1; index < points.length; index += 1) {
-        context.lineTo(points[index].x, points[index].y);
-    }
+    traceStrokePolyline(
+        points,
+        (x, y) => context.moveTo(x, y),
+        (x, y) => context.lineTo(x, y),
+    );
     context.strokeStyle = style.color;
     context.lineWidth = style.width;
     // A round cap extends each dash by half the stroke width on both ends,

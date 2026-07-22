@@ -96,8 +96,13 @@ export const [preciseRect, setPreciseRect] = createSignal<{x: number, y: number,
 // Clean View Mode (Hides UI overlay)
 export const [isCleanView, setIsCleanView] = createSignal(false);
 export const [activeStickerEditTargetId, setActiveStickerEditTargetId] = createSignal<string | null>(null);
-export const [selectedStickerAnnotationId, setSelectedStickerAnnotationId] = createSignal<string | null>(null);
+// Annotation selection: selectedStickerAnnotationIds is the single source of truth.
+// selectedStickerAnnotationId is the focused/active annotation (last entry), derived from it.
 export const [selectedStickerAnnotationIds, setSelectedStickerAnnotationIds] = createStore<string[]>([]);
+export const selectedStickerAnnotationId = (): string | null => {
+    const length = selectedStickerAnnotationIds.length;
+    return length > 0 ? selectedStickerAnnotationIds[length - 1] : null;
+};
 export const [activeStickerGroupId, setActiveStickerGroupId] = createSignal<string | null>(null);
 export const [stickerEditCancelToken, setStickerEditCancelToken] = createSignal(0);
 /** True while sticker annotation text input is focused; disables overlay key hook so typing works. */
@@ -370,7 +375,6 @@ export const uiActions = {
     },
     showStickerToolbar: (stickerId: string) => {
         setActiveStickerEditTargetId(stickerId);
-        setSelectedStickerAnnotationId(null);
         setSelectedStickerAnnotationIds([]);
         setStickerToolSettings((prev) =>
             applyStickerToolSettingsPatch(prev, {
@@ -381,7 +385,6 @@ export const uiActions = {
     },
     hideStickerToolbar: () => {
         setActiveStickerEditTargetId(null);
-        setSelectedStickerAnnotationId(null);
         setSelectedStickerAnnotationIds([]);
         setStickerToolSettings((prev) =>
             applyStickerToolSettingsPatch(prev, {
@@ -392,13 +395,10 @@ export const uiActions = {
         setStickerEditCancelToken((value) => value + 1);
     },
     setSelectedStickerAnnotation: (annotationId: string | null) => {
-        setSelectedStickerAnnotationId(annotationId);
         setSelectedStickerAnnotationIds(annotationId ? [annotationId] : []);
     },
     setSelectedStickerAnnotations: (annotationIds: string[]) => {
-        const ids = Array.from(new Set(annotationIds));
-        setSelectedStickerAnnotationIds(ids);
-        setSelectedStickerAnnotationId(ids.length > 0 ? ids[ids.length - 1] : null);
+        setSelectedStickerAnnotationIds(Array.from(new Set(annotationIds)));
     },
     requestStickerEditCancel: () => {
         setStickerEditCancelToken((value) => value + 1);

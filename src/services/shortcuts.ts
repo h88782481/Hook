@@ -26,6 +26,7 @@ const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   // Clipboard Operations
   { id: 'copy', key: 'c', modifiers: ['ctrl'], description: 'Copy selected unit', enabled: true, context: 'unit-selected' },
   { id: 'paste', key: 'v', modifiers: ['ctrl'], description: 'Paste unit', enabled: true },
+  // Owned by Rust global-plugin (see shortcutChannels.ts) — do not register in useShortcuts.
   { id: 'open-image', key: 'o', modifiers: ['ctrl'], description: 'Open image file to edit', enabled: true },
   { id: 'toggle-history', key: 'h', modifiers: ['ctrl'], description: 'Toggle color/screenshot history panel', enabled: true },
   { id: 'save', key: 's', modifiers: ['ctrl'], description: 'Save image', enabled: true, context: 'unit-selected' },
@@ -42,6 +43,7 @@ const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   // UI Toggles
   { id: 'toggle-actions', key: '!', modifiers: ['shift'], description: 'Toggle Actions Menu', enabled: true, context: 'unit-selected' },
   { id: 'toggle-side-panel', key: 'Tab', modifiers: [], description: 'Toggle Sticker Side Panel', enabled: true, context: 'unit-selected' },
+  // Owned by Rust global-plugin (see shortcutChannels.ts) — do not register in useShortcuts.
   { id: 'toggle-sticker-toolbar', key: 'e', modifiers: ['ctrl'], description: 'Toggle sticker toolbar', enabled: true },
   { id: 'toggle-clean-view', key: '4', modifiers: ['ctrl'], description: 'Toggle Clean View Mode', enabled: true },
   { id: 'transform-select', key: 'q', modifiers: [], description: 'Switch sticker transform mode to select', enabled: true, context: 'unit-selected' },
