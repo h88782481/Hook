@@ -767,7 +767,7 @@ export default function App() {
                   void finishAutoLongCaptureSession();
                   return;
               }
-              void beginCaptureSelection("long-vertical");
+              void beginCaptureSelection("long");
           });
 
           const unlistenLongCaptureFinish = await listen("trigger-long-capture-finish", () => {
@@ -1283,8 +1283,6 @@ export default function App() {
         </Show>
 
         <StickerContextMenuLayer />
-
-        {/* DEBUG: Visual Mouse Tracker Removed */}
     </main>
     </ErrorBoundary>
   );

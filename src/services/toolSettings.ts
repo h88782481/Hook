@@ -14,7 +14,6 @@ const STICKER_EDITING_DOMAINS = ["existing", "create", "sticker"] as const;
 const STICKER_TRANSFORM_MODES = ["select", "move", "rotate", "scale"] as const;
 const STICKER_CANVAS_TOOLS = ["idle", "crop", "content-eraser"] as const;
 const STICKER_CREATE_TOOLS = [
-    "crop",
     "shape-rect",
     "shape-round-rect",
     "shape-ellipse",
@@ -29,7 +28,6 @@ const STICKER_CREATE_TOOLS = [
     "serial",
     "mosaic",
     "blur",
-    "content-eraser",
     "color-picker",
 ] as const;
 
@@ -53,7 +51,6 @@ const TOOL_PROFILE_SETTING_KEYS = [
 ] as const satisfies readonly StickerToolProfileSettingKey[];
 
 const TOOL_PROFILE_KEYS_BY_TOOL: Record<StickerCreateTool, readonly StickerToolProfileSettingKey[]> = {
-    crop: [],
     "shape-rect": ["strokeWidth", "shapeCornerRadius", "shapeConstrainSquare", "shapeSnapStep", "shapeStrokeDashPattern"],
     "shape-round-rect": ["strokeWidth", "shapeCornerRadius", "shapeConstrainSquare", "shapeSnapStep", "shapeStrokeDashPattern"],
     "shape-ellipse": ["strokeWidth", "shapeConstrainSquare", "shapeSnapStep", "shapeStrokeDashPattern"],
@@ -75,7 +72,6 @@ const TOOL_PROFILE_KEYS_BY_TOOL: Record<StickerCreateTool, readonly StickerToolP
     serial: ["serialRadius", "serialFontFamily"],
     mosaic: ["effectBrushSize", "mosaicSize"],
     blur: ["effectBrushSize", "blurStrength"],
-    "content-eraser": [],
     "color-picker": [],
 };
 
@@ -100,9 +96,7 @@ const cloneDefaultToolProfiles = () => {
 };
 
 const resolveActiveProfileTool = (activeTool: StickerCreateTool): StickerCreateTool | null =>
-    activeTool === "crop" || activeTool === "content-eraser" || activeTool === "color-picker"
-        ? null
-        : activeTool;
+    activeTool === "color-picker" ? null : activeTool;
 
 const setProfileSetting = (
     profile: Partial<StickerToolProfileSettings>,
@@ -189,10 +183,8 @@ const normalizeModeFields = (
         : defaults.activeCanvasTool;
 
     const activeTool = isCreateTool(value?.activeTool)
-        && value.activeTool !== "crop"
-        && value.activeTool !== "content-eraser"
-            ? value.activeTool
-            : defaults.activeTool;
+        ? value.activeTool
+        : defaults.activeTool;
 
     const domain = isEditingDomain(value?.domain)
         ? value.domain

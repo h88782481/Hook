@@ -25,7 +25,7 @@ export const CanvasSelection: Component = () => {
                 >
                      <div class="hook-capture-chip absolute -top-7 left-0 px-2 py-1 font-mono text-[11px] font-semibold">
                         <span>{Math.round(selectionRect()!.w)} x {Math.round(selectionRect()!.h)}</span>
-                        <Show when={captureMode() === "long-vertical"}>
+                        <Show when={captureMode() === "long"}>
                             <span class="hook-capture-chip__tag px-1.5 py-[1px] text-[10px] font-semibold">长截图</span>
                         </Show>
                      </div>

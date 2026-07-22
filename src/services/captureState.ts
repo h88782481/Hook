@@ -5,7 +5,7 @@ import type {
     StickerTransformMode,
 } from "../types/stickerEditing";
 
-export type CaptureSelectionMode = "region" | "long-vertical";
+export type CaptureSelectionMode = "region" | "long";
 
 type CaptureShortcutContext =
     | "capture-selecting"
@@ -63,7 +63,7 @@ type CaptureSelectionStartState =
           duplicateDebugEvent: CaptureDuplicateDebugEvent;
       };
 
-export const isLongCaptureMode = (mode: CaptureSelectionMode) => mode === "long-vertical";
+export const isLongCaptureMode = (mode: CaptureSelectionMode) => mode === "long";
 
 const getCaptureDuplicateDebugEvent = (mode: CaptureSelectionMode): CaptureDuplicateDebugEvent =>
     isLongCaptureMode(mode) ? "trigger-long-capture-ignored-duplicate" : "trigger-capture-ignored-duplicate";

@@ -15,7 +15,6 @@ export type StickerCanvasTool =
     | "content-eraser";
 
 export type StickerCreateTool =
-    | "crop"
     | "shape-rect"
     | "shape-round-rect"
     | "shape-ellipse"
@@ -30,7 +29,6 @@ export type StickerCreateTool =
     | "serial"
     | "mosaic"
     | "blur"
-    | "content-eraser"
     | "color-picker";
 
 export type StickerToolMode = StickerTransformMode | StickerCreateTool | StickerCanvasTool;

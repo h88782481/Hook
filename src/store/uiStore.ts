@@ -75,7 +75,7 @@ export const [draggingStickerId, setDraggingStickerId] = createSignal<string | n
 export const [multiDragPositions, setMultiDragPositions] = createSignal<Record<string, {x: number, y: number}> | null>(null);
 // Capture Mode (Screenshot)
 export const [isSelecting, setIsSelecting] = createSignal(false);
-export const [captureMode, setCaptureMode] = createSignal<"region" | "long-vertical">("region");
+export const [captureMode, setCaptureMode] = createSignal<"region" | "long">("region");
 export const [longCaptureSession, setLongCaptureSession] = createSignal<{
     active: boolean;
     rect: CaptureRect;

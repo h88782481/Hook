@@ -89,13 +89,11 @@ import {
 import { updateTextAnnotationById } from "../services/stickerAnnotationMutations";
 import { syncService } from "../services/syncService";
 import { renderStickerEffectOverlay, StickerEffectDraftOverlay } from "./StickerEffectOverlay";
-import { buildStrokePath } from "../services/stickerStrokePath";
+import { buildStrokePath, getStrokeDashArray } from "../services/stickerStrokePath";
+import { annotationRenderRank } from "../services/stickerCanvas";
+import { getVisibleFill, getVisibleStroke } from "../services/stickerAnnotationStyle";
 import {
-    annotationRenderRank,
     getScaleGizmoHandleRects,
-    getStrokeDashArray,
-    getVisibleFill,
-    getVisibleStroke,
     isBoundedBoxMode,
     isMeasuredLineMode,
     isRegularShapeMode,
@@ -134,9 +132,9 @@ const getShapeCornerRadius = (mode?: DraftShape["mode"]) =>
 
 // Resolve the per-tool stroke/fill colors so each shape keeps its own color.
 const getShapeStrokeColorForMode = (mode: DraftShape["mode"] | StickerCreateTool) =>
-    stickerToolSettings[getShapeStrokeColorKey(mode)];
+    stickerToolSettings[getShapeStrokeColorKey(mode === "crop" ? null : mode)];
 const getShapeFillColorForMode = (mode: DraftShape["mode"] | StickerCreateTool) => {
-    const key = getShapeFillColorKey(mode);
+    const key = getShapeFillColorKey(mode === "crop" ? null : mode);
     return key ? stickerToolSettings[key] : "transparent";
 };
 const getDraftShapePreviewFill = (mode?: DraftShape["mode"]) =>

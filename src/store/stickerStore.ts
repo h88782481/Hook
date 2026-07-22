@@ -13,6 +13,7 @@ import {
     removeStickerGroup,
     upsertStickerGroup,
 } from "../services/stickerGroups";
+import { clamp } from "../utils/math";
 
 const [stickers, setStickers] = createStore<Sticker[]>([]);
 const [links, setLinks] = createStore<Link[]>([]);
@@ -62,7 +63,7 @@ const updateStickerData = (id: string, updates: Partial<Sticker["data"]>) => {
 const setStickerOpacity = (id: string, opacity: number) => {
     const sticker = stickers.find((item) => item.id === id);
     if (!sticker) return;
-    const clamped = Math.min(1, Math.max(0, opacity));
+    const clamped = clamp(opacity, 0, 1);
     updateStickerData(
         id,
         sticker.data.minified ? { opacityMini: clamped } : { opacityNormal: clamped },

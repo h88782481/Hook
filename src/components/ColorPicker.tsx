@@ -3,7 +3,7 @@ import { Component, createSignal, createEffect, onMount, onCleanup, For, Show } 
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
 import { syncService } from "../services/syncService";
 import { clamp } from "../utils/math";
-import { hexToRgba, rgbaToHex } from "../utils/colorUtils";
+import { hexToRgba, isTransparentColor, rgbaToHex } from "../utils/colorUtils";
 
 const COLOR_PICKER_RECT_ID = "color-picker-popup";
 const COLOR_PICKER_RECT_NAME = "COLOR_PICKER";
@@ -421,7 +421,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
                         <div class="flex flex-wrap gap-1">
                             <For each={props.palette}>
                                 {(paletteColor) => {
-                                    const isTransparent = !paletteColor || paletteColor.toLowerCase() === "transparent";
+                                    const isTransparent = isTransparentColor(paletteColor);
                                     return (
                                         <button
                                             class="hook-checkerboard hook-checkerboard--md h-6 w-6 overflow-hidden border hover:border-white/60"

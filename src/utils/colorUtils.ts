@@ -55,25 +55,8 @@ export const rgbaToHex = (r: number, g: number, b: number, a: number): string =>
     return `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}`;
 };
 
-/**
- * Alpha (0-1) encoded in a color string.
- * Supports "transparent" (=0), #RRGGBBAA, and treats other hex as opaque.
- */
-const getColorAlpha = (color: string | undefined): number => {
-    if (!color) return 0;
-    const trimmed = color.trim().toLowerCase();
-    if (trimmed === TRANSPARENT_COLOR) return 0;
-    const hex = trimmed.replace(/^#/, "");
-    if (/^[0-9a-f]{8}$/.test(hex)) {
-        return parseInt(hex.slice(6, 8), 16) / 255;
-    }
-    return 1;
-};
-
 export const isTransparentColor = (color: string | undefined) =>
-    !color ||
-    color.trim().toLowerCase() === TRANSPARENT_COLOR ||
-    getColorAlpha(color) === 0;
+    !color || hexToRgba(color).a === 0;
 
 /** Normalize palette entries to #rrggbb / #rrggbbaa / "transparent". */
 export const normalizePaletteColor = (color: string): string | null => {

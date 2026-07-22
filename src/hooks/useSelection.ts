@@ -448,7 +448,7 @@ export function useSelection() {
                 return false;
             }
             const response = await api.finishLongCaptureSession(backendSessionId);
-            await addCaptureSticker(response, rect, origin, "long-vertical", axis);
+            await addCaptureSticker(response, rect, origin, "long", axis);
             await api.debugLogEvent(
                 "auto-long-capture-finish",
                 `frames=${autoLongCaptureBackendFrameCount} duplicates=${autoLongCaptureBackendDuplicateCount} axis=${axis ?? "unknown"} direction=${direction ?? "unknown"}`,
@@ -666,18 +666,7 @@ export function useSelection() {
                  }
              }
 
-             // Apply Selection
-             // TODO: Shift key for "Additive" selection?
-             // For now, simple replacement match standard behavior
-             if (e.shiftKey) {
-                 // Additive Logic (Union with what?)
-                 // If we cached 'initialSelection', we could do Union(initial, new).
-                 // Without cache, it's tricky.
-                 // Let's just do simple set for now.
-                 selectionActions.set(newSelection);
-             } else {
-                 selectionActions.set(newSelection);
-             }
+             selectionActions.set(newSelection);
         }
     };
 
@@ -696,9 +685,6 @@ export function useSelection() {
 
         if (!isSelecting() || !selectionRect()) return;
 
-        // Import check (handled by import in store/uiStore)
-        // Need to import isCropping, selectedStickerId at top of file, or use accessor if available
-        // Assuming they are imported below in the full file update
         const rect = preciseRect() || selectionRect()!;
 
         if (rect.w < 5 || rect.h < 5) {
