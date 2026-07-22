@@ -55,6 +55,17 @@ pub(crate) fn append_runtime_log_line(message: &str) {
     let _ = runtime_log_sender().try_send(line);
 }
 
+#[tauri::command]
+pub fn append_runtime_log(_app: tauri::AppHandle, event: String, detail: Option<String>) {
+    let suffix = detail
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(" :: {}", value))
+        .unwrap_or_default();
+    append_runtime_log_line(&format!("{}{}", event, suffix));
+}
+
 pub(crate) fn unix_timestamp_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

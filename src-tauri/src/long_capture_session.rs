@@ -14,9 +14,9 @@ use windows::Win32::System::Threading::{
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LongCaptureWheelEvent {
-    delta_x: i64,
-    delta_y: i64,
+pub(crate) struct LongCaptureWheelEvent {
+    pub(crate) delta_x: i64,
+    pub(crate) delta_y: i64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -55,6 +55,14 @@ impl SharedLongCaptureSessions {
         Self {
             sessions: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
+    }
+
+    pub(crate) fn has_any_sessions(&self) -> bool {
+        self.sessions
+            .lock()
+            .ok()
+            .map(|sessions| !sessions.is_empty())
+            .unwrap_or(false)
     }
 }
 
