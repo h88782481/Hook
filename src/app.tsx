@@ -686,10 +686,28 @@ export default function App() {
       } catch {
           // Best-effort only.
       }
-      await api.setMouseMonitorActive(false);
-      // Region capture uses the overlay webview mouse stream (not LL hook / system cursor).
-      await api.setCaptureInputActive(false);
-      await api.setOverlayClickThrough(false);
+      // Overlay setup must not block forever or leave selection half-armed.
+      // Use allSettled so one hung/failing IPC cannot strand isSelecting=true
+      // with click-through still on (feels like "shortcuts dead / capture frozen").
+      const overlaySetup = await Promise.allSettled([
+          api.setMouseMonitorActive(false),
+          api.setCaptureInputActive(false),
+          api.setOverlayClickThrough(false),
+      ]);
+      const overlayFailed = overlaySetup.some((result) => result.status === "rejected");
+      if (overlayFailed) {
+          void api.debugLogEvent(
+              "begin-capture-overlay-setup-partial-failure",
+              overlaySetup
+                  .map((result, index) =>
+                      result.status === "rejected"
+                          ? `${index}:${result.reason instanceof Error ? result.reason.message : String(result.reason)}`
+                          : null,
+                  )
+                  .filter(Boolean)
+                  .join("|"),
+          );
+      }
   };
 
   // Initialization

@@ -27,6 +27,11 @@ impl WindowsVersion {
         self.build >= 22000
     }
 
+    /// MinUpdateInterval on GraphicsCaptureSession (Win11 22H2+ / build 22621).
+    pub fn supports_min_update_interval(&self) -> bool {
+        self.build >= 22621
+    }
+
     pub fn is_windows_11(&self) -> bool {
         self.build >= 22000
     }

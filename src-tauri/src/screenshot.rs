@@ -2,16 +2,14 @@ use anyhow::anyhow;
 use image::RgbImage;
 use std::sync::OnceLock;
 
-// Scap Imports
 use scap_targets::Display;
 
-// Windows Imports
 #[cfg(target_os = "windows")]
-use scap_direct3d::{Capturer, Frame, PixelFormat, Settings};
+use scap_direct3d::{Capturer, Frame, PixelFormat, Settings, WindowsVersion};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HMODULE;
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 #[cfg(target_os = "windows")]
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, D3D11_BOX, D3D11_SDK_VERSION,
@@ -26,15 +24,6 @@ use windows::Win32::Graphics::Gdi::{
 pub enum CaptureWorkloadProfile {
     StandardRegion,
     LongCapture,
-}
-
-#[cfg(target_os = "windows")]
-const WINDOWS_CAPTURE_UNSUPPORTED: &str =
-    "Screen capture not supported on this device/driver. Update graphics drivers or OS.";
-
-#[cfg(target_os = "windows")]
-fn unsupported_error() -> anyhow::Error {
-    anyhow!(WINDOWS_CAPTURE_UNSUPPORTED)
 }
 
 #[derive(Clone, Copy)]
@@ -88,13 +77,14 @@ fn rgb_from_rgba(
     RgbImage::from_raw(width as u32, height as u32, rgb)
 }
 
+/// Shared D3D11 device: prefer hardware GPU, fall back to WARP for VMs / no-GPU hosts.
 #[cfg(target_os = "windows")]
 fn shared_d3d_device() -> anyhow::Result<&'static ID3D11Device> {
-    static DEVICE: OnceLock<Option<ID3D11Device>> = OnceLock::new();
+    static DEVICE: OnceLock<Option<(ID3D11Device, bool)>> = OnceLock::new();
 
     let device = DEVICE.get_or_init(|| {
         let mut device = None;
-        let result = unsafe {
+        let hw = unsafe {
             D3D11CreateDevice(
                 None,
                 D3D_DRIVER_TYPE_HARDWARE,
@@ -107,61 +97,50 @@ fn shared_d3d_device() -> anyhow::Result<&'static ID3D11Device> {
                 None,
             )
         };
-
-        if result.is_err() {
-            return None;
+        if hw.is_ok() {
+            return device.map(|d| (d, false));
         }
 
-        device
+        device = None;
+        let warp = unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_WARP,
+                HMODULE::default(),
+                Default::default(),
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                None,
+            )
+        };
+        if warp.is_ok() {
+            crate::append_runtime_log_line(
+                "capture_area d3d_device :: using_WARP software_rasterizer (no GPU / VM)",
+            );
+            return device.map(|d| (d, true));
+        }
+
+        None
     });
 
     device
         .as_ref()
-        .ok_or_else(|| anyhow!("D3D11 device unavailable"))
+        .map(|(d, _)| d)
+        .ok_or_else(|| anyhow!("D3D11 device unavailable (hardware and WARP both failed)"))
 }
 
-// Runtime circuit breaker for the WGC fast path. Repeated WGC start/capture
-// failures can leave frame-pool/session cleanup lagging behind the next retry;
-// enough churn can exhaust GPU/system resources and make every later
-// StartCapture return 0x800705AA (ERROR_NO_SYSTEM_RESOURCES). If WGC keeps
-// failing on this machine, stop retrying it for the rest of the session and
-// fall back to GDI, so long capture does not spend hundreds of calls thrashing
-// the same failing path.
+/// WGC needs Win10 1903+ (build 18362). Win11 features are enabled opportunistically.
 #[cfg(target_os = "windows")]
-static WGC_DISABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-#[cfg(target_os = "windows")]
-static WGC_CONSECUTIVE_FAILURES: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0);
-#[cfg(target_os = "windows")]
-const WGC_MAX_CONSECUTIVE_FAILURES: u32 = 3;
-
-#[cfg(target_os = "windows")]
-fn wgc_note_success() {
-    WGC_CONSECUTIVE_FAILURES.store(0, std::sync::atomic::Ordering::Relaxed);
-}
-
-#[cfg(target_os = "windows")]
-fn wgc_note_failure() {
-    let prior = WGC_CONSECUTIVE_FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    if prior + 1 >= WGC_MAX_CONSECUTIVE_FAILURES {
-        WGC_DISABLED.store(true, std::sync::atomic::Ordering::Relaxed);
-        crate::append_runtime_log_line(
-            "capture_area wgc_disabled :: reason=too_many_consecutive_failures",
-        );
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn windows_fast_path_available() -> bool {
+fn graphics_capture_available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
-
-    if WGC_DISABLED.load(std::sync::atomic::Ordering::Relaxed) {
-        return false;
-    }
-
-    *AVAILABLE.get_or_init(|| match scap_direct3d::is_supported() {
-        Ok(true) => shared_d3d_device().is_ok(),
-        _ => false,
+    *AVAILABLE.get_or_init(|| {
+        let version_ok = WindowsVersion::detect()
+            .map(|version| version.meets_minimum_requirements())
+            .unwrap_or(false);
+        let api_ok = matches!(scap_direct3d::is_supported(), Ok(true));
+        version_ok && api_ok && shared_d3d_device().is_ok()
     })
 }
 
@@ -186,23 +165,262 @@ fn frame_to_rgb(frame: &Frame) -> anyhow::Result<RgbImage> {
     .ok_or_else(|| anyhow!("Failed to create RgbImage"))
 }
 
-// Simplified capture settings just for Full Screen or Area
+/// GraphicsCaptureSession settings. Border / MinUpdateInterval apply only when
+/// the running OS exposes them (typically Win11).
 #[cfg(target_os = "windows")]
-fn windows_capture_settings(rect: Option<D3D11_BOX>) -> Settings {
+fn windows_capture_settings() -> Settings {
+    use std::time::Duration;
+
     let mut settings = Settings {
         is_cursor_capture_enabled: Some(false),
         pixel_format: PixelFormat::B8G8R8A8Unorm,
         ..Default::default()
     };
 
-    if let Ok(true) = Settings::can_is_border_required() {
+    if Settings::can_is_border_required().unwrap_or(false) {
         settings.is_border_required = Some(false);
     }
-
-    // Explicit Crop
-    settings.crop = rect;
+    if Settings::can_min_update_interval().unwrap_or(false) {
+        settings.min_update_interval = Some(Duration::from_millis(16));
+    }
 
     settings
+}
+
+#[cfg(target_os = "windows")]
+fn frame_is_mostly_black(img: &RgbImage) -> bool {
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 {
+        return true;
+    }
+    let step_x = (w / 64).max(1);
+    let step_y = (h / 64).max(1);
+    let mut sampled: u64 = 0;
+    let mut black: u64 = 0;
+    let mut y = 0;
+    while y < h {
+        let mut x = 0;
+        while x < w {
+            let p = img.get_pixel(x, y).0;
+            sampled += 1;
+            if p[0] <= 8 && p[1] <= 8 && p[2] <= 8 {
+                black += 1;
+            }
+            x += step_x;
+        }
+        y += step_y;
+    }
+    sampled > 0 && black * 100 >= sampled * 99
+}
+
+#[cfg(target_os = "windows")]
+fn crop_rgb(full: &RgbImage, crop: &D3D11_BOX) -> RgbImage {
+    use image::imageops;
+
+    let img_w = full.width();
+    let img_h = full.height();
+    let left = crop.left.min(img_w.saturating_sub(1));
+    let top = crop.top.min(img_h.saturating_sub(1));
+    let right = crop.right.min(img_w).max(left + 1);
+    let bottom = crop.bottom.min(img_h).max(top + 1);
+    imageops::crop_imm(full, left, top, right - left, bottom - top).to_image()
+}
+
+#[cfg(target_os = "windows")]
+struct WgcShared {
+    latest: std::sync::Mutex<Option<RgbImage>>,
+    seq: std::sync::atomic::AtomicU64,
+    target_display: std::sync::Mutex<scap_targets::DisplayId>,
+    ready: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_shared(display_id: &scap_targets::DisplayId) -> &'static std::sync::Arc<WgcShared> {
+    static SHARED: OnceLock<std::sync::Arc<WgcShared>> = OnceLock::new();
+    static WORKER_STARTED: OnceLock<()> = OnceLock::new();
+
+    let shared = SHARED.get_or_init(|| {
+        std::sync::Arc::new(WgcShared {
+            latest: std::sync::Mutex::new(None),
+            seq: std::sync::atomic::AtomicU64::new(0),
+            target_display: std::sync::Mutex::new(display_id.clone()),
+            ready: std::sync::atomic::AtomicBool::new(false),
+        })
+    });
+
+    if let Ok(mut guard) = shared.target_display.lock() {
+        *guard = display_id.clone();
+    }
+
+    WORKER_STARTED.get_or_init(|| {
+        let thread_shared = shared.clone();
+        let _ = std::thread::Builder::new()
+            .name("hook-wgc-session".into())
+            .spawn(move || wgc_session_loop(thread_shared));
+    });
+
+    shared
+}
+
+#[cfg(target_os = "windows")]
+fn build_session_capturer(
+    display_id: &scap_targets::DisplayId,
+    shared: &std::sync::Arc<WgcShared>,
+    closed: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> anyhow::Result<Capturer> {
+    let display = scap_targets::Display::from_id(display_id)
+        .ok_or_else(|| anyhow!("Display not found"))?;
+    let item = display
+        .raw_handle()
+        .try_as_capture_item()
+        .map_err(|e| anyhow!("GraphicsCaptureItem failed: {e:?}"))?;
+    let device = shared_d3d_device()?.clone();
+    let latest = shared.clone();
+    let closed_flag = closed.clone();
+
+    Capturer::new(
+        item,
+        windows_capture_settings(),
+        move |frame| {
+            if let Ok(img) = frame_to_rgb(&frame) {
+                if let Ok(mut slot) = latest.latest.lock() {
+                    *slot = Some(img);
+                    latest
+                        .seq
+                        .fetch_add(1, std::sync::atomic::Ordering::Release);
+                }
+            }
+            Ok(())
+        },
+        move || {
+            closed_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        },
+        Some(device),
+    )
+    .map_err(|e| anyhow!("Capturer::new failed: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
+    use std::time::Duration;
+
+    loop {
+        let display_id = match shared.target_display.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => {
+                std::thread::sleep(Duration::from_millis(200));
+                continue;
+            }
+        };
+
+        let closed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut capturer = match build_session_capturer(&display_id, &shared, &closed) {
+            Ok(capturer) => capturer,
+            Err(error) => {
+                crate::append_runtime_log_line(&format!(
+                    "capture_area wgc_session_fail :: {error}"
+                ));
+                shared
+                    .ready
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(750));
+                continue;
+            }
+        };
+
+        if let Err(error) = capturer.start() {
+            crate::append_runtime_log_line(&format!(
+                "capture_area wgc_session_start_fail :: {error:?}"
+            ));
+            shared
+                .ready
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(750));
+            continue;
+        }
+
+        shared.ready.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(version) = WindowsVersion::detect() {
+            crate::append_runtime_log_line(&format!(
+                "capture_area wgc_session_started :: api=GraphicsCapture os={}",
+                version.display_name()
+            ));
+        } else {
+            crate::append_runtime_log_line(
+                "capture_area wgc_session_started :: api=GraphicsCapture",
+            );
+        }
+
+        while !closed.load(std::sync::atomic::Ordering::SeqCst) {
+            let target_changed = shared
+                .target_display
+                .lock()
+                .map(|guard| *guard != display_id)
+                .unwrap_or(false);
+            if target_changed {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        shared
+            .ready
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let _ = capturer.stop();
+        if let Ok(mut slot) = shared.latest.lock() {
+            *slot = None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn capture_from_wgc_session(
+    display_id: &scap_targets::DisplayId,
+    crop: &D3D11_BOX,
+) -> anyhow::Result<RgbImage> {
+    use std::time::{Duration, Instant};
+
+    let shared = wgc_shared(display_id);
+    let ready_deadline = Instant::now() + Duration::from_millis(800);
+    while !shared.ready.load(std::sync::atomic::Ordering::SeqCst) {
+        if Instant::now() >= ready_deadline {
+            return Err(anyhow!("Graphics Capture session not ready"));
+        }
+        std::thread::sleep(Duration::from_millis(8));
+    }
+
+    let mut seq_seen = shared.seq.load(std::sync::atomic::Ordering::Acquire);
+    let deadline = Instant::now() + Duration::from_millis(900);
+    let mut chosen: Option<RgbImage> = None;
+
+    if let Ok(slot) = shared.latest.lock() {
+        if let Some(img) = slot.as_ref() {
+            if !frame_is_mostly_black(img) {
+                chosen = Some(img.clone());
+            }
+        }
+    }
+
+    while chosen.is_none() && Instant::now() < deadline {
+        let seq_now = shared.seq.load(std::sync::atomic::Ordering::Acquire);
+        if seq_now != seq_seen {
+            seq_seen = seq_now;
+            if let Ok(slot) = shared.latest.lock() {
+                if let Some(img) = slot.as_ref() {
+                    if !frame_is_mostly_black(img) {
+                        chosen = Some(img.clone());
+                        break;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(8));
+    }
+
+    let full = chosen.ok_or_else(|| anyhow!("No usable Graphics Capture frame"))?;
+    Ok(crop_rgb(&full, crop))
 }
 
 #[cfg(target_os = "windows")]
@@ -212,17 +430,13 @@ fn capture_bitmap_with(
     height: i32,
     mut fill: impl FnMut(HDC) -> anyhow::Result<()>,
 ) -> anyhow::Result<Vec<u8>> {
-    if width <= 0 || height <= 0 {
-        return Err(unsupported_error());
-    }
-
-    if base_dc.is_invalid() {
-        return Err(unsupported_error());
+    if width <= 0 || height <= 0 || base_dc.is_invalid() {
+        return Err(anyhow!("Invalid GDI capture parameters"));
     }
 
     let mem_dc = unsafe { CreateCompatibleDC(Some(base_dc)) };
     if mem_dc.is_invalid() {
-        return Err(unsupported_error());
+        return Err(anyhow!("CreateCompatibleDC failed"));
     }
 
     let info = BITMAPINFO {
@@ -246,30 +460,26 @@ fn capture_bitmap_with(
     let bitmap =
         unsafe { CreateDIBSection(Some(mem_dc), &info, DIB_RGB_COLORS, &mut data, None, 0) };
 
-    // Check if bitmap creation succeeded (bitmap != Err and handle != 0 and data != null)
     let bitmap = match bitmap {
         Ok(b) if !b.is_invalid() && !data.is_null() => b,
         _ => {
             unsafe {
                 let _ = DeleteDC(mem_dc);
             }
-            return Err(unsupported_error());
+            return Err(anyhow!("CreateDIBSection failed"));
         }
     };
 
     let old_obj = unsafe { SelectObject(mem_dc, bitmap.into()) };
-
     let result = (|| {
         fill(mem_dc)?;
-
-        let width = usize::try_from(width).map_err(|_| unsupported_error())?;
-        let height = usize::try_from(height).map_err(|_| unsupported_error())?;
-        let row_bytes = width.checked_mul(4).ok_or_else(unsupported_error)?;
+        let width = usize::try_from(width).map_err(|_| anyhow!("bad width"))?;
+        let height = usize::try_from(height).map_err(|_| anyhow!("bad height"))?;
+        let row_bytes = width.checked_mul(4).ok_or_else(|| anyhow!("row overflow"))?;
         let len = height
             .checked_mul(row_bytes)
-            .ok_or_else(unsupported_error)?;
+            .ok_or_else(|| anyhow!("buffer overflow"))?;
         let slice = unsafe { std::slice::from_raw_parts(data as *const u8, len) };
-
         let mut buffer = vec![0u8; len];
         buffer.copy_from_slice(slice);
         Ok(buffer)
@@ -284,12 +494,7 @@ fn capture_bitmap_with(
     result
 }
 
-#[cfg(target_os = "windows")]
-fn bgra_to_rgb(buffer: Vec<u8>, width: usize, height: usize) -> anyhow::Result<RgbImage> {
-    let stride = width.checked_mul(4).ok_or_else(unsupported_error)?;
-    rgb_from_rgba(&buffer, width, height, stride, ChannelOrder::Bgra).ok_or_else(unsupported_error)
-}
-
+/// GDI BitBlt path for Win10/VMs where Graphics Capture or D3D is unavailable.
 #[cfg(target_os = "windows")]
 fn capture_area_gdi(src_x: i32, src_y: i32, width: i32, height: i32) -> anyhow::Result<RgbImage> {
     let screen_dc = unsafe { GetDC(None) };
@@ -307,38 +512,18 @@ fn capture_area_gdi(src_x: i32, src_y: i32, width: i32, height: i32) -> anyhow::
                 SRCCOPY | CAPTUREBLT,
             )
         }
-        .map_err(|_| unsupported_error())
+        .map_err(|e| anyhow!("BitBlt failed: {e}"))
     });
     unsafe {
         ReleaseDC(None, screen_dc);
     }
 
     let buffer = result?;
-    let width = usize::try_from(width).map_err(|_| unsupported_error())?;
-    let height = usize::try_from(height).map_err(|_| unsupported_error())?;
-    bgra_to_rgb(buffer, width, height)
-}
-
-#[cfg(target_os = "windows")]
-fn capture_backend_mode() -> String {
-    // Default to "auto": try the Windows Graphics Capture (Direct3D) fast path
-    // first, then fall back to GDI. GDI's BitBlt cannot capture hardware-overlay
-    // / GPU-composited video (players, hardware-accelerated browsers) - it reads
-    // back the black color-key, which is why video came out black. WGC captures
-    // the composited output like other screenshot tools do. Set
-    // HOOK_CAPTURE_BACKEND=gdi to force GDI if a driver misbehaves with WGC.
-    std::env::var("HOOK_CAPTURE_BACKEND")
-        .ok()
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "auto".to_string())
-}
-
-fn capture_area_verbose_logging_enabled_for(value: Option<&str>) -> bool {
-    matches!(
-        value.map(|value| value.trim().to_ascii_lowercase()),
-        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
-    )
+    let width = usize::try_from(width).map_err(|_| anyhow!("bad width"))?;
+    let height = usize::try_from(height).map_err(|_| anyhow!("bad height"))?;
+    let stride = width.checked_mul(4).ok_or_else(|| anyhow!("stride overflow"))?;
+    rgb_from_rgba(&buffer, width, height, stride, ChannelOrder::Bgra)
+        .ok_or_else(|| anyhow!("Failed to decode GDI bitmap"))
 }
 
 fn capture_area_verbose_logging_enabled() -> bool {
@@ -346,69 +531,19 @@ fn capture_area_verbose_logging_enabled() -> bool {
         return true;
     }
 
-    capture_area_verbose_logging_enabled_for(
+    matches!(
         std::env::var("HOOK_CAPTURE_AREA_VERBOSE_LOG")
             .ok()
-            .as_deref(),
+            .map(|value| value.trim().to_ascii_lowercase()),
+        Some(value) if matches!(value.as_str(), "1" | "true" | "yes" | "on")
     )
 }
 
-/// One-shot WGC capture: create a Capturer, grab a single cropped frame, stop.
-#[cfg(target_os = "windows")]
-fn try_fast_capture(
-    display_id: scap_targets::DisplayId,
-    crop_rect: Option<D3D11_BOX>,
-) -> Option<RgbImage> {
-    use std::sync::mpsc::sync_channel;
-    use std::time::Duration;
-
-    let diag = capture_area_verbose_logging_enabled();
-
-    if !windows_fast_path_available() {
-        if diag {
-            crate::append_runtime_log_line(
-                "capture_area fast_fail :: reason=fast_path_unavailable",
-            );
-        }
-        return None;
-    }
-
-    let start = std::time::Instant::now();
-    let display = scap_targets::Display::from_id(&display_id)?;
-    let item = display.raw_handle().try_as_capture_item().ok()?;
-    let settings = windows_capture_settings(crop_rect);
-    let device = shared_d3d_device().ok().cloned();
-    let (tx, rx) = sync_channel(1);
-
-    let mut capturer = Capturer::new(
-        item,
-        settings,
-        move |frame| {
-            let res = frame_to_rgb(&frame);
-            let _ = tx.try_send(res);
-            Ok(())
-        },
-        || Ok(()),
-        device,
-    )
-    .ok()?;
-
-    capturer.start().ok()?;
-    let res = rx.recv_timeout(Duration::from_millis(500));
-    let _ = capturer.stop();
-
-    let image = res.ok()?.ok()?;
-    if diag {
-        crate::append_runtime_log_line(&format!(
-            "capture_area fast_elapsed :: mode=transient elapsed_ms={}",
-            start.elapsed().as_millis()
-        ));
-    }
-    Some(image)
-}
-
-// --- Public API ---
-
+/// Capture a screen region.
+///
+/// Priority:
+/// 1. Windows Graphics Capture (Win10 1903+ / Win11) — D3D hardware, or WARP in VMs
+/// 2. GDI BitBlt — when WGC/D3D is unavailable (common in headless / locked-down VMs)
 pub fn capture_area_with_profile(
     x: i32,
     y: i32,
@@ -421,11 +556,11 @@ pub fn capture_area_with_profile(
         let verbose_log = capture_area_verbose_logging_enabled();
         if verbose_log {
             crate::append_runtime_log_line(&format!(
-                "capture_area enter :: x={} y={} w={} h={}",
-                x, y, w, h
+                "capture_area enter :: x={} y={} w={} h={} profile={:?}",
+                x, y, w, h, profile
             ));
         }
-        // 1. Find Primary Display & Scale Info
+
         let display = Display::primary();
         let display_id = display.id();
 
@@ -440,19 +575,6 @@ pub fn capture_area_with_profile(
             return Err(anyhow!("Invalid display dimensions"));
         }
 
-        // 2. Calculate Scale Factor (Physical / Logical)
-        // Cap uses: logical.width() / physical.width().
-        // Wait, if logical is 1920 (at 150%) and physical is 2880...
-        // A point at 100 logical is 150 physical.
-        // So scale = physical / logical = 1.5.
-        // Cap's screenshot.rs:
-        // let logical = display.logical_size()?;
-        // let physical = display.physical_size()?;
-        // let scale = physical.width() / logical.width();
-
-        // However, Cap's "logical_size" might return the *Points* size on macOS, but on Windows:
-        // scap-targets implementation uses monitor info.
-
         let scale = physical.width() / logical.width();
         if verbose_log {
             crate::append_runtime_log_line(&format!(
@@ -465,7 +587,6 @@ pub fn capture_area_with_profile(
             ));
         }
 
-        // 3. Scale the input rect (assumed logical) to physical pixels
         let left = (x as f64 * scale).floor();
         let top = (y as f64 * scale).floor();
         let right = (left + w as f64 * scale).ceil();
@@ -482,6 +603,11 @@ pub fn capture_area_with_profile(
             front: 0,
             back: 1,
         };
+        let crop_x = d3d_box.left as i32;
+        let crop_y = d3d_box.top as i32;
+        let crop_w = (d3d_box.right - d3d_box.left) as i32;
+        let crop_h = (d3d_box.bottom - d3d_box.top) as i32;
+
         if verbose_log {
             crate::append_runtime_log_line(&format!(
                 "capture_area crop :: left={} top={} right={} bottom={}",
@@ -489,57 +615,48 @@ pub fn capture_area_with_profile(
             ));
         }
 
-        let crop_x = d3d_box.left;
-        let crop_y = d3d_box.top;
-        let crop_w = d3d_box.right - d3d_box.left;
-        let crop_h = d3d_box.bottom - d3d_box.top;
-
-        let backend_mode = capture_backend_mode();
-        if verbose_log {
-            crate::append_runtime_log_line(&format!(
-                "capture_area dispatch :: mode={} profile={:?}",
-                backend_mode, profile
-            ));
-        }
-        if backend_mode == "auto" {
-            if let Some(image) = try_fast_capture(display_id.clone(), Some(d3d_box)) {
-                wgc_note_success();
-                if verbose_log {
+        if graphics_capture_available() {
+            let start = std::time::Instant::now();
+            match capture_from_wgc_session(&display_id, &d3d_box) {
+                Ok(image) => {
+                    if verbose_log {
+                        crate::append_runtime_log_line(&format!(
+                            "capture_area success :: backend=wgc width={} height={} elapsed_ms={}",
+                            image.width(),
+                            image.height(),
+                            start.elapsed().as_millis()
+                        ));
+                    }
+                    return Ok(image);
+                }
+                Err(error) => {
                     crate::append_runtime_log_line(&format!(
-                        "capture_area fast_success :: width={} height={}",
-                        image.width(),
-                        image.height()
+                        "capture_area wgc_failed :: {error} :: falling_back_to_gdi"
                     ));
                 }
-                return Ok(image);
             }
-            wgc_note_failure();
-            if verbose_log {
-                crate::append_runtime_log_line(
-                    "capture_area fast_path_none :: falling_back_to_gdi",
-                );
-            }
-        } else {
-            if verbose_log {
-                crate::append_runtime_log_line(&format!(
-                    "capture_area fast_path_skipped :: mode={}",
-                    backend_mode
-                ));
-            }
+        } else if verbose_log {
+            crate::append_runtime_log_line(
+                "capture_area wgc_unavailable :: using_gdi (Win10 pre-1903, policy, or no D3D)",
+            );
         }
 
-        let gdi_image =
-            capture_area_gdi(crop_x as i32, crop_y as i32, crop_w as i32, crop_h as i32)?;
+        let start = std::time::Instant::now();
+        let image = capture_area_gdi(crop_x, crop_y, crop_w, crop_h)?;
         if verbose_log {
             crate::append_runtime_log_line(&format!(
-                "capture_area gdi_capture_success :: width={} height={}",
-                gdi_image.width(),
-                gdi_image.height()
+                "capture_area success :: backend=gdi width={} height={} elapsed_ms={}",
+                image.width(),
+                image.height(),
+                start.elapsed().as_millis()
             ));
         }
-        return Ok(gdi_image);
+        Ok(image)
     }
 
     #[cfg(not(target_os = "windows"))]
-    Err(anyhow!("Only Windows is supported"))
+    {
+        let _ = (x, y, w, h, profile);
+        Err(anyhow!("Only Windows is supported"))
+    }
 }

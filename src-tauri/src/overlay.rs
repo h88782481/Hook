@@ -2210,7 +2210,9 @@ pub(crate) fn install_rdev_input_listener(
                                 && !capture_global_registered.load(Ordering::Relaxed)
                             {
                                 input_state.last_capture_trigger = Instant::now();
+                                drop(input_state);
                                 append_runtime_log_line("rdev_capture_triggered");
+                                // Never call window/HWND APIs while holding the rdev mutex.
                                 enter_capture_mode(&window);
                                 return;
                             }
@@ -2219,6 +2221,7 @@ pub(crate) fn install_rdev_input_listener(
                                 && !long_capture_global_registered.load(Ordering::Relaxed)
                             {
                                 input_state.last_capture_trigger = Instant::now();
+                                drop(input_state);
                                 append_runtime_log_line("rdev_long_capture_triggered");
                                 enter_long_capture_mode(&window);
                                 return;
@@ -2231,12 +2234,14 @@ pub(crate) fn install_rdev_input_listener(
                     {
                         if app_settings::binding_is_print_screen(&settings.shortcuts.capture) {
                             input_state.last_capture_trigger = Instant::now();
+                            drop(input_state);
                             append_runtime_log_line("rdev_printscreen_capture_triggered");
                             enter_capture_mode(&window);
                             return;
                         }
                         if app_settings::binding_is_print_screen(&settings.shortcuts.long_capture) {
                             input_state.last_capture_trigger = Instant::now();
+                            drop(input_state);
                             append_runtime_log_line("rdev_printscreen_long_capture_triggered");
                             enter_long_capture_mode(&window);
                             return;
@@ -2253,10 +2258,12 @@ pub(crate) fn install_rdev_input_listener(
                             }
                             if input_state.last_esc.elapsed() < Duration::from_millis(400) {
                                 println!("Double ESC detected - Emergency Exit.");
+                                drop(input_state);
                                 set_capture_input_runtime_active(false);
                                 std::process::exit(0);
                             }
                             input_state.last_esc = Instant::now();
+                            drop(input_state);
                             append_runtime_log_line("rdev_escape_triggered");
                             set_capture_input_runtime_active(false);
                             let _ = window.emit("trigger-escape", ());
@@ -2268,10 +2275,12 @@ pub(crate) fn install_rdev_input_listener(
                                 );
                                 return;
                             }
+                            drop(input_state);
                             append_runtime_log_line("rdev_delete_triggered");
                             let _ = window.emit("trigger-delete", ());
                         }
                         rdev::Key::Return => {
+                            drop(input_state);
                             append_runtime_log_line("rdev_enter_triggered");
                             let _ = window.emit("trigger-long-capture-finish", ());
                         }

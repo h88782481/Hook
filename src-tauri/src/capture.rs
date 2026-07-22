@@ -45,8 +45,12 @@ pub async fn capture_region(
         return Err("Capture is already in progress; please try again".to_string());
     }
 
+    // Own the latch on the async side so a timed-out / abandoned blocking worker
+    // cannot leave capture permanently busy. The worker still runs to completion
+    // when possible; we just refuse to wait forever for a hung WGC/GDI path.
+    let _in_flight_guard = RegionCaptureInFlightGuard;
+
     let handle = tokio::task::spawn_blocking(move || -> Result<CaptureResponse, String> {
-        let _in_flight_guard = RegionCaptureInFlightGuard;
         // Capture Region with proper DPI Scaling via Scap.
         // Note: We pass logical coords (x,y,w,h) as received from frontend.
         // The backend `capture_area` handles conversion to physical pixels.
@@ -75,7 +79,10 @@ pub async fn capture_region(
 
     match tokio::time::timeout(REGION_CAPTURE_TIMEOUT, handle).await {
         Ok(join_result) => join_result.map_err(|error| {
-            crate::append_runtime_log_line(&format!("capture_region worker_join_failure :: {}", error));
+            crate::append_runtime_log_line(&format!(
+                "capture_region worker_join_failure :: {}",
+                error
+            ));
             error.to_string()
         })?,
         Err(_) => {

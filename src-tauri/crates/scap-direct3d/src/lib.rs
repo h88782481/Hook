@@ -37,7 +37,7 @@ use windows::{
                     DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
                     DXGI_SAMPLE_DESC,
                 },
-                DXGI_ERROR_UNSUPPORTED, IDXGIDevice,
+                IDXGIDevice,
             },
         },
         System::WinRT::Direct3D11::{
@@ -189,12 +189,17 @@ fn create_d3d_device_with_warp_fallback() -> windows::core::Result<(ID3D11Device
 
     match result {
         Ok(()) => Ok((device.unwrap(), false)),
-        Err(e) if e.code() == DXGI_ERROR_UNSUPPORTED => {
-            tracing::info!("Hardware D3D11 device unavailable, attempting WARP fallback");
+        Err(hw_error) => {
+            // VMs and locked-down hosts often fail with codes other than
+            // DXGI_ERROR_UNSUPPORTED; always try WARP before giving up.
+            tracing::info!(
+                error = %hw_error,
+                "Hardware D3D11 device unavailable, attempting WARP fallback"
+            );
+            device = None;
             create_d3d_device_with_type(D3D_DRIVER_TYPE_WARP, flags, &mut device)?;
             Ok((device.unwrap(), true))
         }
-        Err(e) => Err(e),
     }
 }
 
