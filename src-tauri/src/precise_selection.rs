@@ -1,8 +1,6 @@
 use crate::persistence::SimpleRect;
 
 #[cfg(target_os = "windows")]
-use uiautomation::types::Point as UiaPoint;
-#[cfg(target_os = "windows")]
 use uiautomation::UIAutomation;
 
 #[tauri::command]

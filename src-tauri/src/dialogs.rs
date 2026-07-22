@@ -1,4 +1,6 @@
 use crate::runtime::file_timestamp_component;
+use crate::sticker_io::read_image_from_path;
+use base64::Engine;
 use std::path::PathBuf;
 use tauri::{Manager, PhysicalPosition};
 

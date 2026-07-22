@@ -10,7 +10,6 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 
 #[cfg(target_os = "windows")]
 use uiautomation::types::Point as UiaPoint;

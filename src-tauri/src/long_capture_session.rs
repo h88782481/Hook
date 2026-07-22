@@ -4,7 +4,7 @@ use crate::runtime::{append_runtime_log_line, encode_rgb_image_as_file_capture_r
 use crate::screenshot;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
