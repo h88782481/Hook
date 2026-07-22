@@ -6,6 +6,7 @@
 // no IO) makes the dedup/cap/normalize rules straightforward to unit test.
 
 import { normalizePaletteColor, TRANSPARENT_COLOR } from "../utils/colorUtils";
+import { loadImage } from "./stickerCanvas";
 
 interface ColorHistoryEntry {
     hex: string;
@@ -104,9 +105,10 @@ const computeThumbnailSize = (
 };
 
 /**
- * Downscale a data URL image to a thumbnail data URL via an offscreen canvas.
- * Returns the original src if the environment has no canvas (e.g. SSR) or the
- * image cannot be decoded, so callers always get a usable value.
+ * Downscale an image (data URL or file path) to a thumbnail data URL via an
+ * offscreen canvas. Uses the shared loadImage path so file-backed sources go
+ * through toDisplayImageSrc. Returns the original src if the environment has
+ * no canvas (e.g. SSR) or the image cannot be decoded.
  */
 export const createThumbnailDataUrl = async (
     src: string,
@@ -116,12 +118,7 @@ export const createThumbnailDataUrl = async (
         return { thumbnail: src, width: 0, height: 0 };
     }
     try {
-        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const element = new Image();
-            element.onload = () => resolve(element);
-            element.onerror = () => reject(new Error("thumbnail decode failed"));
-            element.src = src;
-        });
+        const image = await loadImage(src);
         const size = computeThumbnailSize(image.width, image.height, maxEdge);
         if (size.width <= 0 || size.height <= 0) {
             return { thumbnail: src, width: image.width, height: image.height };

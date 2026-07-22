@@ -6,8 +6,6 @@ import {
     type StickerDashPattern,
 } from "./stickerStrokePath";
 
-export type { StickerDashPattern };
-
 /**
  * Render-order rank for sticker annotations. Censoring effects sit at the bottom
  * so painted annotations stay visible. Among effects, blur renders below mosaic

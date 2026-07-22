@@ -37,6 +37,7 @@ import {
     uiActions,
 } from "../store/uiStore";
 import type { StickerTextAnnotation, StickerToolSettings } from "../types/stickerEditing";
+import { createClampedDraft } from "../utils/clampedDraft";
 import { clamp, parseClampedInt } from "../utils/math";
 
 interface StickerTopStripPropertyBarProps {
@@ -276,11 +277,11 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     const [selectedExistingColorRole, setSelectedExistingColorRole] = createSignal<SelectedExistingColorRole | null>(null);
     const [colorPickerAnchor, setColorPickerAnchor] = createSignal<AnchorRect | null>(null);
     const [pickerInitialColor, setPickerInitialColor] = createSignal<string | null>(null);
-    const [cropOpacityDraft, setCropOpacityDraft] = createSignal<string | null>(null);
-    const [cropCanvasWidthDraft, setCropCanvasWidthDraft] = createSignal<string | null>(null);
-    const [cropCornerRadiusDraft, setCropCornerRadiusDraft] = createSignal<string | null>(null);
-    const [selectedTextSizeDraft, setSelectedTextSizeDraft] = createSignal<string | null>(null);
-    const [selectedSerialRadiusDraft, setSelectedSerialRadiusDraft] = createSignal<string | null>(null);
+    const cropOpacityDraft = createClampedDraft();
+    const cropCanvasWidthDraft = createClampedDraft();
+    const cropCornerRadiusDraft = createClampedDraft();
+    const selectedTextSizeDraft = createClampedDraft();
+    const selectedSerialRadiusDraft = createClampedDraft();
     const [openDropdownMenu, setOpenDropdownMenu] = createSignal<OpenMiniDropdownMenu | null>(null);
     const dropdownRectId = `sticker-top-strip-property-dropdown-${props.stickerId}`;
     let openDropdownMenuRef: HTMLDivElement | undefined;
@@ -464,13 +465,9 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const updateStickerOpacityValue = (next: number) => {
-        const currentSticker = unit();
-        if (!currentSticker) return;
+        if (!unit()) return;
         if (!pushCurrentStickerHistory()) return;
-        const clamped = clamp(next, 0, 1);
-        currentSticker.data.minified
-            ? stickerStore.actions.updateStickerData(props.stickerId, { opacityMini: clamped })
-            : stickerStore.actions.updateStickerData(props.stickerId, { opacityNormal: clamped });
+        stickerStore.actions.setStickerOpacity(props.stickerId, next);
         void syncService.scheduleSessionSync();
     };
 
@@ -503,32 +500,24 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const commitCropOpacityDraft = () => {
-        const fallback = getEditableOpacityPercent();
-        const nextPercent = parseClampedInt(cropOpacityDraft(), fallback, 0, 100);
-        setCropOpacityDraft(null);
-        if (nextPercent === fallback) return;
-        updateStickerOpacityValue(nextPercent / 100);
+        cropOpacityDraft.commit(getEditableOpacityPercent(), 0, 100, (nextPercent) => {
+            updateStickerOpacityValue(nextPercent / 100);
+        });
     };
 
     const commitCropCanvasWidthDraft = () => {
         const currentSticker = unit();
         if (!currentSticker) {
-            setCropCanvasWidthDraft(null);
+            cropCanvasWidthDraft.set(null);
             return;
         }
-        const fallback = getEditableCanvasWidth();
-        const nextWidth = parseClampedInt(cropCanvasWidthDraft(), fallback, 32, 8192);
-        setCropCanvasWidthDraft(null);
-        if (nextWidth === fallback) return;
-        scaleStickerCanvas(nextWidth / Math.max(currentSticker.w, 1));
+        cropCanvasWidthDraft.commit(getEditableCanvasWidth(), 32, 8192, (nextWidth) => {
+            scaleStickerCanvas(nextWidth / Math.max(currentSticker.w, 1));
+        });
     };
 
     const commitCropCornerRadiusDraft = () => {
-        const fallback = getEditableFrameCornerRadius();
-        const nextRadius = parseClampedInt(cropCornerRadiusDraft(), fallback, 0, 128);
-        setCropCornerRadiusDraft(null);
-        if (nextRadius === fallback) return;
-        updateStickerFrameCornerRadiusValue(nextRadius);
+        cropCornerRadiusDraft.commit(getEditableFrameCornerRadius(), 0, 128, updateStickerFrameCornerRadiusValue);
     };
 
     const toggleCropBorder = () => {
@@ -653,19 +642,16 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     };
 
     const commitSelectedTextSizeDraft = () => {
-        const fallback = selectedExistingTextSize();
-        const nextSize = parseClampedInt(selectedTextSizeDraft(), fallback, 8, 96);
-        setSelectedTextSizeDraft(null);
-        if (nextSize === fallback) return;
-        patchSelectedTextAnnotationFontSize(nextSize);
+        selectedTextSizeDraft.commit(selectedExistingTextSize(), 8, 96, patchSelectedTextAnnotationFontSize);
     };
 
     const commitSelectedSerialRadiusDraft = () => {
-        const fallback = selectedExistingSerialRadius();
-        const nextRadius = parseClampedInt(selectedSerialRadiusDraft(), fallback, 8, 96);
-        setSelectedSerialRadiusDraft(null);
-        if (nextRadius === fallback) return;
-        patchSelectedSerialAnnotationRadius(nextRadius);
+        selectedSerialRadiusDraft.commit(
+            selectedExistingSerialRadius(),
+            8,
+            96,
+            patchSelectedSerialAnnotationRadius,
+        );
     };
 
     const setNumericDraft = (key: NumericToolSettingKey, value: string) => {
@@ -691,14 +677,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         if (raw === undefined) return;
 
         clearNumericDraft(key);
-        const trimmed = raw.trim();
-        const parsed = Number.parseInt(trimmed, 10);
-        if (!trimmed || Number.isNaN(parsed)) {
-            patchNumericSetting(key, currentValue);
-            return;
-        }
-
-        patchNumericSetting(key, clamp(parsed, min, max));
+        patchNumericSetting(key, parseClampedInt(raw, currentValue, min, max));
     };
 
     const openColorPicker = (slot: ShapeColorSettingKey, button: HTMLButtonElement) => {
@@ -894,15 +873,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                     openColorPicker(fieldProps.slot, buttonRef);
                 }}
             >
-                <span
-                    class="absolute inset-0"
-                    style={{
-                        background:
-                            "linear-gradient(45deg, #9ca3af 25%, transparent 25%), linear-gradient(-45deg, #9ca3af 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #9ca3af 75%), linear-gradient(-45deg, transparent 75%, #9ca3af 75%)",
-                        "background-size": "6px 6px",
-                        "background-position": "0 0, 0 3px, 3px -3px, -3px 0px",
-                    }}
-                />
+                <span class="hook-checkerboard absolute inset-0" />
                 <Show when={!isTransparent()}>
                     <span class="absolute inset-[2px]" style={{ background: current() }} />
                 </Show>
@@ -933,15 +904,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                     fieldProps.onOpen(buttonRef);
                 }}
             >
-                <span
-                    class="absolute inset-0"
-                    style={{
-                        background:
-                            "linear-gradient(45deg, #9ca3af 25%, transparent 25%), linear-gradient(-45deg, #9ca3af 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #9ca3af 75%), linear-gradient(-45deg, transparent 75%, #9ca3af 75%)",
-                        "background-size": "6px 6px",
-                        "background-position": "0 0, 0 3px, 3px -3px, -3px 0px",
-                    }}
-                />
+                <span class="hook-checkerboard absolute inset-0" />
                 <Show when={!isTransparent()}>
                     <span class="absolute inset-[2px]" style={{ background: fieldProps.value }} />
                 </Show>
@@ -1356,9 +1319,9 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                         />
                         <MiniDeferredNumericField
                             title="节点字号"
-                            value={selectedTextSizeDraft() ?? String(selectedExistingTextSize())}
+                            value={selectedTextSizeDraft.display(selectedExistingTextSize())}
                             Icon={LineWidthIcon}
-                            onInput={setSelectedTextSizeDraft}
+                            onInput={selectedTextSizeDraft.set}
                             onCommit={commitSelectedTextSizeDraft}
                         />
                         <MiniFontField
@@ -1417,9 +1380,9 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                         />
                         <MiniDeferredNumericField
                             title="节点半径"
-                            value={selectedSerialRadiusDraft() ?? String(selectedExistingSerialRadius())}
+                            value={selectedSerialRadiusDraft.display(selectedExistingSerialRadius())}
                             Icon={RadiusIcon}
-                            onInput={setSelectedSerialRadiusDraft}
+                            onInput={selectedSerialRadiusDraft.set}
                             onCommit={commitSelectedSerialRadiusDraft}
                         />
                         <MiniFontField
@@ -1494,9 +1457,9 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                         <MiniActionField title="重置裁剪" onClick={resetCrop} Icon={ResetCropIcon} />
                         <MiniDeferredNumericField
                             title="圆角半径"
-                            value={cropCornerRadiusDraft() ?? String(getEditableFrameCornerRadius())}
+                            value={cropCornerRadiusDraft.display(getEditableFrameCornerRadius())}
                             Icon={RadiusIcon}
-                            onInput={setCropCornerRadiusDraft}
+                            onInput={cropCornerRadiusDraft.set}
                             onCommit={commitCropCornerRadiusDraft}
                             inputClass="w-[30px]"
                         />
@@ -1508,16 +1471,16 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                         />
                         <MiniDeferredNumericField
                             title="透明度"
-                            value={cropOpacityDraft() ?? String(getEditableOpacityPercent())}
+                            value={cropOpacityDraft.display(getEditableOpacityPercent())}
                             Icon={OpacityIcon}
-                            onInput={setCropOpacityDraft}
+                            onInput={cropOpacityDraft.set}
                             onCommit={commitCropOpacityDraft}
                         />
                         <MiniDeferredNumericField
                             title="大小"
-                            value={cropCanvasWidthDraft() ?? String(getEditableCanvasWidth())}
+                            value={cropCanvasWidthDraft.display(getEditableCanvasWidth())}
                             Icon={CanvasSizeIcon}
-                            onInput={setCropCanvasWidthDraft}
+                            onInput={cropCanvasWidthDraft.set}
                             onCommit={commitCropCanvasWidthDraft}
                             inputClass="w-9"
                         />

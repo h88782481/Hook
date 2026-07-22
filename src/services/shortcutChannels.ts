@@ -33,7 +33,7 @@ type ShortcutActionOwner = {
  * overlay is click-through or another app is focused. Window-channel handlers
  * must NOT also register those ids (double-fire).
  */
-export const SHORTCUT_ACTION_OWNERS: readonly ShortcutActionOwner[] = [
+const SHORTCUT_ACTION_OWNERS: readonly ShortcutActionOwner[] = [
     {
         action: "capture",
         primary: "global-plugin",

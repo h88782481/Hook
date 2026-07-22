@@ -1,9 +1,9 @@
 /**
  * useShortcuts - SolidJS hook for keyboard shortcut integration
  *
- * Window-channel registrations are driven by SHORTCUT_ACTION_OWNERS so actions
- * owned by Rust global shortcuts (toggle toolbar, open image, capture) are never
- * double-registered here.
+ * Window-channel registrations are driven by WINDOW_SHORTCUT_IDS (derived from
+ * the shortcut ownership map) so actions owned by Rust global shortcuts
+ * (toggle toolbar, open image, capture) are never double-registered here.
  */
 
 import { onMount, onCleanup } from "solid-js";

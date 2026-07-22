@@ -1,7 +1,6 @@
 import type {
     StickerAnnotationState,
     StickerCaptureMeta,
-    StickerGroup,
     StickerImageEditState,
 } from "./stickerEditing";
 
@@ -113,8 +112,6 @@ export interface ClipboardStickerPayload extends StickerContentPayload {
     offsetX: number;
     offsetY: number;
 }
-
-export type { StickerGroup };
 
 const STICKER_DEFAULT_PORTS = {
     inputs: [{ id: "image", type: "image" as const, direction: "input" as const, label: "Image" }],

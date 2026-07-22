@@ -60,6 +60,17 @@ const updateStickerData = (id: string, updates: Partial<Sticker["data"]>) => {
     );
 };
 
+/** Write opacity into the active mode field (mini vs normal). */
+const setStickerOpacity = (id: string, opacity: number) => {
+    const sticker = stickers.find((item) => item.id === id);
+    if (!sticker) return;
+    const clamped = Math.min(1, Math.max(0, opacity));
+    updateStickerData(
+        id,
+        sticker.data.minified ? { opacityMini: clamped } : { opacityNormal: clamped },
+    );
+};
+
 const updateStickerEditData = (
     id: string,
     updates: Partial<Sticker["data"]>,
@@ -187,6 +198,7 @@ export const stickerStore = {
         removeSticker,
         updateSticker,
         updateStickerData,
+        setStickerOpacity,
         updateStickerEditData,
         resizeStickerFrame,
         propagateStickerEditsFrom,

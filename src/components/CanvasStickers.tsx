@@ -110,11 +110,7 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
                   scheduleStickerResizeSync(u.id);
               }}
               onOpacityChange={(val) => {
-                  if (u.data.minified) {
-                      stickerStore.actions.updateStickerData(u.id, { opacityMini: val });
-                  } else {
-                      stickerStore.actions.updateStickerData(u.id, { opacityNormal: val });
-                  }
+                  stickerStore.actions.setStickerOpacity(u.id, val);
                   scheduleStickerAppearanceSync();
               }}
 

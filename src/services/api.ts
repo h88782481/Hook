@@ -11,8 +11,6 @@ import type {
     LongCaptureDirection,
 } from "./captureState";
 
-export type { CaptureResponse };
-
 interface SessionData {
     stickers: SessionSticker[];
     links: SessionLink[];

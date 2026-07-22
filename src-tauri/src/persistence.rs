@@ -27,7 +27,10 @@ pub struct SimplePoint {
 #[serde(rename_all = "camelCase")]
 pub struct StickerData {
     pub id: String,
-    pub src: String, // Can be Base64 or File Path
+    /// File path preferred; data URLs still accepted from clipboard / open-image /
+    /// in-memory edits and are materialized to `images/` on save (see
+    /// `materialize_data_url_image`).
+    pub src: String,
     pub x: f64,
     pub y: f64,
     pub w: f64,
@@ -102,37 +105,28 @@ pub fn save_session(
 
     let mut processed_stickers = stickers.clone();
 
+    // Capture responses are already file-backed, but clipboard paste / open-image /
+    // some edit pipelines still hand us data URLs. Keep materializing them on save
+    // until those entry points write files directly — removing this would bloat
+    // session.json and break reload for any still-in-memory Base64 payload.
     for sticker in &mut processed_stickers {
         if sticker.src.starts_with("data:image") {
-            let base64_data = sticker.src.split(",").last().unwrap_or(&sticker.src);
-            let image_data = base64::engine::general_purpose::STANDARD
-                .decode(base64_data)
-                .map_err(|e| format!("Base64 decode failed for {}: {}", sticker.id, e))?;
-
-            let filename = format!("{}.png", sticker.id);
-            let file_path = images_dir.join(&filename);
-
-            let mut file = File::create(&file_path).map_err(|e| e.to_string())?;
-            file.write_all(&image_data).map_err(|e| e.to_string())?;
-
-            sticker.src = file_path.to_string_lossy().to_string();
+            sticker.src = materialize_data_url_image(
+                &sticker.src,
+                &images_dir,
+                &format!("{}.png", sticker.id),
+            )
+            .map_err(|e| format!("Base64 decode failed for {}: {}", sticker.id, e))?;
         }
 
-        // Save Preview Image
         if let Some(ref mut p_src) = sticker.preview_src {
             if p_src.starts_with("data:image") {
-                let base64_data = p_src.split(",").last().unwrap_or(p_src);
-                // Safe decode?
-                if let Ok(image_data) =
-                    base64::engine::general_purpose::STANDARD.decode(base64_data)
-                {
-                    let filename = format!("{}_preview.png", sticker.id);
-                    let file_path = images_dir.join(&filename);
-
-                    if let Ok(mut file) = File::create(&file_path) {
-                        let _ = file.write_all(&image_data);
-                        *p_src = file_path.to_string_lossy().to_string();
-                    }
+                if let Ok(path) = materialize_data_url_image(
+                    p_src,
+                    &images_dir,
+                    &format!("{}_preview.png", sticker.id),
+                ) {
+                    *p_src = path;
                 }
             }
         }
@@ -158,6 +152,23 @@ pub fn save_session(
         session_data.links.len()
     );
     Ok(())
+}
+
+/// Decode a `data:image/...;base64,...` payload onto disk and return the path.
+/// Soft-fails for preview paths via `Result`; callers decide strictness.
+fn materialize_data_url_image(
+    data_url: &str,
+    images_dir: &std::path::Path,
+    filename: &str,
+) -> Result<String, String> {
+    let base64_data = data_url.split(',').last().unwrap_or(data_url);
+    let image_data = base64::engine::general_purpose::STANDARD
+        .decode(base64_data)
+        .map_err(|e| e.to_string())?;
+    let file_path = images_dir.join(filename);
+    let mut file = File::create(&file_path).map_err(|e| e.to_string())?;
+    file.write_all(&image_data).map_err(|e| e.to_string())?;
+    Ok(file_path.to_string_lossy().to_string())
 }
 
 fn restore_loaded_session_stickers(stickers: &mut [StickerData]) {

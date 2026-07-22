@@ -424,15 +424,10 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
                                     const isTransparent = !paletteColor || paletteColor.toLowerCase() === "transparent";
                                     return (
                                         <button
-                                            class="h-6 w-6 overflow-hidden border hover:border-white/60"
+                                            class="hook-checkerboard hook-checkerboard--md h-6 w-6 overflow-hidden border hover:border-white/60"
                                             classList={{
                                                 "border-white ring-2 ring-white/60": selectedPaletteColor() === paletteColor,
                                                 "border-white/20": selectedPaletteColor() !== paletteColor,
-                                            }}
-                                            style={{
-                                                background: `linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)`,
-                                                "background-size": "8px 8px",
-                                                "background-position": "0 0, 0 4px, 4px -4px, -4px 0px",
                                             }}
                                             title={isTransparent ? "透明" : paletteColor}
                                             onClick={() => {
@@ -462,14 +457,7 @@ export const ColorPicker: Component<ColorPickerPropsExtended> = (props) => {
 
                 <div class="mb-1 text-xs text-white/50">当前颜色（可编辑颜色码）</div>
                 <div class="flex items-center gap-3">
-                    <div
-                        class="h-12 w-12 flex-shrink-0 border border-white/20"
-                        style={{
-                            background: `linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)`,
-                            "background-size": "8px 8px",
-                            "background-position": "0 0, 0 4px, 4px -4px, -4px 0px",
-                        }}
-                    >
+                    <div class="hook-checkerboard hook-checkerboard--md h-12 w-12 flex-shrink-0 border border-white/20">
                         <div
                             class="h-full w-full"
                             style={{ background: currentColor() }}
