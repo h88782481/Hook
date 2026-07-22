@@ -118,7 +118,9 @@ fn monitor_rect(hwnd: HWND) -> Option<RECT> {
         cbSize: std::mem::size_of::<MONITORINFO>() as u32,
         ..Default::default()
     };
-    unsafe { GetMonitorInfoW(monitor, &mut info) }.ok()?;
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
     if info.rcMonitor.right <= info.rcMonitor.left || info.rcMonitor.bottom <= info.rcMonitor.top {
         return None;
     }

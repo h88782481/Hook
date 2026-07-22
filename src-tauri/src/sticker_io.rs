@@ -2,8 +2,8 @@
 use crate::dialogs::select_sticker_save_path;
 use crate::runtime::{
     append_runtime_log_line, cache_file_name_for_log, decode_base64_image_data,
-    effective_app_data_dir, ensure_clipboard_cache_dir, file_timestamp_component,
-    sanitize_drag_filename_hint, validate_image_data_limits, MAX_BASE64_IMAGE_ENCODED_BYTES,
+    ensure_clipboard_cache_dir, file_timestamp_component, sanitize_drag_filename_hint,
+    validate_image_data_limits, MAX_BASE64_IMAGE_ENCODED_BYTES,
 };
 use base64::Engine as _;
 use std::fs;
