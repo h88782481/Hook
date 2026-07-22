@@ -13,6 +13,8 @@ type ShortcutSettings = {
 export type AppSettings = {
     autoStart: boolean;
     stickerToolbarDefaultVisible: boolean;
+    /** ShareX-style: ignore capture hotkeys while a fullscreen window is active. Default on. */
+    disableHotkeysOnFullscreen: boolean;
     shortcuts: ShortcutSettings;
 };
 
@@ -29,6 +31,7 @@ const isPrintScreenKey = (key: string) =>
 export const defaultAppSettings = (): AppSettings => ({
     autoStart: false,
     stickerToolbarDefaultVisible: false,
+    disableHotkeysOnFullscreen: true,
     shortcuts: {
         capture: { key: "Digit1", modifiers: ["Control"] },
         longCapture: { key: "Digit3", modifiers: ["Control"] },
@@ -70,6 +73,10 @@ export const normalizeAppSettings = (
             typeof value?.stickerToolbarDefaultVisible === "boolean"
                 ? value.stickerToolbarDefaultVisible
                 : defaults.stickerToolbarDefaultVisible,
+        disableHotkeysOnFullscreen:
+            typeof value?.disableHotkeysOnFullscreen === "boolean"
+                ? value.disableHotkeysOnFullscreen
+                : defaults.disableHotkeysOnFullscreen,
         shortcuts: {
             capture: normalizeBinding(value?.shortcuts?.capture, defaults.shortcuts.capture),
             longCapture: normalizeBinding(

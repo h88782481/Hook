@@ -148,7 +148,7 @@ export const SettingsPage: Component = () => {
             <header class="hook-settings-titlebar">
                 <div>
                     <h1>设置</h1>
-                    <p>快捷键、开机自启与截图后工具栏</p>
+                    <p>快捷键、开机自启、全屏热键与截图后工具栏</p>
                 </div>
                 <button type="button" class="hook-settings-btn ghost" onClick={() => void closeWindow()}>
                     关闭
@@ -216,6 +216,38 @@ export const SettingsPage: Component = () => {
                                             setSettings((prev) => ({
                                                 ...prev,
                                                 stickerToolbarDefaultVisible: !prev.stickerToolbarDefaultVisible,
+                                            }));
+                                        }
+                                    }}
+                                >
+                                    <span class="hook-settings-toggle-thumb" />
+                                </span>
+                            </label>
+                            <label class="hook-settings-row">
+                                <div class="hook-settings-row-text">
+                                    <div class="hook-settings-row-title">全屏时禁用截图快捷键</div>
+                                    <div class="hook-settings-row-desc">
+                                        前台窗口全屏（含远程桌面全屏）时不响应截图/长截图全局快捷键，避免误触本机截图
+                                    </div>
+                                </div>
+                                <span
+                                    class="hook-settings-toggle"
+                                    classList={{ on: settings().disableHotkeysOnFullscreen }}
+                                    role="switch"
+                                    aria-checked={settings().disableHotkeysOnFullscreen}
+                                    tabindex="0"
+                                    onClick={() =>
+                                        setSettings((prev) => ({
+                                            ...prev,
+                                            disableHotkeysOnFullscreen: !prev.disableHotkeysOnFullscreen,
+                                        }))
+                                    }
+                                    onKeyDown={(event) => {
+                                        if (event.key === " " || event.key === "Enter") {
+                                            event.preventDefault();
+                                            setSettings((prev) => ({
+                                                ...prev,
+                                                disableHotkeysOnFullscreen: !prev.disableHotkeysOnFullscreen,
                                             }));
                                         }
                                     }}

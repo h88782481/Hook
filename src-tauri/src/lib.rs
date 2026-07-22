@@ -11,6 +11,7 @@ mod overlay;
 mod persistence;
 mod portable_paths;
 mod precise_selection;
+mod remote_session;
 mod runtime;
 mod screenshot;
 mod single_instance;
@@ -37,7 +38,6 @@ use crate::runtime::{cleanup_clipboard_cache, effective_app_data_dir};
 use crate::portable_paths::portable_clipboard_cache_dir;
 use single_instance::{single_instance_name, try_acquire_single_instance};
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -142,31 +142,23 @@ fn open_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
 fn register_configured_global_shortcuts(
     app: &tauri::AppHandle,
     settings: &app_settings::AppSettings,
-    capture_registered: &Arc<AtomicBool>,
-    long_capture_registered: &Arc<AtomicBool>,
 ) {
     let _ = app.global_shortcut().unregister_all();
-    capture_registered.store(false, Ordering::Relaxed);
-    long_capture_registered.store(false, Ordering::Relaxed);
 
     let bindings = [
-        ("capture", &settings.shortcuts.capture, Some(capture_registered)),
-        (
-            "long_capture",
-            &settings.shortcuts.long_capture,
-            Some(long_capture_registered),
-        ),
-        ("toggle_toolbar", &settings.shortcuts.toggle_toolbar, None),
-        ("open_image", &settings.shortcuts.open_image, None),
+        ("capture", &settings.shortcuts.capture),
+        ("long_capture", &settings.shortcuts.long_capture),
+        ("toggle_toolbar", &settings.shortcuts.toggle_toolbar),
+        ("open_image", &settings.shortcuts.open_image),
     ];
 
-    for (name, binding, flag) in bindings {
+    for (name, binding) in bindings {
         if binding.is_unbound() {
             append_runtime_log_line(&format!("register_shortcut_skipped_unbound :: name={}", name));
             continue;
         }
         // PrintScreen is unreliable via RegisterHotKey on Windows (often "succeeds"
-        // but never delivers). Leave the registered flag false so rdev owns it.
+        // but never delivers). Handled by rdev instead.
         if app_settings::binding_is_print_screen(binding) {
             append_runtime_log_line(&format!(
                 "register_shortcut_skipped_printscreen_use_rdev :: name={}",
@@ -183,9 +175,6 @@ fn register_configured_global_shortcuts(
                     ));
                 } else {
                     append_runtime_log_line(&format!("register_shortcut_success :: name={}", name));
-                    if let Some(flag) = flag {
-                        flag.store(true, Ordering::Relaxed);
-                    }
                 }
             }
             Err(error) => {
@@ -236,16 +225,7 @@ fn save_app_settings(
         shared.set(settings.clone());
     }
 
-    let capture_flag = app
-        .try_state::<CaptureShortcutFlags>()
-        .map(|flags| flags.capture.clone());
-    let long_flag = app
-        .try_state::<CaptureShortcutFlags>()
-        .map(|flags| flags.long_capture.clone());
-
-    if let (Some(capture_flag), Some(long_flag)) = (capture_flag, long_flag) {
-        register_configured_global_shortcuts(&app, &settings, &capture_flag, &long_flag);
-    }
+    register_configured_global_shortcuts(&app, &settings);
 
     refresh_tray_menu(&app, &settings);
 
@@ -253,12 +233,6 @@ fn save_app_settings(
     persisted.auto_start = app_settings::is_auto_start_enabled();
     let _ = app.emit("app-settings-updated", &persisted);
     Ok(persisted)
-}
-
-#[derive(Clone)]
-struct CaptureShortcutFlags {
-    capture: Arc<AtomicBool>,
-    long_capture: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "windows")]
@@ -315,10 +289,6 @@ pub fn run() {
 
     let shared_app_settings =
         app_settings::SharedAppSettings::new(app_settings::load_app_settings_from_disk());
-    let capture_shortcut_flags = CaptureShortcutFlags {
-        capture: Arc::new(AtomicBool::new(false)),
-        long_capture: Arc::new(AtomicBool::new(false)),
-    };
     let tauri_capture_last_trigger = Arc::new(std::sync::Mutex::new(
         std::time::Instant::now() - std::time::Duration::from_secs(2),
     ));
@@ -344,6 +314,9 @@ pub fn run() {
                         };
                         match action {
                             "capture" => {
+                                if remote_session::should_ignore_global_capture_hotkey(&settings) {
+                                    return;
+                                }
                                 if !should_accept_tauri_shortcut_trigger(
                                     &tauri_capture_last_trigger,
                                     "tauri_capture_duplicate_ignored",
@@ -355,6 +328,9 @@ pub fn run() {
                                 }
                             }
                             "long_capture" => {
+                                if remote_session::should_ignore_global_capture_hotkey(&settings) {
+                                    return;
+                                }
                                 if !should_accept_tauri_shortcut_trigger(
                                     &tauri_long_capture_last_trigger,
                                     "tauri_long_capture_duplicate_ignored",
@@ -383,7 +359,6 @@ pub fn run() {
                 .build(),
         )
         .manage(shared_app_settings.clone())
-        .manage(capture_shortcut_flags.clone())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "settings" {
@@ -434,7 +409,6 @@ pub fn run() {
         ])
         .setup({
             let shared_app_settings = shared_app_settings.clone();
-            let capture_shortcut_flags = capture_shortcut_flags.clone();
             move |app| {
                 let single_instance_guard =
                     match try_acquire_single_instance(&single_instance_name()) {
@@ -476,12 +450,7 @@ pub fn run() {
                 #[cfg(desktop)]
                 {
                     let settings = shared_app_settings.get();
-                    register_configured_global_shortcuts(
-                        app.handle(),
-                        &settings,
-                        &capture_shortcut_flags.capture,
-                        &capture_shortcut_flags.long_capture,
-                    );
+                    register_configured_global_shortcuts(app.handle(), &settings);
 
                     let tray_menu = build_tray_menu(app.handle(), &settings)?;
 
@@ -557,8 +526,6 @@ pub fn run() {
                         hit_map.clone(),
                         capture_input_state.clone(),
                         long_capture_sessions.clone(),
-                        capture_shortcut_flags.capture.clone(),
-                        capture_shortcut_flags.long_capture.clone(),
                         shared_app_settings.clone(),
                     );
                 }

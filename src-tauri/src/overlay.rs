@@ -2142,22 +2142,18 @@ pub(crate) fn install_rdev_input_listener(
     hit_map: SharedHitMap,
     capture_input_state: SharedCaptureInputState,
     long_capture_sessions: SharedLongCaptureSessions,
-    capture_global_registered: Arc<AtomicBool>,
-    long_capture_global_registered: Arc<AtomicBool>,
     shared_app_settings: app_settings::SharedAppSettings,
 ) {
     std::thread::spawn(move || {
         struct RdevInputRuntimeState {
             last_esc: Instant,
             is_ignoring_events: bool,
-            ctrl_pressed: bool,
             last_capture_trigger: Instant,
         }
 
         let input_runtime_state = Mutex::new(RdevInputRuntimeState {
             last_esc: Instant::now() - Duration::from_secs(1),
             is_ignoring_events: false,
-            ctrl_pressed: false,
             last_capture_trigger: Instant::now() - Duration::from_secs(2),
         });
 
@@ -2168,80 +2164,33 @@ pub(crate) fn install_rdev_input_listener(
             };
 
             match &event.event_type {
-                rdev::EventType::KeyPress(rdev::Key::ControlLeft)
-                | rdev::EventType::KeyPress(rdev::Key::ControlRight) => {
-                    input_state.ctrl_pressed = true;
-                }
-                rdev::EventType::KeyRelease(rdev::Key::ControlLeft)
-                | rdev::EventType::KeyRelease(rdev::Key::ControlRight) => {
-                    input_state.ctrl_pressed = false;
-                }
                 rdev::EventType::KeyPress(key) => {
                     let settings = shared_app_settings.get();
-                    let digit = match key {
-                        rdev::Key::Num0 => Some(0),
-                        rdev::Key::Num1 => Some(1),
-                        rdev::Key::Num2 => Some(2),
-                        rdev::Key::Num3 => Some(3),
-                        rdev::Key::Num4 => Some(4),
-                        rdev::Key::Num5 => Some(5),
-                        rdev::Key::Num6 => Some(6),
-                        rdev::Key::Num7 => Some(7),
-                        rdev::Key::Num8 => Some(8),
-                        rdev::Key::Num9 => Some(9),
-                        _ => None,
-                    };
 
-                    if let Some(digit) = digit {
-                        if input_state.ctrl_pressed
-                            && input_state.last_capture_trigger.elapsed() > Duration::from_millis(500)
-                        {
-                            let capture_digit =
-                                app_settings::binding_digit(&settings.shortcuts.capture);
-                            let long_digit =
-                                app_settings::binding_digit(&settings.shortcuts.long_capture);
-                            let capture_ctrl =
-                                app_settings::binding_uses_ctrl(&settings.shortcuts.capture);
-                            let long_ctrl =
-                                app_settings::binding_uses_ctrl(&settings.shortcuts.long_capture);
-
-                            if capture_ctrl
-                                && capture_digit == Some(digit)
-                                && !capture_global_registered.load(Ordering::Relaxed)
-                            {
-                                input_state.last_capture_trigger = Instant::now();
-                                drop(input_state);
-                                append_runtime_log_line("rdev_capture_triggered");
-                                // Never call window/HWND APIs while holding the rdev mutex.
-                                enter_capture_mode(&window);
-                                return;
-                            }
-                            if long_ctrl
-                                && long_digit == Some(digit)
-                                && !long_capture_global_registered.load(Ordering::Relaxed)
-                            {
-                                input_state.last_capture_trigger = Instant::now();
-                                drop(input_state);
-                                append_runtime_log_line("rdev_long_capture_triggered");
-                                enter_long_capture_mode(&window);
-                                return;
-                            }
-                        }
-                    }
-
+                    // Global capture combos use RegisterHotKey only (ShareX-style).
+                    // PrintScreen is the sole exception: RegisterHotKey is unreliable on Windows.
                     if matches!(key, rdev::Key::PrintScreen)
                         && input_state.last_capture_trigger.elapsed() > Duration::from_millis(500)
                     {
                         if app_settings::binding_is_print_screen(&settings.shortcuts.capture) {
                             input_state.last_capture_trigger = Instant::now();
                             drop(input_state);
+                            if crate::remote_session::should_ignore_global_capture_hotkey(&settings)
+                            {
+                                return;
+                            }
                             append_runtime_log_line("rdev_printscreen_capture_triggered");
+                            // Never call window/HWND APIs while holding the rdev mutex.
                             enter_capture_mode(&window);
                             return;
                         }
                         if app_settings::binding_is_print_screen(&settings.shortcuts.long_capture) {
                             input_state.last_capture_trigger = Instant::now();
                             drop(input_state);
+                            if crate::remote_session::should_ignore_global_capture_hotkey(&settings)
+                            {
+                                return;
+                            }
                             append_runtime_log_line("rdev_printscreen_long_capture_triggered");
                             enter_long_capture_mode(&window);
                             return;

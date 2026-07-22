@@ -93,7 +93,15 @@ pub struct AppSettings {
     pub auto_start: bool,
     /// After capture, automatically open the sticker toolbar for the new sticker.
     pub sticker_toolbar_default_visible: bool,
+    /// ShareX-style: skip global capture hotkeys while a non-shell window is fullscreen.
+    /// Default true so remote/fullscreen sessions do not steal local capture hotkeys.
+    #[serde(default = "default_disable_hotkeys_on_fullscreen")]
+    pub disable_hotkeys_on_fullscreen: bool,
     pub shortcuts: ShortcutSettings,
+}
+
+fn default_disable_hotkeys_on_fullscreen() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -101,6 +109,7 @@ impl Default for AppSettings {
         Self {
             auto_start: false,
             sticker_toolbar_default_visible: false,
+            disable_hotkeys_on_fullscreen: true,
             shortcuts: ShortcutSettings::default(),
         }
     }
@@ -360,30 +369,6 @@ pub fn is_auto_start_enabled() -> bool {
 #[cfg(not(target_os = "windows"))]
 pub fn is_auto_start_enabled() -> bool {
     false
-}
-
-/// Convert a binding into rdev-friendly parts for the fallback listener.
-pub fn binding_uses_ctrl(binding: &ShortcutBinding) -> bool {
-    binding
-        .modifiers
-        .iter()
-        .any(|modifier| matches!(modifier.to_ascii_lowercase().as_str(), "ctrl" | "control"))
-}
-
-pub fn binding_digit(binding: &ShortcutBinding) -> Option<u8> {
-    match binding.key.as_str() {
-        "Digit0" | "0" => Some(0),
-        "Digit1" | "1" => Some(1),
-        "Digit2" | "2" => Some(2),
-        "Digit3" | "3" => Some(3),
-        "Digit4" | "4" => Some(4),
-        "Digit5" | "5" => Some(5),
-        "Digit6" | "6" => Some(6),
-        "Digit7" | "7" => Some(7),
-        "Digit8" | "8" => Some(8),
-        "Digit9" | "9" => Some(9),
-        _ => None,
-    }
 }
 
 pub fn binding_is_print_screen(binding: &ShortcutBinding) -> bool {
