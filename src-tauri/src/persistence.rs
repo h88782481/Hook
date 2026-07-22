@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 // --- Persistence ---
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")] // Match frontend naming convention
+#[serde(rename_all = "camelCase")]
 pub struct SimpleRect {
     pub x: f64,
     pub y: f64,
@@ -27,9 +28,7 @@ pub struct SimplePoint {
 #[serde(rename_all = "camelCase")]
 pub struct StickerData {
     pub id: String,
-    /// File path preferred; data URLs still accepted from clipboard / open-image /
-    /// in-memory edits and are materialized to `images/` on save (see
-    /// `materialize_data_url_image`).
+    /// Disk path after save. In-memory data URLs are materialized before write.
     pub src: String,
     pub x: f64,
     pub y: f64,
@@ -43,7 +42,9 @@ pub struct StickerData {
     #[serde(rename = "filePath")]
     pub file_path: Option<String>,
     #[serde(rename = "previewSrc")]
-    pub preview_src: Option<String>, // Processed / derived image preview
+    pub preview_src: Option<String>,
+    #[serde(rename = "rasterizedAnnotationLayerSrc")]
+    pub rasterized_annotation_layer_src: Option<String>,
     #[serde(rename = "annotationState")]
     pub annotation_state: Option<serde_json::Value>,
     #[serde(rename = "imageEditState")]
@@ -83,6 +84,133 @@ pub struct SessionData {
     pub reference_library: Vec<FrozenStickerEntry>,
 }
 
+fn is_data_image_url(value: &str) -> bool {
+    value.starts_with("data:image")
+}
+
+fn materialize_data_url_image(
+    data_url: &str,
+    images_dir: &Path,
+    filename: &str,
+) -> Result<String, String> {
+    let base64_data = data_url.split(',').last().unwrap_or(data_url);
+    let image_data = base64::engine::general_purpose::STANDARD
+        .decode(base64_data)
+        .map_err(|e| e.to_string())?;
+    let file_path = images_dir.join(filename);
+    let mut file = File::create(&file_path).map_err(|e| e.to_string())?;
+    file.write_all(&image_data).map_err(|e| e.to_string())?;
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+fn materialize_optional_data_url(
+    value: &mut Option<String>,
+    images_dir: &Path,
+    filename: &str,
+) -> Result<(), String> {
+    let Some(src) = value.as_mut() else {
+        return Ok(());
+    };
+    if !is_data_image_url(src) {
+        return Ok(());
+    }
+    *src = materialize_data_url_image(src, images_dir, filename)?;
+    Ok(())
+}
+
+fn materialize_sticker_images(sticker: &mut StickerData, images_dir: &Path) -> Result<(), String> {
+    if is_data_image_url(&sticker.src) {
+        sticker.src = materialize_data_url_image(
+            &sticker.src,
+            images_dir,
+            &format!("{}.png", sticker.id),
+        )
+        .map_err(|e| format!("Failed to materialize src for {}: {}", sticker.id, e))?;
+        sticker.file_path = Some(sticker.src.clone());
+    }
+
+    materialize_optional_data_url(
+        &mut sticker.preview_src,
+        images_dir,
+        &format!("{}_preview.png", sticker.id),
+    )
+    .map_err(|e| format!("Failed to materialize previewSrc for {}: {}", sticker.id, e))?;
+
+    materialize_optional_data_url(
+        &mut sticker.rasterized_annotation_layer_src,
+        images_dir,
+        &format!("{}_annotation.png", sticker.id),
+    )
+    .map_err(|e| {
+        format!(
+            "Failed to materialize rasterizedAnnotationLayerSrc for {}: {}",
+            sticker.id, e
+        )
+    })?;
+
+    Ok(())
+}
+
+fn materialize_snapshot_image_field(
+    snapshot: &mut serde_json::Value,
+    field: &str,
+    images_dir: &Path,
+    filename: &str,
+) -> Result<(), String> {
+    let Some(value) = snapshot.get_mut(field) else {
+        return Ok(());
+    };
+    let Some(src) = value.as_str() else {
+        return Ok(());
+    };
+    if !is_data_image_url(src) {
+        return Ok(());
+    }
+    let path = materialize_data_url_image(src, images_dir, filename)?;
+    *value = serde_json::Value::String(path.clone());
+    if field == "src" {
+        snapshot
+            .as_object_mut()
+            .map(|object| object.insert("filePath".to_string(), serde_json::Value::String(path)));
+    }
+    Ok(())
+}
+
+fn materialize_frozen_entry(
+    entry: &mut FrozenStickerEntry,
+    images_dir: &Path,
+) -> Result<(), String> {
+    let prefix = entry.entry_id.as_str();
+    materialize_snapshot_image_field(
+        &mut entry.snapshot,
+        "src",
+        images_dir,
+        &format!("{}_frozen.png", prefix),
+    )?;
+    materialize_snapshot_image_field(
+        &mut entry.snapshot,
+        "previewSrc",
+        images_dir,
+        &format!("{}_frozen_preview.png", prefix),
+    )?;
+    materialize_snapshot_image_field(
+        &mut entry.snapshot,
+        "rasterizedAnnotationLayerSrc",
+        images_dir,
+        &format!("{}_frozen_annotation.png", prefix),
+    )?;
+    Ok(())
+}
+
+fn ensure_path_backed_src(sticker: &StickerData) -> Result<(), String> {
+    if is_data_image_url(&sticker.src) {
+        return Err(format!(
+            "Session sticker {} has an in-memory data URL src; expected a disk path",
+            sticker.id
+        ));
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub fn save_session(
@@ -103,41 +231,27 @@ pub fn save_session(
         fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;
     }
 
-    let mut processed_stickers = stickers.clone();
-
-    // Capture responses are already file-backed, but clipboard paste / open-image /
-    // some edit pipelines still hand us data URLs. Keep materializing them on save
-    // until those entry points write files directly — removing this would bloat
-    // session.json and break reload for any still-in-memory Base64 payload.
+    let mut processed_stickers = stickers;
     for sticker in &mut processed_stickers {
-        if sticker.src.starts_with("data:image") {
-            sticker.src = materialize_data_url_image(
-                &sticker.src,
-                &images_dir,
-                &format!("{}.png", sticker.id),
-            )
-            .map_err(|e| format!("Base64 decode failed for {}: {}", sticker.id, e))?;
-        }
+        materialize_sticker_images(sticker, &images_dir)?;
+    }
 
-        if let Some(ref mut p_src) = sticker.preview_src {
-            if p_src.starts_with("data:image") {
-                if let Ok(path) = materialize_data_url_image(
-                    p_src,
-                    &images_dir,
-                    &format!("{}_preview.png", sticker.id),
-                ) {
-                    *p_src = path;
-                }
-            }
-        }
+    let mut processed_recycle_bin = recycle_bin;
+    for entry in &mut processed_recycle_bin {
+        materialize_frozen_entry(entry, &images_dir)?;
+    }
+
+    let mut processed_reference_library = reference_library;
+    for entry in &mut processed_reference_library {
+        materialize_frozen_entry(entry, &images_dir)?;
     }
 
     let session_data = SessionData {
         stickers: processed_stickers,
         links,
         groups,
-        recycle_bin,
-        reference_library,
+        recycle_bin: processed_recycle_bin,
+        reference_library: processed_reference_library,
     };
 
     let session_file = app_dir.join("session.json");
@@ -152,39 +266,6 @@ pub fn save_session(
         session_data.links.len()
     );
     Ok(())
-}
-
-/// Decode a `data:image/...;base64,...` payload onto disk and return the path.
-/// Soft-fails for preview paths via `Result`; callers decide strictness.
-fn materialize_data_url_image(
-    data_url: &str,
-    images_dir: &std::path::Path,
-    filename: &str,
-) -> Result<String, String> {
-    let base64_data = data_url.split(',').last().unwrap_or(data_url);
-    let image_data = base64::engine::general_purpose::STANDARD
-        .decode(base64_data)
-        .map_err(|e| e.to_string())?;
-    let file_path = images_dir.join(filename);
-    let mut file = File::create(&file_path).map_err(|e| e.to_string())?;
-    file.write_all(&image_data).map_err(|e| e.to_string())?;
-    Ok(file_path.to_string_lossy().to_string())
-}
-
-fn restore_loaded_session_stickers(stickers: &mut [StickerData]) {
-    for sticker in stickers {
-        if sticker.src.starts_with("data:image") {
-            continue;
-        }
-
-        let path = std::path::Path::new(&sticker.src);
-        if !path.exists() {
-            println!(
-                "Warning: Image file not found for sticker {}: {}",
-                sticker.id, sticker.src
-            );
-        }
-    }
 }
 
 #[tauri::command]
@@ -203,10 +284,11 @@ pub fn load_session(app: tauri::AppHandle) -> Result<SessionData, String> {
     }
 
     let content = fs::read_to_string(&session_file).map_err(|e| e.to_string())?;
-    let mut session_data: SessionData =
-        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let session_data: SessionData = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-    restore_loaded_session_stickers(&mut session_data.stickers);
+    for sticker in &session_data.stickers {
+        ensure_path_backed_src(sticker)?;
+    }
 
     println!(
         "Session loaded with {} stickers and {} links.",
@@ -275,7 +357,7 @@ pub fn load_history(app: tauri::AppHandle) -> Result<HistoryData, String> {
     }
 
     let content = fs::read_to_string(&history_file).map_err(|e| e.to_string())?;
-    let mut history: HistoryData = serde_json::from_str(&content).unwrap_or_default();
+    let mut history: HistoryData = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     history.colors.truncate(HISTORY_MAX_COLORS);
     history.screenshots.truncate(HISTORY_MAX_SCREENSHOTS);
     Ok(history)
@@ -311,6 +393,5 @@ pub fn load_tool_settings(app: tauri::AppHandle) -> Result<ToolSettingsData, Str
     }
 
     let content = fs::read_to_string(&tool_settings_file).map_err(|e| e.to_string())?;
-    let payload: ToolSettingsData = serde_json::from_str(&content).unwrap_or_default();
-    Ok(payload)
+    serde_json::from_str(&content).map_err(|e| e.to_string())
 }

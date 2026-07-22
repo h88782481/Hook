@@ -326,7 +326,7 @@ fn capture_backend_mode() -> String {
     // / GPU-composited video (players, hardware-accelerated browsers) - it reads
     // back the black color-key, which is why video came out black. WGC captures
     // the composited output like other screenshot tools do. Set
-    // HOOK_CAPTURE_BACKEND=gdi to force the legacy path if a driver misbehaves.
+    // HOOK_CAPTURE_BACKEND=gdi to force GDI if a driver misbehaves with WGC.
     std::env::var("HOOK_CAPTURE_BACKEND")
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())

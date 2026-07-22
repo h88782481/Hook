@@ -149,7 +149,7 @@ export const [mousePos, setMousePos] = createSignal({ x: 0, y: 0 });
 
 // Sticker-Specific UI State (e.g. Panels open/close)
 // Key: Sticker ID
-export const [stickerUiState, setStickerUiState] = createStore<Record<string, { showActions: boolean; showSidePanel: boolean }>>({});
+export const [stickerUiState, setStickerUiState] = createStore<Record<string, { showSidePanel: boolean }>>({});
 
 
 // Clipboard paste cascade state (shared content fields live on StickerContentPayload)
@@ -191,13 +191,6 @@ const persistToolSettings = async () => {
 
 export const uiActions = {
 
-    // Helper to toggle actions menu safely
-    toggleActions: (id: string) => {
-        setStickerUiState(id, (prev) => {
-            const current = prev?.showActions ?? false;
-            return { ...prev, showActions: !current };
-        });
-    },
     // Helper to toggle sticker side panel safely
     toggleSidePanel: (id: string) => {
         setStickerUiState(id, (prev) => {
@@ -205,26 +198,18 @@ export const uiActions = {
             return { ...prev, showSidePanel: !current };
         });
     },
-    closeActions: (id: string) => {
-        setStickerUiState(id, (prev) => ({
-            ...prev,
-            showActions: false,
-        }));
-    },
     closePopups: (id: string) => {
         setStickerUiState(id, (prev) => ({
             ...prev,
-            showActions: false,
             showSidePanel: false,
         }));
     },
     closeAllPopups: () => {
-        // Collapse every sticker's action/side popups. Iterate the keys currently
+        // Collapse every sticker's side popups. Iterate the keys currently
         // present in the store rather than leaving this as a no-op.
         Object.keys(stickerUiState).forEach((id) => {
             setStickerUiState(id, (prev) => ({
                 ...prev,
-                showActions: false,
                 showSidePanel: false,
             }));
         });

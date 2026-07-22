@@ -25,7 +25,6 @@ interface ShortcutHandlers {
   onCancelStickerEdit?: () => void | Promise<void>;
 
   // UI Toggles (toolbar / open-image are Rust global-plugin only)
-  onToggleActions?: () => void | Promise<void>;
   onToggleSidePanel?: () => void | Promise<void>;
   onToggleCleanView?: () => void | Promise<void>;
   onTransformSelect?: () => void | Promise<void>;
@@ -51,7 +50,6 @@ const HANDLER_BY_SHORTCUT_ID: Record<string, keyof ShortcutHandlers> = {
   "delete-escape": "onDelete",
   "cancel-selection": "onCancelSelection",
   "cancel-sticker-edit": "onCancelStickerEdit",
-  "toggle-actions": "onToggleActions",
   "toggle-side-panel": "onToggleSidePanel",
   "toggle-clean-view": "onToggleCleanView",
   "transform-select": "onTransformSelect",

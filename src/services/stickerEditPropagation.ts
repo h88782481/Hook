@@ -10,7 +10,7 @@ import type {
     StickerTextAnnotation,
 } from "../types/stickerEditing";
 import type { Link, StickerEditPropagationState, Sticker } from "../types/stickerModel";
-import { scaleAnnotation } from "./stickerAnnotationTransforms";
+import { scaleAnnotation } from "./stickerGeometry";
 
 interface StickerEditPropagationPatch {
     stickerId: string;

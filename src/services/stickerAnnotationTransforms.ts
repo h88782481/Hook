@@ -4,13 +4,11 @@ import type {
 } from "../types/stickerEditing";
 import type { Sticker } from "../types/stickerModel";
 import { buildSerialAnnotationMetrics } from "./stickerEditing";
-import { measureTextWidth, scaleAnnotation, scaleStrokeWidth } from "./stickerGeometry";
+import { measureTextWidth, scaleStrokeWidth } from "./stickerGeometry";
 import { DEFAULT_TEXT_FONT_SIZE } from "./stickerTextDefaults";
 
 export type StickerFrame = Pick<Sticker, "w" | "h">;
 export type FlipAxis = "x" | "y";
-
-export { scaleAnnotation };
 
 export const scaleContentEraserStroke = (
     stroke: ContentEraserStroke,

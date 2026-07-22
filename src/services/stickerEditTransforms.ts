@@ -6,12 +6,11 @@ import type { Sticker } from "../types/stickerModel";
 import {
     flipAnnotation,
     flipContentEraserStroke,
-    scaleAnnotation,
     scaleContentEraserStroke,
     type FlipAxis,
     type StickerFrame,
 } from "./stickerAnnotationTransforms";
-import { scaleStrokeWidth } from "./stickerGeometry";
+import { scaleAnnotation, scaleStrokeWidth } from "./stickerGeometry";
 
 const getScale = (sourceFrame: StickerFrame, targetFrame: StickerFrame) => ({
     x: sourceFrame.w === 0 ? 1 : targetFrame.w / sourceFrame.w,

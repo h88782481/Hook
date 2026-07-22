@@ -33,7 +33,6 @@ const globalScrollRegistry: Record<string, number> = {};
 interface Props {
   unit: Sticker;
   isSelected: boolean;
-  showActions: boolean;
   showSidePanel: boolean;
   onMouseDown: (e: MouseEvent) => void;
   onDoubleTap: (e: MouseEvent) => void;

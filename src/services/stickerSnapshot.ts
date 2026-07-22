@@ -5,7 +5,16 @@ import {
     type SessionSticker,
     type Sticker,
 } from "../types/stickerModel";
-import { normalizePreviewSrc } from "./syncedImagePayload";
+
+type ImagePayloadSticker = Pick<Sticker, "data">;
+
+const normalizePreviewSrc = (unit: ImagePayloadSticker) => {
+    const previewSrc = unit.data.previewSrc;
+    if (!previewSrc || previewSrc === unit.data.src) {
+        return undefined;
+    }
+    return previewSrc;
+};
 
 export interface FrozenStickerEntry {
     entryId: string;

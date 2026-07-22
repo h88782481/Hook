@@ -11,8 +11,6 @@ import { scaleStickerEditDataForFrame } from "../services/stickerEditTransforms"
 import {
     closeStickerGroupMembers,
     removeStickerGroup,
-    toggleStickerGroupHidden,
-    toggleStickerGroupLocked,
     upsertStickerGroup,
 } from "../services/stickerGroups";
 
@@ -155,18 +153,6 @@ const deleteStickerGroup = (groupId: string) => {
     setStickerGroups((prev) => removeStickerGroup(prev, groupId));
 };
 
-const setStickerGroup = (stickerId: string, groupId: string | undefined) => {
-    updateStickerData(stickerId, { groupId });
-};
-
-const setGroupHidden = (groupId: string) => {
-    setStickerGroups((prev) => toggleStickerGroupHidden(prev, groupId));
-};
-
-const setGroupLocked = (groupId: string) => {
-    setStickerGroups((prev) => toggleStickerGroupLocked(prev, groupId));
-};
-
 const closeStickerGroup = (groupId: string) => {
     const { removedStickerIds } = closeStickerGroupMembers(stickers, groupId);
     removedStickerIds.forEach((id) => removeSticker(id));
@@ -206,9 +192,6 @@ export const stickerStore = {
         restoreStickerEditSnapshot,
         addOrUpdateStickerGroup,
         deleteStickerGroup,
-        setStickerGroup,
-        setGroupHidden,
-        setGroupLocked,
         closeStickerGroup,
         addLink,
         removeLink,

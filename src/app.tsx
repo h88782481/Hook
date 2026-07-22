@@ -635,13 +635,6 @@ export default function App() {
           onCancelStickerEdit: () => {
               uiActions.requestStickerEditCancel();
           },
-          onToggleActions: () => {
-              const id = selectedStickerId();
-              if (id) {
-                  uiActions.toggleActions(id);
-                  scheduleOverlayHitTestRefresh();
-              }
-          },
           onToggleSidePanel: () => {
               const id = selectedStickerId();
               if (id) {

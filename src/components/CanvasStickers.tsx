@@ -85,7 +85,6 @@ export const CanvasStickers: Component<CanvasStickersProps> = (props) => {
               isSelected={selectionActions.isSelected(u.id)}
 
               // UI State (Show/Hide panels)
-              showActions={(stickerUiState[u.id]?.showActions || false) && !u.data.minified}
               showSidePanel={(stickerUiState[u.id]?.showSidePanel || false) && !u.data.minified}
 
               // Setup

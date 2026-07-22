@@ -13,16 +13,6 @@ export const upsertStickerGroup = (groups: StickerGroup[], nextGroup: StickerGro
 export const removeStickerGroup = (groups: StickerGroup[], groupId: string): StickerGroup[] =>
     groups.filter((group) => group.id !== groupId);
 
-export const toggleStickerGroupHidden = (groups: StickerGroup[], groupId: string): StickerGroup[] =>
-    groups.map((group) =>
-        group.id === groupId ? { ...group, hidden: !group.hidden } : group,
-    );
-
-export const toggleStickerGroupLocked = (groups: StickerGroup[], groupId: string): StickerGroup[] =>
-    groups.map((group) =>
-        group.id === groupId ? { ...group, locked: !group.locked } : group,
-    );
-
 export const closeStickerGroupMembers = (units: Sticker[], groupId: string) => {
     const removedStickerIds = units
         .filter((unit) => unit.data.groupId === groupId)

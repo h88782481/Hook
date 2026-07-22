@@ -191,7 +191,6 @@ export { annotationRenderRank } from "../services/stickerCanvas";
 export { getStrokeDashArray } from "../services/stickerStrokePath";
 
 export {
-    getAnnotationCornerRadius,
     getVisibleFill,
     getVisibleStroke,
 } from "../services/stickerAnnotationStyle";
