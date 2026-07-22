@@ -69,6 +69,7 @@ import {
     getAnnotationCenter,
     getAnnotationGroupBounds,
     getAnnotationGroupCenter,
+    getArrowHeadSizeOptions,
     getArrowShaftPoints,
     moveLineEndpoint,
     resizeBoxAnnotation,
@@ -1786,10 +1787,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
     const renderArrowShaftPath = (points: StickerPoint[], strokeWidth: number, trimForArrow: boolean) =>
         renderLinePath(
-            trimForArrow ? getArrowShaftPoints(points, {
-                headLength: Math.max(24, strokeWidth * 6),
-                minDistance: 2,
-            }) : points,
+            trimForArrow ? getArrowShaftPoints(points, getArrowHeadSizeOptions(strokeWidth)) : points,
         );
     const renderArrowHeadPath = (points: StickerPoint[]) =>
         points.length === 3
@@ -1972,12 +1970,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         strokeWidth: number,
         force = false,
     ) =>
-        force ? buildArrowHeadPolygon(points, {
-                  headLength: Math.max(24, strokeWidth * 6),
-                  headWidth: Math.max(16, strokeWidth * 5),
-                  minDistance: 2,
-              })
-            : null;
+        force ? buildArrowHeadPolygon(points, getArrowHeadSizeOptions(strokeWidth)) : null;
 
     const lineHandlePoints = (annotation: StickerLineAnnotation) => {
         if (annotation.points.length < 2) return [];

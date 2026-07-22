@@ -132,6 +132,13 @@ export const buildArrowHeadPolygon = (
     ];
 };
 
+/** Shared arrow-head sizing so preview hit-test and canvas export stay aligned. */
+export const getArrowHeadSizeOptions = (strokeWidth: number) => ({
+    headLength: Math.max(24, strokeWidth * 6),
+    headWidth: Math.max(16, strokeWidth * 5),
+    minDistance: 2,
+});
+
 export const getArrowShaftPoints = (
     points: StickerPoint[],
     options?: {

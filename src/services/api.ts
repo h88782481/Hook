@@ -124,9 +124,6 @@ export const api = {
             normalizeAppSettings,
         ),
 
-    openSettingsWindow: (): Promise<void> =>
-        safeInvoke("open_settings_window_command", undefined, () => undefined, false),
-
     getInstalledFonts: (): Promise<string[]> =>
         safeInvoke("get_installed_fonts", undefined, () => [], false),
 

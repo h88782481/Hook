@@ -930,8 +930,6 @@ static OVERLAY_KEYBOARD_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
 static OVERLAY_SHIFT_KEY_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
-static CAPTURE_SYSTEM_CURSOR_OVERRIDDEN: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "windows")]
 static OVERLAY_MOUSE_HIT_MAP: OnceLock<Arc<std::sync::Mutex<Vec<mouse_monitor::Rect>>>> =
     OnceLock::new();
 #[cfg(target_os = "windows")]
@@ -1663,7 +1661,6 @@ fn current_cursor_position_physical() -> Option<(f64, f64)> {
 fn force_restore_system_cursors() {
     // Always try to reload default cursors. Older builds used SetSystemCursor and
     // could leave IDC_CROSS stuck across virtual desktops even after Hook exited.
-    CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(false, Ordering::SeqCst);
     for attempt in 0..3 {
         if unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) }.is_ok() {
             append_runtime_log_line(&format!(
@@ -1679,23 +1676,6 @@ fn force_restore_system_cursors() {
 
 #[cfg(not(target_os = "windows"))]
 fn force_restore_system_cursors() {}
-
-#[cfg(target_os = "windows")]
-fn set_capture_cursor_crosshair() {
-    // Deprecated: never rewrite system cursors.
-    append_runtime_log_line("capture_cursor_crosshair_skipped");
-}
-
-#[cfg(not(target_os = "windows"))]
-fn set_capture_cursor_crosshair() {}
-
-#[cfg(target_os = "windows")]
-fn clear_capture_cursor_crosshair() {
-    force_restore_system_cursors();
-}
-
-#[cfg(not(target_os = "windows"))]
-fn clear_capture_cursor_crosshair() {}
 
 fn set_capture_input_runtime_active(active: bool) {
     set_capture_input_runtime_active_with_hook(active, active);
@@ -3097,19 +3077,6 @@ fn resolve_overlay_main_hwnd(window: &tauri::WebviewWindow) -> Option<HWND> {
     };
     state.hwnd
 }
-
-#[cfg(target_os = "windows")]
-fn hide_overlay_input_shield_window() {
-    let Some(hwnd) = overlay_input_shield_hwnd() else {
-        return;
-    };
-
-    let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
-    append_runtime_log_line("overlay_input_shield_native_drag_hidden");
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_overlay_input_shield_window() {}
 
 #[cfg(target_os = "windows")]
 fn promote_overlay_input_shield_to_fullscreen() {
@@ -5125,11 +5092,6 @@ fn save_app_settings(
     Ok(persisted)
 }
 
-#[tauri::command]
-fn open_settings_window_command(app: tauri::AppHandle) -> Result<(), String> {
-    open_settings_window(&app)
-}
-
 #[derive(Clone)]
 struct CaptureShortcutFlags {
     capture: Arc<AtomicBool>,
@@ -5285,7 +5247,6 @@ pub fn run() {
             load_tool_settings,
             load_app_settings,
             save_app_settings,
-            open_settings_window_command,
             get_installed_fonts,
             get_boot_profile,
             show_canvas_window,

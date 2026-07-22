@@ -23,9 +23,12 @@ import {
     hasVisibleStroke,
 } from "./stickerAnnotationStyle";
 import {
+    buildArrowHeadPolygon,
     buildPolygonPoints,
     buildTrianglePoints,
     getAnnotationCenter,
+    getArrowHeadSizeOptions,
+    getArrowShaftPoints,
     traceRoundedPolygonPath,
 } from "./stickerGeometry";
 import {
@@ -38,19 +41,14 @@ import {
 import { resolveStickerBitmapSrc } from "./imageSource";
 
 const drawArrowHead = (context: CanvasRenderingContext2D, line: StickerLineAnnotation) => {
-    if (line.points.length < 2) return;
-    const end = line.points[line.points.length - 1];
-    const start = line.points[line.points.length - 2];
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
-    const size = Math.max(10, line.style.width * 2.4);
+    const head = buildArrowHeadPolygon(line.points, getArrowHeadSizeOptions(line.style.width));
+    if (!head) return;
 
     context.save();
-    context.translate(end.x, end.y);
-    context.rotate(angle);
     context.beginPath();
-    context.moveTo(0, 0);
-    context.lineTo(-size, size / 2);
-    context.lineTo(-size, -size / 2);
+    context.moveTo(head[0].x, head[0].y);
+    context.lineTo(head[1].x, head[1].y);
+    context.lineTo(head[2].x, head[2].y);
     context.closePath();
     context.fillStyle = line.style.color;
     context.globalAlpha = line.style.opacity ?? 1;
@@ -165,7 +163,11 @@ const drawAnnotation = (
         case "highlighter":
         case "arrow": {
             const line = annotation as StickerLineAnnotation;
-            drawStrokePath(context, line.points, line.style);
+            const points =
+                annotation.type === "arrow"
+                    ? getArrowShaftPoints(line.points, getArrowHeadSizeOptions(line.style.width))
+                    : line.points;
+            drawStrokePath(context, points, line.style);
             if (annotation.type === "arrow") {
                 drawArrowHead(context, line);
             }

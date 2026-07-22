@@ -5,6 +5,8 @@
 // save_history/load_history commands. Keeping the list logic pure (no store,
 // no IO) makes the dedup/cap/normalize rules straightforward to unit test.
 
+import { normalizePaletteColor, TRANSPARENT_COLOR } from "../utils/colorUtils";
+
 export interface ColorHistoryEntry {
     hex: string;
     rgb: { r: number; g: number; b: number };
@@ -32,11 +34,11 @@ export const createEmptyHistoryState = (): HistoryState => ({
     screenshots: [],
 });
 
+/** History stores opaque #rrggbb keys; drop transparent / keep RGB only. */
 const normalizeHex = (hex: string): string | null => {
-    const trimmed = hex.trim().toLowerCase();
-    const match = /^#?([0-9a-f]{6})$/.exec(trimmed);
-    if (!match) return null;
-    return `#${match[1]}`;
+    const normalized = normalizePaletteColor(hex);
+    if (!normalized || normalized === TRANSPARENT_COLOR) return null;
+    return normalized.length === 9 ? normalized.slice(0, 7) : normalized;
 };
 
 /**

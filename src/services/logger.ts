@@ -10,15 +10,9 @@ export const logger = {
             console.log(LOG_PREFIX, ...args);
         }
     },
-    warn: (...args: any[]) => {
-        console.warn(LOG_PREFIX, ...args);
-    },
-    error: (...args: any[]) => {
-        console.error(LOG_PREFIX, ...args);
-    },
     debug: (...args: any[]) => {
         if (import.meta.env.DEV) {
             console.debug(LOG_PREFIX, ...args);
         }
-    }
+    },
 };
