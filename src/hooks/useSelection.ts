@@ -745,7 +745,11 @@ export function useSelection() {
                 if (!isLongCapture) {
                     resetSelection();
                     await api.setOverlayClickThrough(true);
-                    await api.setMouseMonitorActive(true);
+                    if (stickerStore.stickers.length > 0) {
+                        await api.setMouseMonitorActive(true);
+                    } else {
+                        await api.setMouseMonitorActive(false);
+                    }
                     await syncService.notify({ layout: true });
                 }
             }

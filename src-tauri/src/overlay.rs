@@ -466,12 +466,23 @@ unsafe extern "system" fn capture_mouse_hook_proc(
     let mouse = unsafe { *(lparam.0 as *const MSLLHOOKSTRUCT) };
     let x = mouse.pt.x as f64;
     let y = mouse.pt.y as f64;
-    let modifiers = current_modifier_snapshot();
     let capture_active = CAPTURE_MOUSE_HOOK_ACTIVE.load(Ordering::SeqCst);
-    let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
     let overlay_hover_active = OVERLAY_MOUSE_HOOK_HOVER_ACTIVE.load(Ordering::SeqCst);
     let native_drag_preflight_active =
         OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.load(Ordering::SeqCst);
+    let hit_map_active = OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::SeqCst);
+    // Fast path: nothing Hook cares about — never touch Win32 key state or Mutex.
+    if !capture_active
+        && !hit_map_active
+        && !overlay_hover_active
+        && !native_drag_preflight_active
+        && !OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.load(Ordering::SeqCst)
+    {
+        return unsafe { CallNextHookEx(None, code, wparam, lparam) };
+    }
+
+    let modifiers = current_modifier_snapshot();
+    let should_route_overlay_mouse = should_route_overlay_mouse_events(x, y);
     if !capture_active
         && !should_route_overlay_mouse
         && !overlay_hover_active
@@ -2172,12 +2183,18 @@ pub(crate) fn install_rdev_input_listener(
             last_esc: Instant,
             is_ignoring_events: bool,
             last_capture_trigger: Instant,
+            last_mouse_hit_check: Instant,
+            last_mouse_x: f64,
+            last_mouse_y: f64,
         }
 
         let input_runtime_state = Mutex::new(RdevInputRuntimeState {
             last_esc: Instant::now() - Duration::from_secs(1),
             is_ignoring_events: false,
             last_capture_trigger: Instant::now() - Duration::from_secs(2),
+            last_mouse_hit_check: Instant::now() - Duration::from_secs(1),
+            last_mouse_x: f64::NAN,
+            last_mouse_y: f64::NAN,
         });
 
         if let Err(error) = rdev::listen(move |event| {
@@ -2284,7 +2301,14 @@ pub(crate) fn install_rdev_input_listener(
                     }
                 }
                 rdev::EventType::MouseMove { x, y } => {
-                    let _ = (x, y);
+                    // No stickers / monitor off: pay nothing on the rdev mouse path.
+                    if !OVERLAY_MOUSE_HIT_MAP_ACTIVE.load(Ordering::Relaxed) {
+                        if input_state.is_ignoring_events {
+                            input_state.is_ignoring_events = false;
+                        }
+                        return;
+                    }
+
                     let capture_active = capture_input_state
                         .active
                         .lock()
@@ -2294,26 +2318,31 @@ pub(crate) fn install_rdev_input_listener(
                         return;
                     }
 
-                    let active = hit_map
-                        .active
-                        .lock()
-                        .map(|guard| *guard)
-                        .unwrap_or(false);
-                    if active {
-                        let should_ignore = hit_map
-                            .rectangles
-                            .lock()
-                            .map(|rects| should_overlay_window_ignore_cursor_events(&rects, *x, *y))
-                            .unwrap_or(true);
-                        if should_ignore != input_state.is_ignoring_events {
-                            let _ = window.set_ignore_cursor_events(should_ignore);
-                            set_overlay_transparent_style(&window, should_ignore);
-                            OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);
-                            apply_overlay_no_activate(&window);
-                            input_state.is_ignoring_events = should_ignore;
-                        }
-                    } else {
-                        input_state.is_ignoring_events = false;
+                    // Throttle Win32 style updates while stickers are present.
+                    let moved_enough = !input_state.last_mouse_x.is_finite()
+                        || (*x - input_state.last_mouse_x).abs() >= 2.0
+                        || (*y - input_state.last_mouse_y).abs() >= 2.0;
+                    if !moved_enough
+                        || input_state.last_mouse_hit_check.elapsed() < Duration::from_millis(33)
+                    {
+                        return;
+                    }
+                    input_state.last_mouse_hit_check = Instant::now();
+                    input_state.last_mouse_x = *x;
+                    input_state.last_mouse_y = *y;
+
+                    let Ok(rects) = hit_map.rectangles.try_lock() else {
+                        return;
+                    };
+                    let should_ignore =
+                        should_overlay_window_ignore_cursor_events(&rects, *x, *y);
+                    drop(rects);
+                    if should_ignore != input_state.is_ignoring_events {
+                        let _ = window.set_ignore_cursor_events(should_ignore);
+                        set_overlay_transparent_style(&window, should_ignore);
+                        OVERLAY_CLICK_THROUGH_ACTIVE.store(should_ignore, Ordering::SeqCst);
+                        apply_overlay_no_activate(&window);
+                        input_state.is_ignoring_events = should_ignore;
                     }
                 }
                 _ => {}

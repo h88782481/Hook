@@ -132,6 +132,10 @@ export const syncService = {
     notify: async (options: SyncNotifyOptions = {}) => {
         if (options.layout) {
             await pushPinRects();
+            // No stickers → mouse monitor must stay off (desktop should feel idle).
+            if (stickerStore.stickers.length === 0) {
+                await api.setMouseMonitorActive(false);
+            }
         }
         if (options.persist) {
             scheduler.schedule();

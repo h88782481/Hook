@@ -232,6 +232,9 @@ struct WgcShared {
     seq: std::sync::atomic::AtomicU64,
     target_display: std::sync::Mutex<scap_targets::DisplayId>,
     ready: std::sync::atomic::AtomicBool,
+    /// Only map/convert frames while a capture is waiting. Continuous
+    /// frame_to_rgb at ~60fps after capture is what made the whole PC laggy.
+    capture_armed: std::sync::atomic::AtomicBool,
 }
 
 #[cfg(target_os = "windows")]
@@ -245,6 +248,7 @@ fn wgc_shared(display_id: &scap_targets::DisplayId) -> &'static std::sync::Arc<W
             seq: std::sync::atomic::AtomicU64::new(0),
             target_display: std::sync::Mutex::new(display_id.clone()),
             ready: std::sync::atomic::AtomicBool::new(false),
+            capture_armed: std::sync::atomic::AtomicBool::new(false),
         })
     });
 
@@ -282,6 +286,13 @@ fn build_session_capturer(
         item,
         windows_capture_settings(),
         move |frame| {
+            // Idle: acknowledge frames but do NOT Map/convert (that is the lag source).
+            if !latest
+                .capture_armed
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Ok(());
+            }
             if let Ok(img) = frame_to_rgb(&frame) {
                 if let Ok(mut slot) = latest.latest.lock() {
                     *slot = Some(img);
@@ -303,9 +314,19 @@ fn build_session_capturer(
 
 #[cfg(target_os = "windows")]
 fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    const IDLE_STOP_AFTER: Duration = Duration::from_millis(1200);
 
     loop {
+        // Stay parked until a capture actually needs the session.
+        while !shared
+            .capture_armed
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
         let display_id = match shared.target_display.lock() {
             Ok(guard) => guard.clone(),
             Err(_) => {
@@ -324,6 +345,9 @@ fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
                 shared
                     .ready
                     .store(false, std::sync::atomic::Ordering::SeqCst);
+                shared
+                    .capture_armed
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(750));
                 continue;
             }
@@ -335,6 +359,9 @@ fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
             ));
             shared
                 .ready
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            shared
+                .capture_armed
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(750));
             continue;
@@ -352,6 +379,7 @@ fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
             );
         }
 
+        let mut idle_since: Option<Instant> = None;
         while !closed.load(std::sync::atomic::Ordering::SeqCst) {
             let target_changed = shared
                 .target_display
@@ -360,6 +388,21 @@ fn wgc_session_loop(shared: std::sync::Arc<WgcShared>) {
                 .unwrap_or(false);
             if target_changed {
                 break;
+            }
+
+            let armed = shared
+                .capture_armed
+                .load(std::sync::atomic::Ordering::Acquire);
+            if armed {
+                idle_since = None;
+            } else {
+                let since = idle_since.get_or_insert_with(Instant::now);
+                if since.elapsed() >= IDLE_STOP_AFTER {
+                    crate::append_runtime_log_line(
+                        "capture_area wgc_session_idle_stop :: reason=post_capture_idle",
+                    );
+                    break;
+                }
             }
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -383,44 +426,52 @@ fn capture_from_wgc_session(
     use std::time::{Duration, Instant};
 
     let shared = wgc_shared(display_id);
-    let ready_deadline = Instant::now() + Duration::from_millis(800);
-    while !shared.ready.load(std::sync::atomic::Ordering::SeqCst) {
-        if Instant::now() >= ready_deadline {
-            return Err(anyhow!("Graphics Capture session not ready"));
-        }
-        std::thread::sleep(Duration::from_millis(8));
-    }
+    shared
+        .capture_armed
+        .store(true, std::sync::atomic::Ordering::Release);
 
-    let mut seq_seen = shared.seq.load(std::sync::atomic::Ordering::Acquire);
-    let deadline = Instant::now() + Duration::from_millis(900);
-    let mut chosen: Option<RgbImage> = None;
-
-    if let Ok(slot) = shared.latest.lock() {
-        if let Some(img) = slot.as_ref() {
-            if !frame_is_mostly_black(img) {
-                chosen = Some(img.clone());
+    let result = (|| {
+        let ready_deadline = Instant::now() + Duration::from_millis(800);
+        while !shared.ready.load(std::sync::atomic::Ordering::SeqCst) {
+            if Instant::now() >= ready_deadline {
+                return Err(anyhow!("Graphics Capture session not ready"));
             }
+            std::thread::sleep(Duration::from_millis(8));
         }
-    }
 
-    while chosen.is_none() && Instant::now() < deadline {
-        let seq_now = shared.seq.load(std::sync::atomic::Ordering::Acquire);
-        if seq_now != seq_seen {
-            seq_seen = seq_now;
-            if let Ok(slot) = shared.latest.lock() {
-                if let Some(img) = slot.as_ref() {
-                    if !frame_is_mostly_black(img) {
-                        chosen = Some(img.clone());
-                        break;
+        // Drop any stale black warm-up frame; wait for a fresh converted frame.
+        let mut seq_seen = shared.seq.load(std::sync::atomic::Ordering::Acquire);
+        let deadline = Instant::now() + Duration::from_millis(900);
+        let mut chosen: Option<RgbImage> = None;
+
+        while chosen.is_none() && Instant::now() < deadline {
+            let seq_now = shared.seq.load(std::sync::atomic::Ordering::Acquire);
+            if seq_now != seq_seen {
+                seq_seen = seq_now;
+                if let Ok(slot) = shared.latest.lock() {
+                    if let Some(img) = slot.as_ref() {
+                        if !frame_is_mostly_black(img) {
+                            chosen = Some(img.clone());
+                            break;
+                        }
                     }
                 }
             }
+            std::thread::sleep(Duration::from_millis(8));
         }
-        std::thread::sleep(Duration::from_millis(8));
+
+        let full = chosen.ok_or_else(|| anyhow!("No usable Graphics Capture frame"))?;
+        Ok(crop_rgb(&full, crop))
+    })();
+
+    shared
+        .capture_armed
+        .store(false, std::sync::atomic::Ordering::Release);
+    if let Ok(mut slot) = shared.latest.lock() {
+        *slot = None;
     }
 
-    let full = chosen.ok_or_else(|| anyhow!("No usable Graphics Capture frame"))?;
-    Ok(crop_rgb(&full, crop))
+    result
 }
 
 #[cfg(target_os = "windows")]
