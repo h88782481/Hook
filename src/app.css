@@ -70,6 +70,14 @@ main {
   cursor: crosshair;
 }
 
+/* Region capture: overlay receives mouse; never rewrite the system cursor. */
+html.hook-capturing,
+html.hook-capturing body,
+html.hook-capturing #app,
+html.hook-capturing main {
+  cursor: crosshair !important;
+}
+
 .animate-in {
   animation: zoomIn 0.2s ease-out forwards;
 }

@@ -2010,6 +2010,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         const unlisteners: Array<() => void> = [];
 
         void api.setCaptureInputActive(true, { sampleColor: true });
+        void api.setOverlayClickThrough(true);
         void listen<GlobalColorPickerMousePayload>("capture/global_mouse_move", (event) => {
             if (disposed) return;
             applyDesktopColorPickerSample(event.payload, false);
@@ -2044,6 +2045,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             unlisteners.forEach((unlisten) => unlisten());
             setColorPickerPreview(null);
             void api.setCaptureInputActive(false);
+            void api.setOverlayClickThrough(true);
         });
     });
 

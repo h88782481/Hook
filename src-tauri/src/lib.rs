@@ -67,15 +67,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, CallWindowProcW, CopyIcon, CreateWindowExW, DefWindowProcW, DispatchMessageW,
+    CallNextHookEx, CallWindowProcW, CreateWindowExW, DefWindowProcW, DispatchMessageW,
     EnumWindows, GetAncestor, GetClassNameW, GetCursorPos, GetMessageW, GetParent, GetWindowLongPtrW,
-    GetWindowRect, LoadCursorW, SetLayeredWindowAttributes, SetSystemCursor, SetWindowLongPtrW, SetWindowPos,
+    GetWindowRect, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
     SetWindowsHookExW, ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx,
-    WindowFromPoint, GetWindowThreadProcessId, GA_ROOT, GWLP_WNDPROC, GWL_EXSTYLE, HCURSOR, HC_ACTION, HICON, HWND_TOPMOST, IDC_CROSS, IsWindowVisible, LWA_ALPHA,
-    MA_NOACTIVATE, MSG, MSLLHOOKSTRUCT, OCR_CROSS, OCR_HAND, OCR_IBEAM, OCR_NO, OCR_NORMAL,
-    OCR_SIZEALL, OCR_SIZENESW, OCR_SIZENS, OCR_SIZENWSE, OCR_SIZEWE, OCR_UP, SPI_SETCURSORS,
+    WindowFromPoint, GetWindowThreadProcessId, GA_ROOT, GWLP_WNDPROC, GWL_EXSTYLE, HC_ACTION, HWND_TOPMOST, IsWindowVisible, LWA_ALPHA,
+    MA_NOACTIVATE, MSG, MSLLHOOKSTRUCT,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
-    KBDLLHOOKSTRUCT, SW_HIDE, SW_SHOWNA, SYSTEM_CURSOR_ID, WH_KEYBOARD_LL, WH_MOUSE_LL,
+    KBDLLHOOKSTRUCT, SW_HIDE, SW_SHOWNA, SPI_SETCURSORS, WH_KEYBOARD_LL, WH_MOUSE_LL,
     WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NOTIFY,
     WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDPROC, WS_EX_LAYERED,
@@ -1661,45 +1660,30 @@ fn current_cursor_position_physical() -> Option<(f64, f64)> {
 }
 
 #[cfg(target_os = "windows")]
-fn set_system_cursor_to_crosshair(cursor_id: SYSTEM_CURSOR_ID) -> bool {
-    let Ok(cursor) = (unsafe { LoadCursorW(None, IDC_CROSS) }) else {
-        return false;
-    };
-    let Ok(cursor_copy) = (unsafe { CopyIcon(HICON(cursor.0)) }) else {
-        return false;
-    };
-    unsafe { SetSystemCursor(HCURSOR(cursor_copy.0), cursor_id) }.is_ok()
+fn force_restore_system_cursors() {
+    // Always try to reload default cursors. Older builds used SetSystemCursor and
+    // could leave IDC_CROSS stuck across virtual desktops even after Hook exited.
+    CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(false, Ordering::SeqCst);
+    for attempt in 0..3 {
+        if unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) }.is_ok() {
+            append_runtime_log_line(&format!(
+                "system_cursors_restored :: attempt={}",
+                attempt + 1
+            ));
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    append_runtime_log_line("system_cursors_restore_failed");
 }
+
+#[cfg(not(target_os = "windows"))]
+fn force_restore_system_cursors() {}
 
 #[cfg(target_os = "windows")]
 fn set_capture_cursor_crosshair() {
-    if CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.load(Ordering::SeqCst) {
-        return;
-    }
-
-    let mut updated_any = false;
-    for cursor_id in [
-        OCR_NORMAL,
-        OCR_IBEAM,
-        OCR_CROSS,
-        OCR_HAND,
-        OCR_NO,
-        OCR_SIZEALL,
-        OCR_SIZENESW,
-        OCR_SIZENS,
-        OCR_SIZENWSE,
-        OCR_SIZEWE,
-        OCR_UP,
-    ] {
-        updated_any |= set_system_cursor_to_crosshair(cursor_id);
-    }
-
-    if updated_any {
-        CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(true, Ordering::SeqCst);
-        append_runtime_log_line("capture_cursor_crosshair_enabled");
-    } else {
-        append_runtime_log_line("capture_cursor_crosshair_failed");
-    }
+    // Deprecated: never rewrite system cursors.
+    append_runtime_log_line("capture_cursor_crosshair_skipped");
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1707,44 +1691,31 @@ fn set_capture_cursor_crosshair() {}
 
 #[cfg(target_os = "windows")]
 fn clear_capture_cursor_crosshair() {
-    if !CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.load(Ordering::SeqCst) {
-        return;
-    }
-    // Only clear the override flag after SPI_SETCURSORS succeeds; otherwise the
-    // system can stay on IDC_CROSS forever (common when capture teardown races).
-    for attempt in 0..3 {
-        let restored =
-            unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, None, Default::default()) }.is_ok();
-        if restored {
-            CAPTURE_SYSTEM_CURSOR_OVERRIDDEN.store(false, Ordering::SeqCst);
-            append_runtime_log_line("capture_cursor_crosshair_restored");
-            return;
-        }
-        append_runtime_log_line(&format!(
-            "capture_cursor_crosshair_restore_failed :: attempt={}",
-            attempt + 1
-        ));
-        std::thread::sleep(Duration::from_millis(16));
-    }
+    force_restore_system_cursors();
 }
 
 #[cfg(not(target_os = "windows"))]
 fn clear_capture_cursor_crosshair() {}
 
 fn set_capture_input_runtime_active(active: bool) {
+    set_capture_input_runtime_active_with_hook(active, active);
+}
+
+/// `enable_mouse_hook` is only for color-picker (needs desktop pixel sampling under
+/// click-through). Region capture uses the overlay window's own mouse events.
+fn set_capture_input_runtime_active_with_hook(active: bool, enable_mouse_hook: bool) {
     #[cfg(target_os = "windows")]
     {
-        CAPTURE_MOUSE_HOOK_ACTIVE.store(active, Ordering::SeqCst);
-        append_runtime_log_line(&format!("capture_mouse_hook_active :: {}", active));
+        let hook_on = active && enable_mouse_hook;
+        CAPTURE_MOUSE_HOOK_ACTIVE.store(hook_on, Ordering::SeqCst);
+        append_runtime_log_line(&format!(
+            "capture_mouse_hook_active :: active={} hook={}",
+            active, hook_on
+        ));
         if !active {
             CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
+            force_restore_system_cursors();
         }
-    }
-
-    if active {
-        set_capture_cursor_crosshair();
-    } else {
-        clear_capture_cursor_crosshair();
     }
 }
 
@@ -4358,21 +4329,20 @@ fn set_capture_input_active(
     active: bool,
     sample_color: Option<bool>,
 ) {
+    let wants_color_sample = sample_color.unwrap_or(false);
     if let Ok(mut guard) = state.active.lock() {
         *guard = active;
         append_runtime_log_line(&format!(
             "set_capture_input_active :: active={} sample_color={}",
-            active,
-            sample_color.unwrap_or(false)
+            active, wants_color_sample
         ));
         #[cfg(target_os = "windows")]
         {
-            CAPTURE_COLOR_SAMPLE_ACTIVE.store(
-                active && sample_color.unwrap_or(false),
-                Ordering::SeqCst,
-            );
+            CAPTURE_COLOR_SAMPLE_ACTIVE.store(active && wants_color_sample, Ordering::SeqCst);
         }
-        set_capture_input_runtime_active(active);
+        // LL hook + click-through only for color picker. Region selection uses the
+        // overlay webview's native mouse path (no SetSystemCursor, no move IPC).
+        set_capture_input_runtime_active_with_hook(active, active && wants_color_sample);
     }
 
     if let Some(window) = app.get_webview_window("main") {
@@ -4448,14 +4418,16 @@ fn enter_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_capture_mode");
     #[cfg(target_os = "windows")]
     CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
-    set_capture_input_runtime_active(true);
-    show_overlay_host_impl(window, true);
+    force_restore_system_cursors();
+    // Region capture owns the overlay mouse stream — do not arm the LL hook or
+    // rewrite the system cursor (both fail badly with multiple virtual desktops).
+    set_capture_input_runtime_active_with_hook(false, false);
+    show_overlay_host_impl(window, false);
 
     println!("Overlay setup done. Emitting trigger-capture...");
     if let Err(e) = window.emit("trigger-capture", ()) {
         println!("Failed to emit trigger-capture: {}", e);
         append_runtime_log_line(&format!("enter_capture_mode emit_failed :: {}", e));
-        set_capture_input_runtime_active(false);
     } else {
         append_runtime_log_line("enter_capture_mode emitted_trigger_capture");
     }
@@ -4465,13 +4437,13 @@ fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
     append_runtime_log_line("enter_long_capture_mode");
     #[cfg(target_os = "windows")]
     CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
-    set_capture_input_runtime_active(true);
-    show_overlay_host_impl(window, true);
+    force_restore_system_cursors();
+    set_capture_input_runtime_active_with_hook(false, false);
+    show_overlay_host_impl(window, false);
 
     if let Err(e) = window.emit("trigger-long-capture", ()) {
         println!("Failed to emit trigger-long-capture: {}", e);
         append_runtime_log_line(&format!("enter_long_capture_mode emit_failed :: {}", e));
-        set_capture_input_runtime_active(false);
     } else {
         append_runtime_log_line("enter_long_capture_mode emitted_trigger_long_capture");
     }
@@ -5165,7 +5137,25 @@ struct CaptureShortcutFlags {
 }
 
 fn configure_webview2_video_safe_composition() {
+    // Disabling GPU makes the transparent overlay unusably laggy on physical PCs
+    // (multi-monitor / virtual-desktop especially). Keep it opt-in for the rare
+    // machines that still need software composition workarounds.
     const ENV_NAME: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+    const ENABLE_FLAG: &str = "HOOK_WEBVIEW_DISABLE_GPU";
+    let enabled = std::env::var(ENABLE_FLAG)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+    if !enabled {
+        append_runtime_log_line("webview2_gpu_disable_skipped");
+        return;
+    }
+
     const VIDEO_SAFE_ARGS: &[&str] = &[
         "--disable-gpu",
         "--disable-gpu-compositing",
@@ -5341,6 +5331,7 @@ pub fn run() {
                 std::mem::forget(single_instance_guard);
 
                 allow_portable_asset_scopes(app.handle());
+                force_restore_system_cursors();
 
                 // Initialize Shared State
                 let hit_map = SharedHitMap::new();

@@ -568,7 +568,6 @@ export function useSelection() {
         const start = startPos();
         if ((!isSelecting() && !isBoxSelecting()) || !start) return;
 
-
         const current = { x: e.clientX, y: e.clientY };
 
         // Determine direction
@@ -590,10 +589,10 @@ export function useSelection() {
             }
         }
 
-        // Ctrl-Precise Match (Backend)
+        // Ctrl-Precise Match (Backend) — only when explicitly held; UIA is expensive.
         if (e.ctrlKey && isSelecting() && w > 0 && h > 0) {
             const now = Date.now();
-            if (now - lastPreciseRequestTime > 60 && !isPreciseRequestPending) {
+            if (now - lastPreciseRequestTime > 120 && !isPreciseRequestPending) {
                 isPreciseRequestPending = true;
                 lastPreciseRequestTime = now;
 
@@ -612,7 +611,6 @@ export function useSelection() {
                             absH * dpr
                         );
 
-
                         if (rect) {
                             setPreciseRect({
                                 x: rect.x / dpr,
@@ -630,14 +628,24 @@ export function useSelection() {
                     }
                 })();
             }
-        } else {
-            if (preciseRect()) setPreciseRect(null);
+        } else if (preciseRect()) {
+            setPreciseRect(null);
         }
 
         const x = isLeft ? start.x - snappedW : start.x;
         const y = isUp ? start.y - snappedH : start.y;
 
-        setSelectionRect({ x, y, w: snappedW, h: snappedH });
+        const nextRect = { x, y, w: snappedW, h: snappedH };
+        const prev = selectionRect();
+        if (
+            !prev ||
+            prev.x !== nextRect.x ||
+            prev.y !== nextRect.y ||
+            prev.w !== nextRect.w ||
+            prev.h !== nextRect.h
+        ) {
+            setSelectionRect(nextRect);
+        }
 
         // === BOX SELECTION LOGIC ===
         if (isBoxSelecting()) {

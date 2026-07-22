@@ -692,11 +692,12 @@ export default function App() {
           const cursor = await api.getCursorPosition();
           setMousePos({ x: cursor.x, y: cursor.y });
       } catch {
-          // Best-effort only; backend global mouse_move will refresh this immediately.
+          // Best-effort only.
       }
       await api.setMouseMonitorActive(false);
-      await api.setCaptureInputActive(true);
-      await api.setOverlayClickThrough(true);
+      // Region capture uses the overlay webview mouse stream (not LL hook / system cursor).
+      await api.setCaptureInputActive(false);
+      await api.setOverlayClickThrough(false);
   };
 
   // Initialization
@@ -1018,6 +1019,11 @@ export default function App() {
   });
 
   createEffect(() => {
+      if (typeof document === "undefined") return;
+      document.documentElement.classList.toggle("hook-capturing", isSelecting());
+  });
+
+  createEffect(() => {
       if (!isSelecting() && !longCaptureSession()?.active) {
           return;
       }
@@ -1027,6 +1033,11 @@ export default function App() {
 
   // Global Event Handlers
   const handleGlobalMouseMove = (e: MouseEvent) => {
+      // Capture drag must stay cheap: skip sticker/synthetic work while selecting.
+      if (isSelecting()) {
+          handleSelectionMove(e);
+          return;
+      }
       setMousePos({ x: e.clientX, y: e.clientY });
       if (!overlaySyntheticMoveRelayActive && !draggingStickerId()) {
           relayOverlaySyntheticPointerMove(e);
@@ -1047,11 +1058,8 @@ export default function App() {
       // Background Click -> Start Selection or Clear Selection
       // ... (logic remains)
 
-      // PRIORITY: Capture/Selection Mode
+      // PRIORITY: Capture/Selection Mode — overlay is interactive (not click-through).
       if (isSelecting()) {
-          if (isTauriRuntimeAvailable()) {
-              return;
-          }
           handleSelectionStart(e);
           return;
       }
