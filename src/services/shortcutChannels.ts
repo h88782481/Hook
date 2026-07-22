@@ -89,12 +89,17 @@ const SHORTCUT_ACTION_OWNERS: readonly ShortcutActionOwner[] = [
     {
         action: "undo_edit",
         primary: "window",
-        windowShortcutIds: ["undo-edit"],
+        windowShortcutIds: ["undo-edit", "undo-edit-editing"],
     },
     {
         action: "redo_edit",
         primary: "window",
-        windowShortcutIds: ["redo-edit"],
+        windowShortcutIds: [
+            "redo-edit",
+            "redo-edit-editing",
+            "redo-edit-shift",
+            "redo-edit-shift-editing",
+        ],
     },
     {
         action: "toggle_side_panel",

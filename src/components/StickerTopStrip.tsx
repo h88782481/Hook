@@ -10,6 +10,7 @@ import { StickerTopStripPropertyBar } from "./StickerTopStripPropertyBar";
 import {
     computeStickerTopStripLayout,
     STICKER_TOP_STRIP_HEIGHT,
+    type StickerTopStripDragOffset,
 } from "../services/stickerTopStripLayout";
 import { stickerStore } from "../store/stickerStore";
 import { captureStickerEditSnapshot } from "../services/stickerHistory";
@@ -52,7 +53,7 @@ type EffectCreateTool = Extract<StickerCreateTool, "mosaic" | "blur">;
 type TopStripCreateTool = ShapeCreateTool | "line" | "brush" | LabelCreateTool | EffectCreateTool;
 type TopStripCanvasTool = Extract<StickerToolMode, "crop" | "content-eraser">;
 type HistoryActionMode = "undo" | "redo";
-type TopStripOpenMenu = "mode" | "shape" | "line" | "label" | "effect" | "history" | "rasterize" | null;
+type TopStripOpenMenu = "mode" | "shape" | "label" | "effect" | "rasterize" | null;
 
 interface TransformModeOption {
     mode: StickerTransformMode;
@@ -78,6 +79,17 @@ interface RasterizeScopeOption {
     label: string;
     Icon: Component<TopStripIconProps>;
 }
+
+const DragHandleIcon: Component<TopStripIconProps> = (props) => (
+    <svg class={props.class} viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="9" cy="7" r="1.4" />
+        <circle cx="15" cy="7" r="1.4" />
+        <circle cx="9" cy="12" r="1.4" />
+        <circle cx="15" cy="12" r="1.4" />
+        <circle cx="9" cy="17" r="1.4" />
+        <circle cx="15" cy="17" r="1.4" />
+    </svg>
+);
 
 const SelectModeIcon: Component<TopStripIconProps> = (props) => (
     <svg class={props.class} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -420,13 +432,15 @@ const buildStripInteractiveRect = (root: HTMLDivElement, stickerId: string) => {
     };
 };
 
-const toolbarButtonClass = "hook-toolbar-button flex h-[50px] w-[50px] items-center justify-center pb-1 pr-1 text-white transition-colors";
-const toolbarButtonRightBorderClass = `${toolbarButtonClass} border-r border-white/15`;
-const toolbarButtonLeftBorderClass = `${toolbarButtonClass} border-l border-white/15`;
-const toolbarCornerToggleClass =
-    "hook-toolbar-corner-toggle absolute bottom-0 right-0 z-10 flex h-6 w-6 items-center justify-center border-l border-t border-white/15 transition-colors";
-const toolbarMenuClass = "hook-toolbar-menu pointer-events-auto absolute left-0 top-full z-[1215] mt-1 min-w-[132px]";
-const toolbarMenuItemClass = "hook-toolbar-menu-item flex h-10 w-full items-center gap-2 px-3 text-left text-[12px] transition-colors";
+const toolbarButtonClass =
+    "hook-toolbar-button flex items-center justify-center transition-colors";
+const toolbarCornerToggleClass = "hook-toolbar-corner-toggle";
+const toolbarMenuClass =
+    "hook-toolbar-menu pointer-events-auto absolute left-0 top-full z-[1215] mt-1";
+const toolbarMenuItemClass =
+    "hook-toolbar-menu-item flex h-9 w-full items-center gap-2 px-2.5 text-left text-[12px] transition-colors";
+const toolbarSlotClass = "hook-draw-toolbar__slot";
+const toolbarSplitter = () => <div class="hook-draw-toolbar__splitter" aria-hidden="true" />;
 
 export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const [viewport, setViewport] = createSignal(getViewportSize());
@@ -434,9 +448,10 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const [currentShapeTool, setCurrentShapeTool] = createSignal<ShapeCreateTool>("shape-rect");
     const [currentLabelTool, setCurrentLabelTool] = createSignal<LabelCreateTool>("text");
     const [currentEffectTool, setCurrentEffectTool] = createSignal<EffectCreateTool>("mosaic");
-    const [currentHistoryAction, setCurrentHistoryAction] = createSignal<HistoryActionMode>("undo");
     const [currentRasterizeScope, setCurrentRasterizeScope] = createSignal<StickerRasterizeScope>("selected");
+    const [dragOffset, setDragOffset] = createSignal<StickerTopStripDragOffset>({ x: 0, y: 0 });
     let stripRef: HTMLDivElement | undefined;
+    let dragSession: { startX: number; startY: number; originX: number; originY: number } | null = null;
     const openMenuRectId = `sticker-top-strip-menu-${props.stickerId}`;
     let openMenuRectSyncRafIds: number[] = [];
 
@@ -579,10 +594,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     const historyState = createMemo(() => stickerEditHistories[props.stickerId]);
     const canUndo = createMemo(() => (historyState()?.past?.length || 0) > 0);
     const canRedo = createMemo(() => (historyState()?.future?.length || 0) > 0);
-    const currentHistoryOption = createMemo(
-        () => historyActionOptions.find((item) => item.mode === currentHistoryAction()) ?? historyActionOptions[0],
-    );
-    const isHistoryEnabled = createMemo(() => (currentHistoryAction() === "undo" ? canUndo() : canRedo()));
     const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
     const selectedAnnotationIds = () => selectedStickerAnnotationIds as string[];
     const selectedExistingAnnotationType = createMemo<StickerAnnotation["type"] | null>(() => {
@@ -605,6 +616,11 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
             stickerToolSettings.activeCanvasTool,
         );
     });
+    createEffect(() => {
+        props.stickerId;
+        setDragOffset({ x: 0, y: 0 });
+    });
+
     const layout = createMemo(() =>
         computeStickerTopStripLayout(
             {
@@ -616,8 +632,37 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
             viewport().width,
             viewport().height,
             !!propertyBarTool(),
+            dragOffset(),
         ),
     );
+
+    const beginToolbarDrag = (event: PointerEvent) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setOpenMenu(null);
+        const origin = dragOffset();
+        dragSession = {
+            startX: event.clientX,
+            startY: event.clientY,
+            originX: origin.x,
+            originY: origin.y,
+        };
+        const handleMove = (moveEvent: PointerEvent) => {
+            if (!dragSession) return;
+            setDragOffset({
+                x: dragSession.originX + (moveEvent.clientX - dragSession.startX),
+                y: dragSession.originY + (moveEvent.clientY - dragSession.startY),
+            });
+        };
+        const handleUp = () => {
+            dragSession = null;
+            window.removeEventListener("pointermove", handleMove);
+            window.removeEventListener("pointerup", handleUp);
+        };
+        window.addEventListener("pointermove", handleMove);
+        window.addEventListener("pointerup", handleUp);
+    };
     const currentRasterizeOption = createMemo(
         () => rasterizeScopeOptions.find((item) => item.mode === currentRasterizeScope()) ?? rasterizeScopeOptions[0],
     );
@@ -759,10 +804,11 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
         <Portal>
             <div
                 ref={stripRef}
-                class="hook-terminal-shell hook-terminal-shell--strong pointer-events-none fixed z-[1210] box-border flex"
+                class="hook-draw-toolbar pointer-events-none fixed z-[1210] box-border flex"
                 classList={{
                     "flex-col": layout().placement === "above",
                     "flex-col-reverse": layout().placement === "below",
+                    "hook-draw-toolbar--below": layout().placement === "below",
                 }}
                 style={{
                     left: `${layout().container.left}px`,
@@ -776,28 +822,34 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                 </Show>
 
                 <div
-                    class="pointer-events-auto flex items-stretch"
-                    style={{
-                        height: `${STICKER_TOP_STRIP_HEIGHT}px`,
-                    }}
-                    onMouseDown={(event) => event.stopPropagation()}
+                    class="hook-draw-toolbar__main pointer-events-auto"
+                    style={{ height: `${STICKER_TOP_STRIP_HEIGHT}px` }}
+                    onMouseDown={(e) => e.stopPropagation()}
                 >
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <button
+                        type="button"
+                        class="hook-draw-toolbar__drag"
+                        title="拖动工具栏"
+                        aria-label="拖动工具栏"
+                        onPointerDown={(e) => beginToolbarDrag(e)}
+                    >
+                        <DragHandleIcon class="h-4 w-4" />
+                    </button>
+
+                    {/* Group A: nav */}
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonRightBorderClass}
-                            classList={{
-                                "hook-toolbar-button--active": isModeSelected(),
-                                "bg-white/5 hover:bg-white/10": !isModeSelected(),
-                            }}
+                            class={toolbarButtonClass}
+                            classList={{ "hook-toolbar-button--active": isModeSelected() }}
                             aria-label={`${currentTransformOption().label}模式`}
                             title={`${currentTransformOption().label} (${currentTransformOption().shortcut})`}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyTransformMode(currentTransformMode())}
                         >
                             {(() => {
                                 const Icon = currentTransformOption().Icon;
-                                return <Icon class="h-7 w-7" />;
+                                return <Icon class="h-5 w-5" />;
                             })()}
                         </button>
                         <button
@@ -805,12 +857,12 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             class={toolbarCornerToggleClass}
                             aria-label="展开模式列表"
                             title="展开模式列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                             }}
-                            onClick={(event) => {
-                                event.stopPropagation();
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setOpenMenu((current) => (current === "mode" ? null : "mode"));
                             }}
                         >
@@ -820,25 +872,26 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
+                                onPointerMove={(e) => e.stopPropagation()}
+                                onWheel={(e) => e.stopPropagation()}
                             >
                                 <For each={TRANSFORM_MODE_BUTTONS}>
                                     {(item) => {
-                                        const option = transformModeOptions.find((candidate) => candidate.mode === item.mode) ?? transformModeOptions[0];
+                                        const option =
+                                            transformModeOptions.find((candidate) => candidate.mode === item.mode) ??
+                                            transformModeOptions[0];
                                         return (
                                             <button
                                                 type="button"
                                                 class={toolbarMenuItemClass}
                                                 classList={{
                                                     "hook-toolbar-menu-item--active": currentTransformMode() === item.mode,
-                                                    "hover:bg-white/10": currentTransformMode() !== item.mode,
                                                 }}
                                                 onClick={() => applyTransformMode(item.mode)}
                                             >
                                                 <option.Icon class="h-4 w-4 shrink-0" />
                                                 <span>{item.label}</span>
-                                                <span class="ml-auto text-[10px] text-white/40">{item.shortcut}</span>
+                                                <span class="ml-auto text-[10px] text-black/35">{item.shortcut}</span>
                                             </button>
                                         );
                                     }}
@@ -847,22 +900,22 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                         </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    {toolbarSplitter()}
+
+                    {/* Group B: annotate */}
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonRightBorderClass}
-                            classList={{
-                                "hook-toolbar-button--active": isShapeSelected(),
-                                "bg-white/5 hover:bg-white/10": !isShapeSelected(),
-                            }}
+                            class={toolbarButtonClass}
+                            classList={{ "hook-toolbar-button--active": isShapeSelected() }}
                             aria-label={`${currentShapeOption().label}图形工具`}
                             title={currentShapeOption().label}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyCreateTool(currentShapeTool())}
                         >
                             {(() => {
                                 const Icon = currentShapeOption().Icon;
-                                return <Icon class="h-7 w-7" />;
+                                return <Icon class="h-5 w-5" />;
                             })()}
                         </button>
                         <button
@@ -870,12 +923,12 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             class={toolbarCornerToggleClass}
                             aria-label="展开图形列表"
                             title="展开图形列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                             }}
-                            onClick={(event) => {
-                                event.stopPropagation();
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setOpenMenu((current) => (current === "shape" ? null : "shape"));
                             }}
                         >
@@ -885,8 +938,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
+                                onPointerMove={(e) => e.stopPropagation()}
+                                onWheel={(e) => e.stopPropagation()}
                             >
                                 <For each={shapeToolOptions}>
                                     {(item) => (
@@ -895,7 +948,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                             class={toolbarMenuItemClass}
                                             classList={{
                                                 "hook-toolbar-menu-item--active": currentShapeTool() === item.mode,
-                                                "hover:bg-white/10": currentShapeTool() !== item.mode,
                                             }}
                                             onClick={() => applyCreateTool(item.mode)}
                                         >
@@ -908,97 +960,47 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                         </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
                             class={toolbarButtonClass}
-                            classList={{
-                                "hook-toolbar-button--active": isLineSelected(),
-                                "bg-white/5 hover:bg-white/10": !isLineSelected(),
-                            }}
+                            classList={{ "hook-toolbar-button--active": isLineSelected() }}
                             aria-label="直线工具"
                             title="直线"
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyCreateTool("line")}
                         >
-                            <LineToolIcon class="h-7 w-7" />
-                        </button>
-                        <button
-                            type="button"
-                            class={toolbarCornerToggleClass}
-                            aria-label="展开直线列表"
-                            title="展开直线列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                            }}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenMenu((current) => (current === "line" ? null : "line"));
-                            }}
-                        >
-                            <ChevronDownCornerIcon class="h-3 w-3" />
-                        </button>
-                        <Show when={openMenu() === "line"}>
-                            <div
-                                class={toolbarMenuClass}
-                                data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
-                            >
-                                <For each={lineToolOptions}>
-                                    {(item) => (
-                                        <button
-                                            type="button"
-                                            class={toolbarMenuItemClass}
-                                            classList={{
-                                                "hook-toolbar-menu-item--active": isLineSelected(),
-                                                "hover:bg-white/10": !isLineSelected(),
-                                            }}
-                                            onClick={() => applyCreateTool(item.mode)}
-                                        >
-                                            <item.Icon class="h-4 w-4 shrink-0" />
-                                            <span>{item.label}</span>
-                                        </button>
-                                    )}
-                                </For>
-                            </div>
-                        </Show>
-                    </div>
-
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
-                        <button
-                            type="button"
-                            class={toolbarButtonRightBorderClass}
-                            classList={{
-                                "hook-toolbar-button--active": isBrushSelected(),
-                                "bg-white/5 hover:bg-white/10": !isBrushSelected(),
-                            }}
-                            aria-label="画笔工具"
-                            title="画笔"
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={() => applyCreateTool("brush")}
-                        >
-                            <BrushToolIcon class="h-7 w-7" />
+                            <LineToolIcon class="h-5 w-5" />
                         </button>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
                             class={toolbarButtonClass}
-                            classList={{
-                                "hook-toolbar-button--active": isLabelSelected(),
-                                "bg-white/5 hover:bg-white/10": !isLabelSelected(),
-                            }}
+                            classList={{ "hook-toolbar-button--active": isBrushSelected() }}
+                            aria-label="画笔工具"
+                            title="画笔"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => applyCreateTool("brush")}
+                        >
+                            <BrushToolIcon class="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            class={toolbarButtonClass}
+                            classList={{ "hook-toolbar-button--active": isLabelSelected() }}
                             aria-label={`${currentLabelOption().label}标记工具`}
                             title={currentLabelOption().label}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyCreateTool(currentLabelTool())}
                         >
                             {(() => {
                                 const Icon = currentLabelOption().Icon;
-                                return <Icon class="h-7 w-7" />;
+                                return <Icon class="h-5 w-5" />;
                             })()}
                         </button>
                         <button
@@ -1006,12 +1008,12 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             class={toolbarCornerToggleClass}
                             aria-label="展开文字标记列表"
                             title="展开文字标记列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                             }}
-                            onClick={(event) => {
-                                event.stopPropagation();
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setOpenMenu((current) => (current === "label" ? null : "label"));
                             }}
                         >
@@ -1021,8 +1023,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
+                                onPointerMove={(e) => e.stopPropagation()}
+                                onWheel={(e) => e.stopPropagation()}
                             >
                                 <For each={labelToolOptions}>
                                     {(item) => (
@@ -1031,7 +1033,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                             class={toolbarMenuItemClass}
                                             classList={{
                                                 "hook-toolbar-menu-item--active": currentLabelTool() === item.mode,
-                                                "hover:bg-white/10": currentLabelTool() !== item.mode,
                                             }}
                                             onClick={() => applyCreateTool(item.mode)}
                                         >
@@ -1044,22 +1045,19 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                         </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
                             class={toolbarButtonClass}
-                            classList={{
-                                "hook-toolbar-button--active": isEffectSelected(),
-                                "bg-white/5 hover:bg-white/10": !isEffectSelected(),
-                            }}
+                            classList={{ "hook-toolbar-button--active": isEffectSelected() }}
                             aria-label={`${currentEffectOption().label}效果工具`}
                             title={currentEffectOption().label}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyCreateTool(currentEffectTool())}
                         >
                             {(() => {
                                 const Icon = currentEffectOption().Icon;
-                                return <Icon class="h-7 w-7" />;
+                                return <Icon class="h-5 w-5" />;
                             })()}
                         </button>
                         <button
@@ -1067,12 +1065,12 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             class={toolbarCornerToggleClass}
                             aria-label="展开效果列表"
                             title="展开效果列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                             }}
-                            onClick={(event) => {
-                                event.stopPropagation();
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setOpenMenu((current) => (current === "effect" ? null : "effect"));
                             }}
                         >
@@ -1082,8 +1080,8 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
+                                onPointerMove={(e) => e.stopPropagation()}
+                                onWheel={(e) => e.stopPropagation()}
                             >
                                 <For each={effectToolOptions}>
                                     {(item) => (
@@ -1092,7 +1090,6 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                                             class={toolbarMenuItemClass}
                                             classList={{
                                                 "hook-toolbar-menu-item--active": currentEffectTool() === item.mode,
-                                                "hover:bg-white/10": currentEffectTool() !== item.mode,
                                             }}
                                             onClick={() => applyCreateTool(item.mode)}
                                         >
@@ -1105,126 +1102,84 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                         </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    {toolbarSplitter()}
+
+                    {/* Group C: eraser, crop */}
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonLeftBorderClass}
-                            classList={{
-                                "hook-toolbar-button--active": isEraserSelected(),
-                                "bg-white/5 hover:bg-white/10": !isEraserSelected(),
-                            }}
+                            class={toolbarButtonClass}
+                            classList={{ "hook-toolbar-button--active": isEraserSelected() }}
                             aria-label="橡皮擦工具"
                             title="橡皮擦"
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyTopStripTool("content-eraser")}
                         >
-                            <EraserToolIcon class="h-7 w-7" />
+                            <EraserToolIcon class="h-5 w-5" />
                         </button>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonLeftBorderClass}
-                            classList={{
-                                "hook-toolbar-button--active": isCropSelected(),
-                                "bg-white/5 hover:bg-white/10": !isCropSelected(),
-                            }}
+                            class={toolbarButtonClass}
+                            classList={{ "hook-toolbar-button--active": isCropSelected() }}
                             aria-label="裁剪工具"
                             title="裁剪"
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => applyTopStripTool("crop")}
                         >
-                            <CropToolIcon class="h-7 w-7" />
+                            <CropToolIcon class="h-5 w-5" />
                         </button>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    {toolbarSplitter()}
+
+                    {/* Group D: history */}
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonLeftBorderClass}
-                            classList={{
-                                "bg-white/5 hover:bg-white/10": isHistoryEnabled(),
-                                "bg-white/5 text-white/35": !isHistoryEnabled(),
-                            }}
-                            aria-label={currentHistoryOption().label}
-                            title={currentHistoryOption().label}
-                            disabled={!isHistoryEnabled()}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={() => void runHistoryAction(currentHistoryAction())}
+                            class={toolbarButtonClass}
+                            disabled={!canUndo()}
+                            aria-label={historyActionOptions[0].label}
+                            title={`${historyActionOptions[0].label} (Ctrl+Z)`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => void runHistoryAction("undo")}
                         >
-                            {(() => {
-                                const Icon = currentHistoryOption().Icon;
-                                return <Icon class="h-7 w-7" />;
-                            })()}
+                            <UndoToolIcon class="h-5 w-5" />
                         </button>
-                        <button
-                            type="button"
-                            class={toolbarCornerToggleClass}
-                            aria-label="展开历史操作列表"
-                            title="展开历史操作列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                            }}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenMenu((current) => (current === "history" ? null : "history"));
-                            }}
-                        >
-                            <ChevronDownCornerIcon class="h-3 w-3" />
-                        </button>
-                        <Show when={openMenu() === "history"}>
-                            <div
-                                class={toolbarMenuClass}
-                                data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
-                            >
-                                <For each={historyActionOptions}>
-                                    {(item) => {
-                                        const enabled = item.mode === "undo" ? canUndo() : canRedo();
-                                        return (
-                                            <button
-                                                type="button"
-                                                class={toolbarMenuItemClass}
-                                                classList={{
-                                                    "hook-toolbar-menu-item--active": currentHistoryAction() === item.mode,
-                                                    "text-white/85 hover:bg-white/10": currentHistoryAction() !== item.mode && enabled,
-                                                    "text-white/35": !enabled,
-                                                }}
-                                                onClick={() => {
-                                                    setCurrentHistoryAction(item.mode);
-                                                    setOpenMenu(null);
-                                                }}
-                                            >
-                                                <item.Icon class="h-4 w-4 shrink-0" />
-                                                <span>{item.label}</span>
-                                            </button>
-                                        );
-                                    }}
-                                </For>
-                            </div>
-                        </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={toolbarButtonLeftBorderClass}
-                            classList={{
-                                "bg-white/5 hover:bg-white/10": isRasterizeEnabled(),
-                                "bg-white/5 text-white/35": !isRasterizeEnabled(),
-                            }}
+                            class={toolbarButtonClass}
+                            disabled={!canRedo()}
+                            aria-label={historyActionOptions[1].label}
+                            title={`${historyActionOptions[1].label} (Ctrl+Y)`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => void runHistoryAction("redo")}
+                        >
+                            <RedoToolIcon class="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {toolbarSplitter()}
+
+                    {/* Group E: rasterize, confirm */}
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            class={toolbarButtonClass}
+                            disabled={!isRasterizeEnabled()}
                             aria-label={currentRasterizeOption().label}
                             title={currentRasterizeOption().label}
-                            disabled={!isRasterizeEnabled()}
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => void runRasterizeAction(currentRasterizeScope())}
                         >
                             {(() => {
                                 const Icon = currentRasterizeOption().Icon;
-                                return <Icon class="h-7 w-7" />;
+                                return <Icon class="h-5 w-5" />;
                             })()}
                         </button>
                         <button
@@ -1232,12 +1187,12 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             class={toolbarCornerToggleClass}
                             aria-label="展开栅格化列表"
                             title="展开栅格化列表"
-                            onPointerDown={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                             }}
-                            onClick={(event) => {
-                                event.stopPropagation();
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setOpenMenu((current) => (current === "rasterize" ? null : "rasterize"));
                             }}
                         >
@@ -1247,21 +1202,22 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                             <div
                                 class={toolbarMenuClass}
                                 data-top-strip-menu="true"
-                                onPointerMove={(event) => event.stopPropagation()}
-                                onWheel={(event) => event.stopPropagation()}
+                                onPointerMove={(e) => e.stopPropagation()}
+                                onWheel={(e) => e.stopPropagation()}
                             >
                                 <For each={rasterizeScopeOptions}>
                                     {(item) => {
-                                        const enabled = item.mode === "selected" ? canRasterizeSelected() : canRasterizeAll();
+                                        const enabled =
+                                            item.mode === "selected" ? canRasterizeSelected() : canRasterizeAll();
                                         return (
                                             <button
                                                 type="button"
                                                 class={toolbarMenuItemClass}
                                                 classList={{
                                                     "hook-toolbar-menu-item--active": currentRasterizeScope() === item.mode,
-                                                    "text-white/85 hover:bg-white/10": currentRasterizeScope() !== item.mode && enabled,
-                                                    "text-white/35": !enabled,
+                                                    "text-black/35": !enabled,
                                                 }}
+                                                disabled={!enabled}
                                                 onClick={() => {
                                                     setCurrentRasterizeScope(item.mode);
                                                     setOpenMenu(null);
@@ -1277,16 +1233,16 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
                         </Show>
                     </div>
 
-                    <div class="relative h-[50px] w-[50px]" onPointerDown={(event) => event.stopPropagation()}>
+                    <div class={toolbarSlotClass} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                             type="button"
-                            class={`${toolbarButtonLeftBorderClass} text-[var(--theme-signal,#d9ff38)] hover:bg-white/10`}
+                            class={`${toolbarButtonClass} hook-toolbar-button--confirm`}
                             aria-label="完成并复制截图"
                             title="完成并复制到剪贴板"
-                            onPointerDown={(event) => event.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => void runConfirmCopy()}
                         >
-                            <ConfirmCopyToolIcon class="h-7 w-7" />
+                            <ConfirmCopyToolIcon class="h-5 w-5" />
                         </button>
                     </div>
                 </div>

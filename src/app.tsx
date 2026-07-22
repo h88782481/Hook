@@ -826,6 +826,18 @@ export default function App() {
               void handlePaste();
           });
 
+          const unlistenUndo = await listen("trigger-undo", () => {
+              void api.debugLogEvent("trigger-undo-listener");
+              if (!selectedStickerId()) return;
+              void applyStickerHistorySnapshot("undo");
+          });
+
+          const unlistenRedo = await listen("trigger-redo", () => {
+              void api.debugLogEvent("trigger-redo-listener");
+              if (!selectedStickerId()) return;
+              void applyStickerHistorySnapshot("redo");
+          });
+
           const unlistenEscape = await listen("trigger-escape", () => {
               void api.debugLogEvent("trigger-escape-listener");
               if (longCaptureSession()?.active) {
@@ -970,6 +982,8 @@ export default function App() {
               unlistenOpenImage,
               unlistenCopy,
               unlistenPaste,
+              unlistenUndo,
+              unlistenRedo,
               unlistenEscape,
               unlistenDelete,
               unlistenCaptureDown,

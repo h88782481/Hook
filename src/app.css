@@ -321,6 +321,199 @@ html.hook-capturing main {
   color: var(--theme-signal);
 }
 
+/* Snow Shot–inspired floating draw toolbar */
+.hook-draw-toolbar {
+  --tb-bg: #ffffff;
+  --tb-bg-soft: #f7f8fa;
+  --tb-border: rgba(0, 0, 0, 0.06);
+  --tb-text: rgba(0, 0, 0, 0.78);
+  --tb-text-muted: rgba(0, 0, 0, 0.35);
+  --tb-hover: rgba(0, 0, 0, 0.045);
+  --tb-active: #1677ff;
+  --tb-active-soft: rgba(22, 119, 255, 0.12);
+  --tb-confirm: #1677ff;
+  --tb-radius: 8px;
+  --tb-shadow: 0 0 3px 0 rgba(22, 119, 255, 0.35), 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: var(--tb-bg);
+  border: 1px solid var(--tb-border);
+  border-radius: var(--tb-radius);
+  box-shadow: var(--tb-shadow);
+  color: var(--tb-text);
+  overflow: visible;
+}
+
+.hook-draw-toolbar__main {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.hook-draw-toolbar__drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--tb-text-muted);
+  cursor: grab;
+  border-radius: 6px;
+  padding: 0;
+}
+
+.hook-draw-toolbar__drag:hover {
+  background: var(--tb-hover);
+  color: var(--tb-text);
+}
+
+.hook-draw-toolbar__drag:active {
+  cursor: grabbing;
+}
+
+.hook-draw-toolbar__splitter {
+  width: 1px;
+  height: 0.83em;
+  margin: 0 4px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.hook-draw-toolbar__slot {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.hook-draw-toolbar .hook-toolbar-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--tb-text);
+  padding: 0;
+}
+
+.hook-draw-toolbar .hook-toolbar-button:hover {
+  background: var(--tb-hover);
+  color: var(--tb-text);
+}
+
+.hook-draw-toolbar .hook-toolbar-button--active {
+  background: var(--tb-active);
+  color: #fff;
+}
+
+.hook-draw-toolbar .hook-toolbar-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.hook-draw-toolbar .hook-toolbar-button--confirm {
+  background: var(--tb-active-soft);
+  color: var(--tb-confirm);
+}
+
+.hook-draw-toolbar .hook-toolbar-button--confirm:hover {
+  background: var(--tb-active);
+  color: #fff;
+}
+
+.hook-draw-toolbar .hook-toolbar-corner-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 4px 0 6px 0;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--tb-text-muted);
+  padding: 0;
+}
+
+.hook-draw-toolbar .hook-toolbar-corner-toggle:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--tb-text);
+}
+
+.hook-draw-toolbar .hook-toolbar-menu {
+  background: #fff;
+  border: 1px solid var(--tb-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  color: var(--tb-text);
+  overflow: hidden;
+  min-width: 148px;
+  padding: 4px;
+}
+
+.hook-draw-toolbar .hook-toolbar-menu-item {
+  border: none;
+  border-radius: 6px;
+  color: var(--tb-text);
+  min-height: 34px;
+}
+
+.hook-draw-toolbar .hook-toolbar-menu-item:hover {
+  background: var(--tb-hover);
+}
+
+.hook-draw-toolbar .hook-toolbar-menu-item--active {
+  background: var(--tb-active-soft);
+  color: var(--tb-active);
+  border-left: none;
+}
+
+.hook-draw-toolbar__property {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--tb-bg-soft);
+  border-bottom: 1px solid var(--tb-border);
+  color: var(--tb-text);
+}
+
+.hook-draw-toolbar.hook-draw-toolbar--below .hook-draw-toolbar__property {
+  border-bottom: none;
+  border-top: 1px solid var(--tb-border);
+}
+
+.hook-draw-toolbar__property .hook-mini-toggle,
+.hook-draw-toolbar__property .hook-mini-switch,
+.hook-draw-toolbar__property .hook-terminal-input {
+  border-radius: 6px;
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #fff;
+  color: var(--tb-text);
+}
+
+.hook-draw-toolbar__property .hook-mini-toggle--active,
+.hook-draw-toolbar__property .hook-mini-switch--active {
+  border-color: rgba(22, 119, 255, 0.45) !important;
+  background: var(--tb-active-soft) !important;
+  color: var(--tb-active) !important;
+}
+
+.hook-draw-toolbar__property .hook-mini-switch--active .hook-mini-switch__thumb {
+  border-color: var(--tb-active);
+  background: var(--tb-active);
+}
+
 .hook-mini-toggle--active {
   border-color: var(--theme-border-strong) !important;
   background: var(--theme-hover-strong) !important;

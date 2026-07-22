@@ -29,7 +29,11 @@ const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'toggle-history', key: 'h', modifiers: ['ctrl'], description: 'Toggle color/screenshot history panel', enabled: true },
   { id: 'save', key: 's', modifiers: ['ctrl'], description: 'Save image', enabled: true, context: 'unit-selected' },
   { id: 'undo-edit', key: 'z', modifiers: ['ctrl'], description: 'Undo sticker edit', enabled: true, context: 'unit-selected' },
+  { id: 'undo-edit-editing', key: 'z', modifiers: ['ctrl'], description: 'Undo sticker edit while drawing', enabled: true, context: 'sticker-editing' },
   { id: 'redo-edit', key: 'y', modifiers: ['ctrl'], description: 'Redo sticker edit', enabled: true, context: 'unit-selected' },
+  { id: 'redo-edit-editing', key: 'y', modifiers: ['ctrl'], description: 'Redo sticker edit while drawing', enabled: true, context: 'sticker-editing' },
+  { id: 'redo-edit-shift', key: 'z', modifiers: ['ctrl', 'shift'], description: 'Redo sticker edit (Ctrl+Shift+Z)', enabled: true, context: 'unit-selected' },
+  { id: 'redo-edit-shift-editing', key: 'z', modifiers: ['ctrl', 'shift'], description: 'Redo sticker edit while drawing (Ctrl+Shift+Z)', enabled: true, context: 'sticker-editing' },
 
   // Sticker Operations
   { id: 'delete', key: 'Delete', modifiers: [], description: 'Delete selected unit', enabled: true, context: 'unit-selected' },

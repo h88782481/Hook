@@ -299,6 +299,8 @@ enum OverlayKeyboardHookEvent {
     Delete,
     Copy,
     Paste,
+    Undo,
+    Redo,
 }
 
 #[cfg(target_os = "windows")]
@@ -842,6 +844,10 @@ pub(crate) fn install_capture_mouse_hook_thread(_window: tauri::WebviewWindow) {
 const VK_KEY_C: u32 = b'C' as u32;
 #[cfg(target_os = "windows")]
 const VK_KEY_V: u32 = b'V' as u32;
+#[cfg(target_os = "windows")]
+const VK_KEY_Z: u32 = b'Z' as u32;
+#[cfg(target_os = "windows")]
+const VK_KEY_Y: u32 = b'Y' as u32;
 
 #[cfg(target_os = "windows")]
 fn update_overlay_modifier_key_state(vk_code: u32, pressed: bool) {
@@ -870,6 +876,17 @@ fn overlay_keyboard_hook_event_for_keydown(
     if modifiers.ctrl_pressed && vk_code == VK_KEY_V {
         return Some(OverlayKeyboardHookEvent::Paste);
     }
+    // Ctrl+Shift+Z → redo; Ctrl+Z → undo; Ctrl+Y → redo
+    if modifiers.ctrl_pressed && vk_code == VK_KEY_Z {
+        return Some(if modifiers.shift_pressed {
+            OverlayKeyboardHookEvent::Redo
+        } else {
+            OverlayKeyboardHookEvent::Undo
+        });
+    }
+    if modifiers.ctrl_pressed && !modifiers.shift_pressed && vk_code == VK_KEY_Y {
+        return Some(OverlayKeyboardHookEvent::Redo);
+    }
     None
 }
 
@@ -881,7 +898,11 @@ fn overlay_keyboard_hook_should_consume_keyup(
     vk_code == VK_ESCAPE.0 as u32
         || vk_code == VK_DELETE.0 as u32
         || vk_code == VK_BACK.0 as u32
-        || (modifiers.ctrl_pressed && (vk_code == VK_KEY_C || vk_code == VK_KEY_V))
+        || (modifiers.ctrl_pressed
+            && (vk_code == VK_KEY_C
+                || vk_code == VK_KEY_V
+                || vk_code == VK_KEY_Z
+                || vk_code == VK_KEY_Y))
 }
 
 #[cfg(target_os = "windows")]
@@ -963,6 +984,8 @@ pub(crate) fn install_overlay_keyboard_hook_thread(window: tauri::WebviewWindow)
                     OverlayKeyboardHookEvent::Delete => "trigger-delete",
                     OverlayKeyboardHookEvent::Copy => "trigger-copy",
                     OverlayKeyboardHookEvent::Paste => "trigger-paste",
+                    OverlayKeyboardHookEvent::Undo => "trigger-undo",
+                    OverlayKeyboardHookEvent::Redo => "trigger-redo",
                 };
                 append_runtime_log_line(&format!("overlay_keyboard_hook_emit :: {}", event_name));
                 let _ = emit_window.emit(event_name, ());

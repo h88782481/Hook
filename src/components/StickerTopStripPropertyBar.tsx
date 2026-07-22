@@ -77,11 +77,11 @@ type SelectedExistingColorRole =
     | "selected-serial-fill";
 
 const iconShellClass =
-    "flex h-6 shrink-0 items-center justify-center border border-white/10 bg-black/35 text-white/80 transition-colors hover:border-white/25 hover:bg-white/10";
+    "flex h-6 shrink-0 items-center justify-center rounded-md border border-black/10 bg-white text-black/70 transition-colors hover:border-black/20 hover:bg-black/[0.04]";
 const groupedShellClass =
-    "flex h-6 shrink-0 items-center gap-0.5 border border-white/10 bg-black/35 px-0.5 text-white/85";
+    "flex h-6 shrink-0 items-center gap-0.5 rounded-md border border-black/10 bg-white px-0.5 text-black/75";
 const compactInputClass =
-    "h-4 w-[28px] bg-transparent text-center text-[10px] text-white outline-none placeholder:text-white/30";
+    "h-4 w-[28px] bg-transparent text-center text-[10px] text-black/80 outline-none placeholder:text-black/30";
 
 const dashOptions: Array<{ key: "solid" | "dash-1" | "dash-2"; label: string; title: string }> = [
     { key: "solid", label: "━", title: "实线" },
@@ -861,7 +861,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 <Show when={!isTransparent()}>
                     <span class="absolute inset-[2px]" style={{ background: current() }} />
                 </Show>
-                <span class="relative z-[1] text-white">
+                <span class="relative z-[1] text-black/80">
                     <fieldProps.Icon class="h-3.5 w-3.5" />
                 </span>
             </button>
@@ -892,7 +892,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                 <Show when={!isTransparent()}>
                     <span class="absolute inset-[2px]" style={{ background: fieldProps.value }} />
                 </Show>
-                <span class="relative z-[1] text-white">
+                <span class="relative z-[1] text-black/80">
                     <fieldProps.Icon class="h-3.5 w-3.5" />
                 </span>
             </button>
@@ -909,7 +909,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         inputClass?: string;
     }> = (fieldProps) => (
         <label class={groupedShellClass} title={fieldProps.title}>
-            <fieldProps.Icon class="h-3.5 w-3.5 shrink-0 text-white/70" />
+            <fieldProps.Icon class="h-3.5 w-3.5 shrink-0 text-black/55" />
             <input
                 class={`${compactInputClass} ${fieldProps.inputClass ?? ""}`.trim()}
                 type="text"
@@ -947,7 +947,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
         inputClass?: string;
     }> = (fieldProps) => (
         <label class={groupedShellClass} title={fieldProps.title}>
-            <fieldProps.Icon class="h-3.5 w-3.5 shrink-0 text-white/70" />
+            <fieldProps.Icon class="h-3.5 w-3.5 shrink-0 text-black/55" />
             <input
                 class={`${compactInputClass} ${fieldProps.inputClass ?? ""}`.trim()}
                 type="text"
@@ -975,7 +975,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             class={`hook-mini-toggle ${iconShellClass} w-6`}
             classList={{
                 "hook-mini-toggle--active": fieldProps.enabled,
-                "border-white/10 bg-black/35 text-white/75 hover:border-white/25 hover:bg-white/10": !fieldProps.enabled,
+                "border-black/10 bg-white text-black/65 hover:border-black/20 hover:bg-black/[0.04]": !fieldProps.enabled,
             }}
             title={fieldProps.title}
             onClick={fieldProps.onToggle}
@@ -1010,7 +1010,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
             class="hook-mini-switch flex h-6 w-[42px] shrink-0 items-center justify-between border px-1.5 transition-colors"
             classList={{
                 "hook-mini-switch--active": fieldProps.enabled,
-                "border-white/10 bg-black/35 text-white/75 hover:border-white/25 hover:bg-white/10": !fieldProps.enabled,
+                "border-black/10 bg-white text-black/65 hover:border-black/20 hover:bg-black/[0.04]": !fieldProps.enabled,
             }}
             title={fieldProps.title}
             onClick={fieldProps.onToggle}
@@ -1082,18 +1082,18 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                     {fieldProps.Icon
                         ? (() => {
                               const Icon = fieldProps.Icon!;
-                              return <Icon class="h-3.5 w-3.5 shrink-0 text-white/70" />;
+                              return <Icon class="h-3.5 w-3.5 shrink-0 text-black/55" />;
                           })()
                         : null}
                     <span
-                        class={`truncate text-left text-[10px] text-white ${
+                        class={`truncate text-left text-[10px] text-black/80 ${
                             fieldProps.triggerLabelClass ?? ""
                         }`.trim()}
                     >
                         {selectedOption()?.label ?? fieldProps.value}
                     </span>
                 </span>
-                <span class={`shrink-0 text-[9px] text-white/55 transition-transform ${isOpen() ? "rotate-180" : ""}`}>
+                <span class={`shrink-0 text-[9px] text-black/55 transition-transform ${isOpen() ? "rotate-180" : ""}`}>
                     ▾
                 </span>
             </button>
@@ -1146,7 +1146,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
     return (
         <>
             <div
-                class="pointer-events-auto flex h-[40px] items-center gap-1.5 overflow-hidden border-b border-white/15 px-1.5"
+                class="hook-draw-toolbar__property pointer-events-auto"
                 onPointerDown={(event) => {
                     event.stopPropagation();
                     void api.focusOverlayWindow();
@@ -1482,7 +1482,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                             }}
                             data-top-strip-menu="true"
                             data-top-strip-property-popup="true"
-                            class="pointer-events-auto fixed z-[1305] overflow-hidden border border-white/15 bg-[rgba(7,10,7,0.96)] shadow-[0_10px_30px_rgba(0,0,0,0.45)]"
+                            class="pointer-events-auto fixed z-[1305] overflow-hidden rounded-lg border border-black/10 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
                             style={{
                                 left: `${menu().anchor.x}px`,
                                 top: `${menu().anchor.y + menu().anchor.height + 4}px`,
@@ -1504,7 +1504,7 @@ export const StickerTopStripPropertyBar: Component<StickerTopStripPropertyBarPro
                                     {(option) => (
                                         <button
                                             type="button"
-                                            class="flex h-7 w-full items-center px-2 text-left text-[11px] text-white transition-colors hover:bg-white/10"
+                                            class="flex h-7 w-full items-center px-2 text-left text-[11px] text-black/75 transition-colors hover:bg-black/[0.04]"
                                             classList={{
                                                 "bg-white/12 text-[#d9ff38]": menu().value === option.value,
                                             }}
