@@ -21,11 +21,11 @@ pub(crate) struct LongCaptureWheelEvent {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LongCaptureSessionRect {
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
+pub struct LongCaptureSessionRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -68,20 +68,20 @@ impl SharedLongCaptureSessions {
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum LongCaptureSessionSampleStatus {
+pub enum LongCaptureSessionSampleStatus {
     Recorded,
     Duplicate,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LongCaptureSessionSampleResponse {
-    status: LongCaptureSessionSampleStatus,
-    frame_count: usize,
-    duplicate_count: usize,
-    recorded: bool,
-    axis: Option<long_capture::LongCaptureAxis>,
-    direction: Option<long_capture::LongCaptureDirection>,
+pub struct LongCaptureSessionSampleResponse {
+    pub status: LongCaptureSessionSampleStatus,
+    pub frame_count: usize,
+    pub duplicate_count: usize,
+    pub recorded: bool,
+    pub axis: Option<long_capture::LongCaptureAxis>,
+    pub direction: Option<long_capture::LongCaptureDirection>,
 }
 
 #[derive(Clone)]

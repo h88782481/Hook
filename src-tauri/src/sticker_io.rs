@@ -34,6 +34,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetAncestor, GetClassNameW, GetWindowRect, WindowFromPoint, GA_ROOT,
 };
 
+#[cfg(not(target_os = "windows"))]
 pub fn save_sticker_image(app: tauri::AppHandle, base64_image: String) -> Result<String, String> {
     let image_data = decode_base64_image_data(&base64_image)?;
 
@@ -476,6 +477,7 @@ fn make_arboard_image_data(
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn write_rgba_image_to_clipboard(width: usize, height: usize, raw_bytes: Vec<u8>) -> Result<(), String> {
     let mut clipboard =
         arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
@@ -528,6 +530,7 @@ pub fn copy_sticker_image_to_smart_clipboard(base64_image: String) -> Result<Str
     Ok("image clipboard only; file-list paste is Windows-only".to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn copy_to_clipboard(base64_image: String) -> Result<(), String> {
     let image_bytes = decode_base64_image_data(&base64_image)?;
     let (width, height, raw_bytes) = load_rgba_image_from_bytes(&image_bytes)?;
