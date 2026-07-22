@@ -7,7 +7,7 @@
 
 import { normalizePaletteColor, TRANSPARENT_COLOR } from "../utils/colorUtils";
 
-export interface ColorHistoryEntry {
+interface ColorHistoryEntry {
     hex: string;
     rgb: { r: number; g: number; b: number };
     at: number;

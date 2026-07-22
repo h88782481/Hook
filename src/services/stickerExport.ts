@@ -3,8 +3,6 @@ import type {
     StickerAnnotation,
     StickerEffectAnnotation,
     StickerLineAnnotation,
-    StickerPoint,
-    StickerShapeAnnotation,
     StickerTextAnnotation,
 } from "../types/stickerEditing";
 import {
@@ -13,24 +11,15 @@ import {
     paintMosaicGrid,
     renderBlurToCanvas,
 } from "./stickerEffects";
+import { HIGHLIGHTER_LAYER_OPACITY } from "./stickerEditing";
 import {
-    buildSerialAnnotationMetrics,
-    HIGHLIGHTER_LAYER_OPACITY,
-} from "./stickerEditing";
-import {
-    getAnnotationCornerRadius,
-    hasVisibleFill,
-    hasVisibleStroke,
-} from "./stickerAnnotationStyle";
-import {
-    buildArrowHeadPolygon,
-    buildPolygonPoints,
-    buildTrianglePoints,
-    getAnnotationCenter,
-    getArrowHeadSizeOptions,
-    getArrowShaftPoints,
-    traceRoundedPolygonPath,
-} from "./stickerGeometry";
+    applyCanvasRotation,
+    getAnnotationRotation,
+    resolveLinePaintSpec,
+    resolveShapePaintSpec,
+    resolveTextPaintLayout,
+} from "./stickerAnnotationPaint";
+import { traceRoundedPolygonPath } from "./stickerGeometry";
 import {
     annotationRenderRank,
     loadImage,
@@ -40,37 +29,44 @@ import {
 } from "./stickerCanvas";
 import { resolveStickerBitmapSrc } from "./imageSource";
 
-const drawArrowHead = (context: CanvasRenderingContext2D, line: StickerLineAnnotation) => {
-    const head = buildArrowHeadPolygon(line.points, getArrowHeadSizeOptions(line.style.width));
-    if (!head) return;
+const applyShapePaintStyle = (
+    context: CanvasRenderingContext2D,
+    style: ReturnType<typeof resolveShapePaintSpec>["style"],
+) => {
+    context.strokeStyle = style.stroke;
+    context.lineWidth = style.strokeWidth;
+    context.globalAlpha = style.opacity;
+    applyLineDash(context, style.dashPattern, style.strokeWidth);
+};
 
+const paintShapeFillAndStroke = (
+    context: CanvasRenderingContext2D,
+    style: ReturnType<typeof resolveShapePaintSpec>["style"],
+) => {
+    if (style.drawFill && style.fill) {
+        context.fillStyle = style.fill;
+        context.fill();
+    }
+    if (style.drawStroke) {
+        context.stroke();
+    }
+};
+
+const drawArrowHeadFromSpec = (
+    context: CanvasRenderingContext2D,
+    head: NonNullable<ReturnType<typeof resolveLinePaintSpec>["arrowHead"]>,
+    style: StickerLineAnnotation["style"],
+) => {
     context.save();
     context.beginPath();
     context.moveTo(head[0].x, head[0].y);
     context.lineTo(head[1].x, head[1].y);
     context.lineTo(head[2].x, head[2].y);
     context.closePath();
-    context.fillStyle = line.style.color;
-    context.globalAlpha = line.style.opacity ?? 1;
+    context.fillStyle = style.color;
+    context.globalAlpha = style.opacity ?? 1;
     context.fill();
     context.restore();
-};
-
-const shouldDrawShapeStroke = (shape: StickerShapeAnnotation) =>
-    hasVisibleStroke(shape.style.color, shape.style.width);
-
-const shouldDrawShapeFill = (shape: StickerShapeAnnotation) =>
-    hasVisibleFill(shape.style.fill);
-
-const applyAnnotationRotation = (
-    context: CanvasRenderingContext2D,
-    annotation: StickerShapeAnnotation | StickerTextAnnotation | StickerEffectAnnotation,
-) => {
-    if (!annotation.rotation) return;
-    const center = getAnnotationCenter(annotation);
-    context.translate(center.x, center.y);
-    context.rotate((annotation.rotation * Math.PI) / 180);
-    context.translate(-center.x, -center.y);
 };
 
 const drawAnnotation = (
@@ -82,77 +78,61 @@ const drawAnnotation = (
     switch (annotation.type) {
         case "rect":
         case "round-rect":
-        case "ellipse": {
-            const shape = annotation as StickerShapeAnnotation;
+        case "ellipse":
+        case "triangle":
+        case "polygon": {
+            const spec = resolveShapePaintSpec(annotation);
             context.save();
-            applyAnnotationRotation(context, shape);
-            context.strokeStyle = shape.style.color;
-            context.lineWidth = shape.style.width;
-            context.globalAlpha = shape.style.opacity ?? 1;
-            applyLineDash(context, shape.style.dashPattern, shape.style.width);
-            if (shape.type === "ellipse") {
+            applyCanvasRotation(context, spec.rotation);
+            applyShapePaintStyle(context, spec.style);
+            if (spec.geometry.kind === "ellipse") {
                 context.beginPath();
                 context.ellipse(
-                    shape.x + shape.w / 2,
-                    shape.y + shape.h / 2,
-                    shape.w / 2,
-                    shape.h / 2,
+                    spec.geometry.cx,
+                    spec.geometry.cy,
+                    spec.geometry.rx,
+                    spec.geometry.ry,
                     0,
                     0,
                     Math.PI * 2,
                 );
-                if (shouldDrawShapeFill(shape)) {
-                    context.fillStyle = shape.style.fill!;
-                    context.fill();
-                }
-                if (shouldDrawShapeStroke(shape)) {
-                    context.stroke();
-                }
-            } else if (shape.type === "round-rect" || getAnnotationCornerRadius(shape) > 0) {
+                paintShapeFillAndStroke(context, spec.style);
+            } else if (spec.geometry.kind === "polygon") {
+                context.lineJoin = "round";
+                traceRoundedPolygonPath(
+                    context,
+                    spec.geometry.points,
+                    spec.geometry.cornerRadius,
+                );
+                paintShapeFillAndStroke(context, spec.style);
+            } else if (spec.geometry.rx > 0) {
                 context.beginPath();
-                const radius = getAnnotationCornerRadius(shape);
-                context.roundRect(shape.x, shape.y, shape.w, shape.h, radius);
-                if (shouldDrawShapeFill(shape)) {
-                    context.fillStyle = shape.style.fill!;
-                    context.fill();
-                }
-                if (shouldDrawShapeStroke(shape)) {
-                    context.stroke();
-                }
+                context.roundRect(
+                    spec.geometry.x,
+                    spec.geometry.y,
+                    spec.geometry.w,
+                    spec.geometry.h,
+                    spec.geometry.rx,
+                );
+                paintShapeFillAndStroke(context, spec.style);
             } else {
-                if (shouldDrawShapeFill(shape)) {
-                    context.fillStyle = shape.style.fill!;
-                    context.fillRect(shape.x, shape.y, shape.w, shape.h);
+                if (spec.style.drawFill && spec.style.fill) {
+                    context.fillStyle = spec.style.fill;
+                    context.fillRect(
+                        spec.geometry.x,
+                        spec.geometry.y,
+                        spec.geometry.w,
+                        spec.geometry.h,
+                    );
                 }
-                if (shouldDrawShapeStroke(shape)) {
-                    context.strokeRect(shape.x, shape.y, shape.w, shape.h);
+                if (spec.style.drawStroke) {
+                    context.strokeRect(
+                        spec.geometry.x,
+                        spec.geometry.y,
+                        spec.geometry.w,
+                        spec.geometry.h,
+                    );
                 }
-            }
-            context.restore();
-            return;
-        }
-        case "triangle":
-        case "polygon": {
-            const shape = annotation as StickerShapeAnnotation;
-            context.save();
-            applyAnnotationRotation(context, shape);
-            context.strokeStyle = shape.style.color;
-            context.lineWidth = shape.style.width;
-            context.globalAlpha = shape.style.opacity ?? 1;
-            context.lineJoin = "round";
-            applyLineDash(context, shape.style.dashPattern, shape.style.width);
-
-            const polygonPoints =
-                shape.type === "triangle"
-                    ? buildTrianglePoints(shape)
-                    : buildPolygonPoints(shape, shape.sides ?? 6);
-            traceRoundedPolygonPath(context, polygonPoints, getAnnotationCornerRadius(shape));
-            if (shouldDrawShapeFill(shape)) {
-                context.fillStyle = shape.style.fill!;
-                context.fill();
-            }
-            if (shouldDrawShapeStroke(shape)) {
-                context.stroke();
             }
             context.restore();
             return;
@@ -163,49 +143,56 @@ const drawAnnotation = (
         case "highlighter":
         case "arrow": {
             const line = annotation as StickerLineAnnotation;
-            const points =
-                annotation.type === "arrow"
-                    ? getArrowShaftPoints(line.points, getArrowHeadSizeOptions(line.style.width))
-                    : line.points;
-            drawStrokePath(context, points, line.style);
-            if (annotation.type === "arrow") {
-                drawArrowHead(context, line);
+            const spec = resolveLinePaintSpec(line);
+            drawStrokePath(context, spec.shaftPoints, line.style);
+            if (spec.arrowHead) {
+                drawArrowHeadFromSpec(context, spec.arrowHead, line.style);
             }
             return;
         }
         case "text":
         case "serial": {
-            const text = annotation as StickerTextAnnotation;
+            const layout = resolveTextPaintLayout(annotation as StickerTextAnnotation);
             context.save();
-            const serialMetrics = buildSerialAnnotationMetrics(text.style.cornerRadius ?? 14);
-            const fontSize = text.fontSize ?? (annotation.type === "serial" ? serialMetrics.fontSize : 18);
-            context.font = `${annotation.type === "serial" ? "700" : "500"} ${fontSize}px "${text.fontFamily || "Segoe UI"}", sans-serif`;
-            // text.y is the TOP of the selection box; paint at vertical center to match SVG.
+            context.font = `${layout.fontWeight} ${layout.fontSize}px "${layout.fontFamily}", sans-serif`;
             context.textBaseline = "middle";
-            applyAnnotationRotation(context, text);
-            if (annotation.type === "serial") {
-                const serialCenterY = text.y - fontSize / 2;
-                if (hasVisibleFill(text.style.fill)) {
-                    context.fillStyle = text.style.fill || "#000000";
+            applyCanvasRotation(context, layout.rotation);
+            if (layout.serial) {
+                if (layout.serial.drawFill && layout.serial.fill) {
+                    context.fillStyle = layout.serial.fill;
                     context.beginPath();
-                    context.arc(text.x + serialMetrics.radius, serialCenterY, serialMetrics.radius, 0, Math.PI * 2);
+                    context.arc(
+                        layout.serial.cx,
+                        layout.serial.cy,
+                        layout.serial.radius,
+                        0,
+                        Math.PI * 2,
+                    );
                     context.fill();
                 }
-                if (
-                    hasVisibleStroke(text.style.color, text.style.width || serialMetrics.borderWidth)
-                ) {
-                    context.strokeStyle = text.style.color;
-                    context.lineWidth = text.style.width || serialMetrics.borderWidth;
+                if (layout.serial.drawStroke && layout.serial.stroke) {
+                    context.strokeStyle = layout.serial.stroke;
+                    context.lineWidth = layout.serial.borderWidth;
                     context.beginPath();
-                    context.arc(text.x + serialMetrics.radius, serialCenterY, serialMetrics.radius, 0, Math.PI * 2);
+                    context.arc(
+                        layout.serial.cx,
+                        layout.serial.cy,
+                        layout.serial.radius,
+                        0,
+                        Math.PI * 2,
+                    );
                     context.stroke();
                 }
-                context.fillStyle = text.style.color;
-                const measure = context.measureText(text.text);
-                context.fillText(text.text, text.x + serialMetrics.radius - measure.width / 2, serialCenterY);
+                context.fillStyle = layout.color;
+                const measure = context.measureText(layout.text);
+                context.fillText(
+                    layout.text,
+                    layout.paintX - measure.width / 2,
+                    layout.paintY,
+                );
             } else {
-                context.fillStyle = text.style.color;
-                context.fillText(text.text, text.x, text.y + fontSize / 2);
+                context.fillStyle = layout.color;
+                context.fillText(layout.text, layout.paintX, layout.paintY);
             }
             context.restore();
             return;
@@ -311,7 +298,7 @@ const drawAnnotation = (
             }
 
             context.save();
-            applyAnnotationRotation(context, effect);
+            applyCanvasRotation(context, getAnnotationRotation(effect));
             context.drawImage(layer, effect.x, effect.y);
             context.restore();
             return;

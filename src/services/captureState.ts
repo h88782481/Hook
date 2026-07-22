@@ -7,13 +7,13 @@ import type {
 
 export type CaptureSelectionMode = "region" | "long-vertical";
 
-export type CaptureShortcutContext =
+type CaptureShortcutContext =
     | "capture-selecting"
     | "sticker-editing"
     | "unit-selected"
     | "canvas";
 
-export type CaptureDuplicateDebugEvent =
+type CaptureDuplicateDebugEvent =
     | "trigger-capture-ignored-duplicate"
     | "trigger-long-capture-ignored-duplicate";
 
@@ -53,7 +53,7 @@ export interface AutoLongCaptureOptions {
     finishDrainRecentWheelWindowMs: number;
 }
 
-export type CaptureSelectionStartState =
+type CaptureSelectionStartState =
     | {
           shouldStart: true;
           captureMode: CaptureSelectionMode;

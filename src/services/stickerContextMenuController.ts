@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store";
 
 export type StickerContextSubmenu = "none" | "recycleBin" | "referenceLibrary";
 
-export interface StickerContextMenuState {
+interface StickerContextMenuState {
     isOpen: boolean;
     targetStickerId: string | null;
     mouseX: number;
@@ -11,7 +11,7 @@ export interface StickerContextMenuState {
     submenuOffsetY: number;
 }
 
-export interface StickerContextMenuController {
+interface StickerContextMenuController {
     state: StickerContextMenuState;
     openForSticker: (stickerId: string, mouse: { x: number; y: number }) => void;
     openSubmenu: (submenu: StickerContextSubmenu, anchor?: { top: number }) => void;

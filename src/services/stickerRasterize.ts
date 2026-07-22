@@ -4,7 +4,7 @@ import type { Sticker } from "../types/stickerModel";
 
 export type StickerRasterizeScope = "selected" | "all";
 
-export interface RasterizedStickerLayerSources {
+interface RasterizedStickerLayerSources {
     baseLayerSrc: string;
     rasterizedAnnotationLayerSrc: string;
     previewSrc: string;

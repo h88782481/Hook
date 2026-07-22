@@ -13,7 +13,7 @@ import type {
 
 export type { CaptureResponse };
 
-export interface SessionData {
+interface SessionData {
     stickers: SessionSticker[];
     links: SessionLink[];
     groups: SessionGroup[];
@@ -21,14 +21,14 @@ export interface SessionData {
     referenceLibrary: FrozenStickerEntry[];
 }
 
-export interface PreciseSelectionResult {
+interface PreciseSelectionResult {
     x: number;
     y: number;
     w: number;
     h: number;
 }
 
-export interface ToolSettingsData {
+interface ToolSettingsData {
     stickerToolSettings?: Record<string, unknown> | null;
 }
 

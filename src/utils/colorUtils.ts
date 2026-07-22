@@ -1,6 +1,6 @@
 export const TRANSPARENT_COLOR = "transparent";
 
-export type RgbaColor = { r: number; g: number; b: number; a: number };
+type RgbaColor = { r: number; g: number; b: number; a: number };
 
 const DEFAULT_RGBA: RgbaColor = { r: 255, g: 0, b: 0, a: 1 };
 

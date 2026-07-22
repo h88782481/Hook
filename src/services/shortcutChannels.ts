@@ -11,13 +11,13 @@
  * the same time. Fallbacks may mirror a primary only when the primary failed.
  */
 
-export type ShortcutChannel =
+type ShortcutChannel =
     | "window"
     | "global-plugin"
     | "rdev-fallback"
     | "overlay-hook";
 
-export type ShortcutActionOwner = {
+type ShortcutActionOwner = {
     /** Human-readable action key shared across FE/BE docs. */
     action: string;
     /** Channel that should handle the action under normal conditions. */

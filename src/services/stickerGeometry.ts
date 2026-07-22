@@ -392,16 +392,16 @@ export const moveLineEndpoint = (
 // apart (a class of bug previously seen when each call site inlined its own
 // vertex math with subtly different bounds).
 
-export interface ShapeBox {
+interface ShapeBox {
     x: number;
     y: number;
     w: number;
     h: number;
 }
 
-export interface AnnotationBounds extends ShapeBox {}
+interface AnnotationBounds extends ShapeBox {}
 
-export interface AnnotationScale {
+interface AnnotationScale {
     x: number;
     y: number;
 }

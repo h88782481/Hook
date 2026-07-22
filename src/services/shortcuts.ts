@@ -6,9 +6,9 @@
  * and makes it easy to customize bindings.
  */
 
-export type ModifierKey = 'ctrl' | 'alt' | 'shift' | 'meta';
+type ModifierKey = 'ctrl' | 'alt' | 'shift' | 'meta';
 
-export interface ShortcutDef {
+interface ShortcutDef {
   id: string;             // Unique identifier (e.g., "copy", "paste")
   key: string;            // Key code (e.g., "c", "Delete", "Tab")
   modifiers: ModifierKey[]; // Required modifiers
@@ -17,7 +17,7 @@ export interface ShortcutDef {
   context?: string;       // Optional context (e.g., "unit-selected")
 }
 
-export interface ShortcutBinding extends ShortcutDef {
+interface RuntimeShortcutBinding extends ShortcutDef {
   action: () => void | Promise<void>;
 }
 
@@ -60,7 +60,7 @@ export const DRAG_MODIFIERS = {
 };
 
 class ShortcutManagerClass {
-  private bindings: Map<string, ShortcutBinding> = new Map();
+  private bindings: Map<string, RuntimeShortcutBinding> = new Map();
   private definitions: Map<string, ShortcutDef> = new Map();
   private contextProvider: (() => string | null) | null = null;
 

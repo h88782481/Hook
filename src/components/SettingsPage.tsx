@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "../services/api";
 import {
     type AppSettings,
-    type ShortcutBinding,
+    type AppShortcutBinding,
     defaultAppSettings,
     emptyShortcutBinding,
     formatShortcutBinding,
@@ -53,7 +53,7 @@ export const SettingsPage: Component = () => {
         });
     });
 
-    const updateShortcut = (field: ShortcutField, binding: ShortcutBinding) => {
+    const updateShortcut = (field: ShortcutField, binding: AppShortcutBinding) => {
         setSettings((prev) => ({
             ...prev,
             shortcuts: {

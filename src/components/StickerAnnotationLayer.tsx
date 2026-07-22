@@ -59,18 +59,14 @@ import {
     type MeasurementBadge,
 } from "../services/stickerMeasurements";
 import {
-    buildArrowHeadPolygon,
-    cloneStickerAnnotation,
     buildPolygonPoints,
     buildRoundedPolygonPath,
     buildTrianglePoints,
+    cloneStickerAnnotation,
     findTopmostAnnotationAtPoint,
     getAnnotationBounds,
-    getAnnotationCenter,
     getAnnotationGroupBounds,
     getAnnotationGroupCenter,
-    getArrowHeadSizeOptions,
-    getArrowShaftPoints,
     moveLineEndpoint,
     resizeBoxAnnotation,
     rotateAnnotationsAroundGroupCenter,
@@ -82,6 +78,14 @@ import {
     type ResizeHandle,
     translateAnnotation,
 } from "../services/stickerGeometry";
+import {
+    buildSvgRotationTransform,
+    getAnnotationRotation,
+    resolveArrowDraftPaint,
+    resolveLinePaintSpec,
+    resolveShapePaintSpec,
+    resolveTextPaintLayout,
+} from "../services/stickerAnnotationPaint";
 import { updateTextAnnotationById } from "../services/stickerAnnotationMutations";
 import { syncService } from "../services/syncService";
 import { renderStickerEffectOverlay, StickerEffectDraftOverlay } from "./StickerEffectOverlay";
@@ -89,7 +93,6 @@ import { buildStrokePath } from "../services/stickerStrokePath";
 import {
     annotationRenderRank,
     getScaleGizmoHandleRects,
-    getAnnotationCornerRadius,
     getStrokeDashArray,
     getVisibleFill,
     getVisibleStroke,
@@ -1783,16 +1786,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         return draft ? buildStrokePath(draft.points) : "";
     };
 
-    const renderLinePath = (points: StickerPoint[]) =>
-        points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-    const renderArrowShaftPath = (points: StickerPoint[], strokeWidth: number, trimForArrow: boolean) =>
-        renderLinePath(
-            trimForArrow ? getArrowShaftPoints(points, getArrowHeadSizeOptions(strokeWidth)) : points,
-        );
-    const renderArrowHeadPath = (points: StickerPoint[]) =>
-        points.length === 3
-            ? `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y} L ${points[2].x} ${points[2].y} Z`
-            : "";
     const renderMeasurementBadge = (badge: Accessor<MeasurementBadge>) => (
         <g style={{ "pointer-events": "none" }}>
             <rect
@@ -1818,13 +1811,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             </text>
         </g>
     );
-    const buildAnnotationRotationTransform = (
-        annotation: StickerAnnotation | StickerTextAnnotation | StickerShapeAnnotation | StickerEffectAnnotation,
-    ) => {
-        if (!("rotation" in annotation) || !annotation.rotation) return undefined;
-        const center = getAnnotationCenter(annotation);
-        return `rotate(${annotation.rotation} ${center.x} ${center.y})`;
-    };
     const getBoundsHandlePoints = (bounds: { x: number; y: number; w: number; h: number }) => [
         { handle: "nw" as const, x: bounds.x, y: bounds.y },
         { handle: "ne" as const, x: bounds.x + bounds.w, y: bounds.y },
@@ -1897,45 +1883,38 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         />
     );
     const renderTextAnnotation = (text: Accessor<StickerTextAnnotation>) => {
-        const serialMetrics = createMemo(() => buildSerialAnnotationMetrics(text().style.cornerRadius ?? 14));
-        const serialFontSize = createMemo(() => text().fontSize ?? serialMetrics().fontSize);
-        const serialBorderWidth = createMemo(() => text().style.width || serialMetrics().borderWidth);
-        const resolvedFontSize = createMemo(() =>
-            text().fontSize === undefined
-                ? (text().type === "serial" ? serialMetrics().fontSize : stickerToolSettings.textSize)
-                : text().fontSize!,
+        const layout = createMemo(() =>
+            resolveTextPaintLayout(text(), {
+                textFontSize: stickerToolSettings.textSize,
+                textFontFamily: stickerToolSettings.textFontFamily,
+                serialFontFamily: stickerToolSettings.serialFontFamily,
+            }),
         );
-        // Geometry/export treat text.y as the TOP of the box. SVG default baseline
-        // would park glyphs above the selection rect — center vertically instead.
-        const textCenterY = createMemo(() =>
-            text().type === "serial"
-                ? text().y - serialFontSize() / 2
-                : text().y + resolvedFontSize() / 2,
-        );
-        const rotationTransform = createMemo(() => buildAnnotationRotationTransform(text()));
         return (
-            <g transform={rotationTransform()}>
-                <Show when={text().type === "serial"}>
-                    <circle
-                        cx={text().x + serialMetrics().radius}
-                        cy={textCenterY()}
-                        r={serialMetrics().radius}
-                        fill={getVisibleFill(text().style.fill)}
-                        stroke={getVisibleStroke(text().style.color, serialBorderWidth())}
-                        stroke-width={serialBorderWidth()}
-                    />
+            <g transform={buildSvgRotationTransform(layout().rotation)}>
+                <Show when={layout().serial}>
+                    {(serial) => (
+                        <circle
+                            cx={serial().cx}
+                            cy={serial().cy}
+                            r={serial().radius}
+                            fill={getVisibleFill(serial().fill)}
+                            stroke={getVisibleStroke(serial().stroke || "#000000", serial().borderWidth)}
+                            stroke-width={serial().borderWidth}
+                        />
+                    )}
                 </Show>
                 <text
-                    x={text().x + (text().type === "serial" ? serialMetrics().radius : 0)}
-                    y={textCenterY()}
-                    text-anchor={text().type === "serial" ? "middle" : "start"}
+                    x={layout().paintX}
+                    y={layout().paintY}
+                    text-anchor={layout().textAnchor}
                     dominant-baseline="central"
-                    fill={text().style.color}
-                    font-size={String(resolvedFontSize())}
-                    font-family={text().fontFamily ?? (text().type === "serial" ? stickerToolSettings.serialFontFamily : stickerToolSettings.textFontFamily)}
-                    font-weight={text().type === "serial" ? 700 : 500}
+                    fill={layout().color}
+                    font-size={String(layout().fontSize)}
+                    font-family={layout().fontFamily}
+                    font-weight={layout().fontWeight}
                 >
-                    {text().text}
+                    {layout().text}
                 </text>
             </g>
         );
@@ -1965,12 +1944,6 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             </div>
         );
     };
-    const resolveArrowHead = (
-        points: StickerPoint[],
-        strokeWidth: number,
-        force = false,
-    ) =>
-        force ? buildArrowHeadPolygon(points, getArrowHeadSizeOptions(strokeWidth)) : null;
 
     const lineHandlePoints = (annotation: StickerLineAnnotation) => {
         if (annotation.points.length < 2) return [];
@@ -2144,7 +2117,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 <For each={imageEditState().contentEraseStrokes}>
                     {(stroke) => (
                         <path
-                            d={renderLinePath(stroke.points)}
+                            d={buildStrokePath(stroke.points)}
                             stroke={stroke.color}
                             stroke-width={stroke.width}
                             stroke-linecap="round"
@@ -2161,7 +2134,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                             const line = annotation as StickerLineAnnotation;
                             return (
                                 <path
-                                    d={renderArrowShaftPath(line.points, line.style.width || 2, false)}
+                                    d={buildStrokePath(line.points)}
                                     stroke={line.style.color}
                                     stroke-width={line.style.width}
                                     stroke-linecap="round"
@@ -2184,50 +2157,38 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                     case "triangle":
                                     case "polygon": {
                                         const shape = annotation as StickerShapeAnnotation;
-                                        const rotationTransform = buildAnnotationRotationTransform(shape);
+                                        const spec = resolveShapePaintSpec(
+                                            shape,
+                                            stickerToolSettings.polygonSides,
+                                        );
                                         const common = {
-                                            stroke: getVisibleStroke(shape.style.color, shape.style.width),
-                                            "stroke-width": shape.style.width,
-                                            fill: getVisibleFill(shape.style.fill),
-                                            "stroke-dasharray": getStrokeDashArray(shape.style.dashPattern),
-                                            opacity: shape.style.opacity ?? 1,
+                                            stroke: getVisibleStroke(spec.style.stroke, spec.style.strokeWidth),
+                                            "stroke-width": spec.style.strokeWidth,
+                                            fill: getVisibleFill(spec.style.fill),
+                                            "stroke-dasharray": getStrokeDashArray(spec.style.dashPattern),
+                                            opacity: spec.style.opacity,
                                         };
-                                        if (shape.type === "ellipse") {
+                                        const rotationTransform = buildSvgRotationTransform(spec.rotation);
+                                        if (spec.geometry.kind === "ellipse") {
                                             return (
                                                 <g transform={rotationTransform}>
                                                     <ellipse
-                                                        cx={shape.x + shape.w / 2}
-                                                        cy={shape.y + shape.h / 2}
-                                                        rx={shape.w / 2}
-                                                        ry={shape.h / 2}
+                                                        cx={spec.geometry.cx}
+                                                        cy={spec.geometry.cy}
+                                                        rx={spec.geometry.rx}
+                                                        ry={spec.geometry.ry}
                                                         {...common}
                                                     />
                                                 </g>
                                             );
                                         }
-                                        if (shape.type === "triangle") {
+                                        if (spec.geometry.kind === "polygon") {
                                             return (
                                                 <g transform={rotationTransform}>
                                                     <path
                                                         d={buildRoundedPolygonPath(
-                                                            buildTrianglePoints(shape),
-                                                            getAnnotationCornerRadius(shape),
-                                                        )}
-                                                        {...common}
-                                                    />
-                                                </g>
-                                            );
-                                        }
-                                        if (shape.type === "polygon") {
-                                            return (
-                                                <g transform={rotationTransform}>
-                                                    <path
-                                                        d={buildRoundedPolygonPath(
-                                                            buildPolygonPoints(
-                                                                shape,
-                                                                shape.sides ?? stickerToolSettings.polygonSides,
-                                                            ),
-                                                            getAnnotationCornerRadius(shape),
+                                                            spec.geometry.points,
+                                                            spec.geometry.cornerRadius,
                                                         )}
                                                         {...common}
                                                     />
@@ -2237,12 +2198,12 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                         return (
                                             <g transform={rotationTransform}>
                                                 <rect
-                                                    x={shape.x}
-                                                    y={shape.y}
-                                                    width={shape.w}
-                                                    height={shape.h}
-                                                    rx={getAnnotationCornerRadius(shape)}
-                                                    ry={getAnnotationCornerRadius(shape)}
+                                                    x={spec.geometry.x}
+                                                    y={spec.geometry.y}
+                                                    width={spec.geometry.w}
+                                                    height={spec.geometry.h}
+                                                    rx={spec.geometry.rx}
+                                                    ry={spec.geometry.ry}
                                                     {...common}
                                                 />
                                             </g>
@@ -2262,7 +2223,9 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                                       { x: effect.x, y: effect.y },
                                                       { x: effect.x + effect.w, y: effect.y + effect.h },
                                                   ];
-                                        const rotationTransform = buildAnnotationRotationTransform(effect);
+                                        const rotationTransform = buildSvgRotationTransform(
+                                            getAnnotationRotation(effect),
+                                        );
                                         return (
                                             <g transform={rotationTransform}>
                                                 {renderStickerEffectOverlay({
@@ -2284,35 +2247,24 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                     }
                                     default: {
                                         const line = annotation as StickerLineAnnotation;
-                                        const path = renderArrowShaftPath(
-                                            line.points,
-                                            line.style.width || 2,
-                                            line.type === "arrow",
-                                        );
-                                        const arrowHead = resolveArrowHead(
-                                            line.points,
-                                            line.style.width || 2,
-                                            line.type === "arrow",
-                                        );
+                                        const spec = resolveLinePaintSpec(line);
                                         return (
                                             <g>
                                                 <path
-                                                    d={path}
-                                                    stroke={line.style.color}
-                                                    stroke-width={line.style.width}
-                                                    stroke-linecap={
-                                                        getStrokeDashArray(line.style.dashPattern) ? "butt" : "round"
-                                                    }
+                                                    d={spec.pathD}
+                                                    stroke={spec.style.color}
+                                                    stroke-width={spec.style.width}
+                                                    stroke-linecap={spec.dashCap}
                                                     stroke-linejoin="round"
-                                                    stroke-dasharray={getStrokeDashArray(line.style.dashPattern)}
+                                                    stroke-dasharray={getStrokeDashArray(spec.style.dashPattern)}
                                                     fill="none"
-                                                    opacity={line.style.opacity ?? 1}
+                                                    opacity={spec.style.opacity ?? 1}
                                                 />
-                                                {arrowHead ? (
+                                                {spec.arrowHead ? (
                                                     <path
-                                                        d={renderArrowHeadPath(arrowHead)}
-                                                        fill={line.style.color}
-                                                        opacity={line.style.opacity ?? 1}
+                                                        d={spec.arrowHeadPathD}
+                                                        fill={spec.style.color}
+                                                        opacity={spec.style.opacity ?? 1}
                                                     />
                                                 ) : null}
                                             </g>
@@ -2337,7 +2289,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                     return (
                                         <g>
                                             <path
-                                                d={renderLinePath(value.points)}
+                                                d={buildStrokePath(value.points)}
                                                 stroke="rgba(255,255,255,0.9)"
                                                 stroke-width={(value.style.width || 2) + 6}
                                                 stroke-linecap="round"
@@ -2642,6 +2594,12 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                 ? getStrokeDashArray(stickerToolSettings.shapeStrokeDashPattern)
                                 : undefined;
                         const isHighlighterDraft = isHighlighterLineMode(draft().mode);
+                        const draftPaint = () =>
+                            resolveArrowDraftPaint(
+                                draft().points,
+                                strokeWidth,
+                                !!draft().showArrowHead,
+                            );
                         return (
                             <g>
                                 <Show when={!hidesLiveAnnotationErasePreview}>
@@ -2649,11 +2607,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                         when={isHighlighterDraft}
                                         fallback={
                                             <path
-                                                d={renderArrowShaftPath(
-                                                    draft().points,
-                                                    strokeWidth,
-                                                    !!draft().showArrowHead,
-                                                )}
+                                                d={draftPaint().pathD}
                                                 stroke={strokeColor}
                                                 stroke-width={strokeWidth}
                                                 stroke-linecap={previewDashArray() ? "butt" : "round"}
@@ -2669,7 +2623,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                             HIGHLIGHTER_LAYER_OPACITY. */}
                                         <g opacity={HIGHLIGHTER_LAYER_OPACITY}>
                                             <path
-                                                d={renderArrowShaftPath(draft().points, strokeWidth, false)}
+                                                d={buildStrokePath(draft().points)}
                                                 stroke={strokeColor}
                                                 stroke-width={strokeWidth}
                                                 stroke-linecap="round"
@@ -2679,24 +2633,16 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                                         </g>
                                     </Show>
                                 </Show>
-                                <Show
-                                    when={
-                                        draft().showArrowHead
-                                            ? resolveArrowHead(
-                                                  draft().points,
-                                                  strokeWidth,
-                                                  true,
-                                              )
-                                            : null
-                                    }
-                                >
-                                    {(arrowHead) => (
-                                        <path
-                                            d={renderArrowHeadPath(arrowHead())}
-                                            fill={strokeColor}
-                                            opacity={isHighlighterLineMode(draft().mode) ? 0.35 : 1}
-                                        />
-                                    )}
+                                <Show when={!!draft().showArrowHead}>
+                                    <path
+                                        d={resolveArrowDraftPaint(
+                                            draft().points,
+                                            strokeWidth,
+                                            true,
+                                        ).arrowHeadPathD}
+                                        fill={strokeColor}
+                                        opacity={isHighlighterLineMode(draft().mode) ? 0.35 : 1}
+                                    />
                                 </Show>
                             </g>
                         );

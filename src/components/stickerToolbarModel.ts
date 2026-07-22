@@ -25,7 +25,7 @@ export type StickerTopStripPropertyTool =
     | "blur"
     | "content-eraser";
 
-export type StickerTransformModeButton = { mode: StickerTransformMode; label: string; shortcut: string };
+type StickerTransformModeButton = { mode: StickerTransformMode; label: string; shortcut: string };
 export type ShapeColorSettingKey = keyof Pick<
     StickerToolSettings,
     | "textColor"

@@ -3,7 +3,7 @@ import type { StickerImageEditState } from "../types/stickerEditing";
 type Rect = { x: number; y: number; w: number; h: number };
 type Size = { w: number; h: number };
 
-export type EffectSourceProjection = {
+type EffectSourceProjection = {
     sourceX: number;
     sourceY: number;
     sourceW: number;

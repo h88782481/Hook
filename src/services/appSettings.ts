@@ -1,13 +1,13 @@
-export type ShortcutBinding = {
+export type AppShortcutBinding = {
     key: string;
     modifiers: string[];
 };
 
-export type ShortcutSettings = {
-    capture: ShortcutBinding;
-    longCapture: ShortcutBinding;
-    toggleToolbar: ShortcutBinding;
-    openImage: ShortcutBinding;
+type ShortcutSettings = {
+    capture: AppShortcutBinding;
+    longCapture: AppShortcutBinding;
+    toggleToolbar: AppShortcutBinding;
+    openImage: AppShortcutBinding;
 };
 
 export type AppSettings = {
@@ -16,12 +16,12 @@ export type AppSettings = {
     shortcuts: ShortcutSettings;
 };
 
-export const emptyShortcutBinding = (): ShortcutBinding => ({
+export const emptyShortcutBinding = (): AppShortcutBinding => ({
     key: "",
     modifiers: [],
 });
 
-export const isShortcutUnbound = (binding: ShortcutBinding): boolean => !binding.key.trim();
+export const isShortcutUnbound = (binding: AppShortcutBinding): boolean => !binding.key.trim();
 
 const isPrintScreenKey = (key: string) =>
     key === "PrintScreen" || key === "PrtSc" || key === "PrtScn" || key === "Snapshot";
@@ -38,9 +38,9 @@ export const defaultAppSettings = (): AppSettings => ({
 });
 
 const normalizeBinding = (
-    value: Partial<ShortcutBinding> | null | undefined,
-    fallback: ShortcutBinding,
-): ShortcutBinding => {
+    value: Partial<AppShortcutBinding> | null | undefined,
+    fallback: AppShortcutBinding,
+): AppShortcutBinding => {
     // Missing/invalid entry → default. Explicit empty key → unbound.
     if (!value || typeof value.key !== "string") {
         return { key: fallback.key, modifiers: [...fallback.modifiers] };
@@ -88,7 +88,7 @@ export const normalizeAppSettings = (
     };
 };
 
-export const formatShortcutBinding = (binding: ShortcutBinding): string => {
+export const formatShortcutBinding = (binding: AppShortcutBinding): string => {
     if (isShortcutUnbound(binding)) return "未绑定";
     const parts = binding.modifiers.map((modifier) => {
         const lower = modifier.toLowerCase();
@@ -109,7 +109,7 @@ export const formatShortcutBinding = (binding: ShortcutBinding): string => {
     return parts.join("+");
 };
 
-export const shortcutBindingFromKeyboardEvent = (event: KeyboardEvent): ShortcutBinding | null => {
+export const shortcutBindingFromKeyboardEvent = (event: KeyboardEvent): AppShortcutBinding | null => {
     const modifiers: string[] = [];
     if (event.ctrlKey) modifiers.push("Control");
     if (event.altKey) modifiers.push("Alt");
