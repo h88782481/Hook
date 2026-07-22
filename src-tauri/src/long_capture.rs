@@ -73,6 +73,70 @@ struct CandidateAnalysis {
     content_ratio: f64,
 }
 
+
+fn direction_is_forward(direction: LongCaptureDirection) -> bool {
+    matches!(
+        direction,
+        LongCaptureDirection::Down | LongCaptureDirection::Right
+    )
+}
+
+fn forward_direction_for_axis(axis: LongCaptureAxis) -> LongCaptureDirection {
+    match axis {
+        LongCaptureAxis::Vertical => LongCaptureDirection::Down,
+        LongCaptureAxis::Horizontal => LongCaptureDirection::Right,
+    }
+}
+
+fn reverse_direction_for_axis(axis: LongCaptureAxis) -> LongCaptureDirection {
+    match axis {
+        LongCaptureAxis::Vertical => LongCaptureDirection::Up,
+        LongCaptureAxis::Horizontal => LongCaptureDirection::Left,
+    }
+}
+
+fn image_axis_len(image: &RgbImage, axis: LongCaptureAxis) -> u32 {
+    match axis {
+        LongCaptureAxis::Vertical => image.height(),
+        LongCaptureAxis::Horizontal => image.width(),
+    }
+}
+
+fn image_cross_len(image: &RgbImage, axis: LongCaptureAxis) -> u32 {
+    match axis {
+        LongCaptureAxis::Vertical => image.width(),
+        LongCaptureAxis::Horizontal => image.height(),
+    }
+}
+
+/// Map (along-axis, cross-axis) sample coordinates to image (x, y).
+fn axis_xy(axis: LongCaptureAxis, along: u32, cross: u32) -> (u32, u32) {
+    match axis {
+        LongCaptureAxis::Vertical => (cross, along),
+        LongCaptureAxis::Horizontal => (along, cross),
+    }
+}
+
+fn aggregate_signature_edge_ignore(cross_len: u32) -> u32 {
+    if cross_len >= 160 {
+        default_edge_ignore(cross_len).max(24).min(cross_len / 4)
+    } else {
+        default_edge_ignore(cross_len)
+    }
+}
+
+fn aggregate_min_match_windows(
+    min_overlap_px: i64,
+    current_informative_windows: u32,
+    previous_informative_windows: u32,
+) -> u32 {
+    (min_overlap_px / 3)
+        .max(1)
+        .min(24)
+        .min(current_informative_windows.min(previous_informative_windows) as i64)
+        .max(1) as u32
+}
+
 fn default_edge_ignore(cross_len: u32) -> u32 {
     if cross_len < 120 {
         0
@@ -136,52 +200,40 @@ struct RollingLineSignature {
 }
 
 impl RollingLineSignature {
-    fn add_row(&mut self, image: &RgbImage, line: u32, cross_axis_offsets: &[u32]) {
-        for &offset in cross_axis_offsets {
-            let pixel = image.get_pixel(offset, line).0;
+    fn add_along(
+        &mut self,
+        image: &RgbImage,
+        axis: LongCaptureAxis,
+        along: u32,
+        cross_axis_offsets: &[u32],
+    ) {
+        for &cross in cross_axis_offsets {
+            let (x, y) = axis_xy(axis, along, cross);
+            let pixel = image.get_pixel(x, y).0;
             self.r += pixel[0] as u64;
             self.g += pixel[1] as u64;
             self.b += pixel[2] as u64;
-            self.texture += local_texture_strength(image, offset, line) as u64;
+            self.texture += local_texture_strength(image, x, y) as u64;
             if is_content_pixel(pixel) {
                 self.content += 1;
             }
         }
     }
 
-    fn remove_row(&mut self, image: &RgbImage, line: u32, cross_axis_offsets: &[u32]) {
-        for &offset in cross_axis_offsets {
-            let pixel = image.get_pixel(offset, line).0;
+    fn remove_along(
+        &mut self,
+        image: &RgbImage,
+        axis: LongCaptureAxis,
+        along: u32,
+        cross_axis_offsets: &[u32],
+    ) {
+        for &cross in cross_axis_offsets {
+            let (x, y) = axis_xy(axis, along, cross);
+            let pixel = image.get_pixel(x, y).0;
             self.r -= pixel[0] as u64;
             self.g -= pixel[1] as u64;
             self.b -= pixel[2] as u64;
-            self.texture -= local_texture_strength(image, offset, line) as u64;
-            if is_content_pixel(pixel) {
-                self.content -= 1;
-            }
-        }
-    }
-
-    fn add_column(&mut self, image: &RgbImage, column: u32, cross_axis_offsets: &[u32]) {
-        for &offset in cross_axis_offsets {
-            let pixel = image.get_pixel(column, offset).0;
-            self.r += pixel[0] as u64;
-            self.g += pixel[1] as u64;
-            self.b += pixel[2] as u64;
-            self.texture += local_texture_strength(image, column, offset) as u64;
-            if is_content_pixel(pixel) {
-                self.content += 1;
-            }
-        }
-    }
-
-    fn remove_column(&mut self, image: &RgbImage, column: u32, cross_axis_offsets: &[u32]) {
-        for &offset in cross_axis_offsets {
-            let pixel = image.get_pixel(column, offset).0;
-            self.r -= pixel[0] as u64;
-            self.g -= pixel[1] as u64;
-            self.b -= pixel[2] as u64;
-            self.texture -= local_texture_strength(image, column, offset) as u64;
+            self.texture -= local_texture_strength(image, x, y) as u64;
             if is_content_pixel(pixel) {
                 self.content -= 1;
             }
@@ -190,6 +242,7 @@ impl RollingLineSignature {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+struct SignatureDeltaHint {#[derive(Clone, Copy, Debug, Default)]
 struct SignatureDeltaHint {
     match_count: usize,
     min_current_line: u32,
@@ -233,129 +286,119 @@ fn choose_signature_cross_axis_offsets(
     weighted_offsets
 }
 
-fn rolling_line_signatures(
+fn rolling_axis_signatures(
     image: &RgbImage,
+    axis: LongCaptureAxis,
     cross_axis_offsets: &[u32],
     window: u32,
 ) -> Vec<Option<RollingLineSignature>> {
-    if cross_axis_offsets.is_empty() || image.height() < window || window == 0 {
+    let axis_len = image_axis_len(image, axis);
+    if cross_axis_offsets.is_empty() || axis_len < window || window == 0 {
         return Vec::new();
     }
 
-    let line_count = image.height() as usize;
-    let mut signatures = vec![None; line_count];
+    let mut signatures = vec![None; axis_len as usize];
     let mut rolling = RollingLineSignature::default();
 
-    for line in 0..window {
-        rolling.add_row(image, line, cross_axis_offsets);
+    for along in 0..window {
+        rolling.add_along(image, axis, along, cross_axis_offsets);
     }
 
     let min_texture = (cross_axis_offsets.len() as u64 * window as u64).max(24);
     let min_content = ((cross_axis_offsets.len() as u32 * window) / 20).max(4);
-    let last_start = image.height() - window;
+    let last_start = axis_len - window;
     for start in 0..=last_start {
         if rolling.texture >= min_texture && rolling.content >= min_content {
             signatures[start as usize] = Some(rolling);
         }
 
         if start < last_start {
-            rolling.remove_row(image, start, cross_axis_offsets);
-            rolling.add_row(image, start + window, cross_axis_offsets);
+            rolling.remove_along(image, axis, start, cross_axis_offsets);
+            rolling.add_along(image, axis, start + window, cross_axis_offsets);
         }
     }
 
     signatures
 }
 
-fn rolling_column_signatures(
-    image: &RgbImage,
-    cross_axis_offsets: &[u32],
-    window: u32,
-) -> Vec<Option<RollingLineSignature>> {
-    if cross_axis_offsets.is_empty() || image.width() < window || window == 0 {
-        return Vec::new();
-    }
-
-    let column_count = image.width() as usize;
-    let mut signatures = vec![None; column_count];
-    let mut rolling = RollingLineSignature::default();
-
-    for column in 0..window {
-        rolling.add_column(image, column, cross_axis_offsets);
-    }
-
-    let min_texture = (cross_axis_offsets.len() as u64 * window as u64).max(24);
-    let min_content = ((cross_axis_offsets.len() as u32 * window) / 20).max(4);
-    let last_start = image.width() - window;
-    for start in 0..=last_start {
-        if rolling.texture >= min_texture && rolling.content >= min_content {
-            signatures[start as usize] = Some(rolling);
-        }
-
-        if start < last_start {
-            rolling.remove_column(image, start, cross_axis_offsets);
-            rolling.add_column(image, start + window, cross_axis_offsets);
-        }
-    }
-
-    signatures
-}
-
-fn find_vertical_down_fixed_chrome_candidate(
+fn find_fixed_chrome_candidate(
     previous: &RgbImage,
     current: &RgbImage,
+    axis: LongCaptureAxis,
+    direction: LongCaptureDirection,
     max_scan: u32,
     min_overlap_px: u32,
     min_new_content_px: u32,
     cross_axis_weights: &[f64],
     cross_axis_offsets: &[u32],
 ) -> Option<CandidateAnalysis> {
-    let height = previous.height();
-    let signature_window = LINE_SIGNATURE_WINDOW.min(height).max(1);
+    if !direction_matches_axis(direction, axis) {
+        return None;
+    }
+
+    let axis_len = image_axis_len(previous, axis);
+    let signature_window = LINE_SIGNATURE_WINDOW.min(axis_len).max(1);
     let signature_offsets =
         choose_signature_cross_axis_offsets(cross_axis_weights, cross_axis_offsets);
     let previous_signatures =
-        rolling_line_signatures(previous, &signature_offsets, signature_window);
-    let current_signatures = rolling_line_signatures(current, &signature_offsets, signature_window);
+        rolling_axis_signatures(previous, axis, &signature_offsets, signature_window);
+    let current_signatures =
+        rolling_axis_signatures(current, axis, &signature_offsets, signature_window);
     if previous_signatures.is_empty() || current_signatures.is_empty() {
         return None;
     }
 
-    let mut current_signature_rows = HashMap::<RollingLineSignature, Vec<u32>>::new();
-    let current_last_start = height - signature_window;
+    let mut current_signature_starts = HashMap::<RollingLineSignature, Vec<u32>>::new();
+    let current_last_start = axis_len - signature_window;
     for start in 0..=current_last_start {
         if let Some(signature) = current_signatures[start as usize] {
-            current_signature_rows
+            current_signature_starts
                 .entry(signature)
                 .or_default()
                 .push(start);
         }
     }
 
+    let forward = direction_is_forward(direction);
     let mut delta_hints = HashMap::<u32, SignatureDeltaHint>::new();
-    let previous_last_start = height - signature_window;
+    let previous_last_start = axis_len - signature_window;
     for prev_start in 0..=previous_last_start {
         let Some(signature) = previous_signatures[prev_start as usize] else {
             continue;
         };
-        let Some(current_starts) = current_signature_rows.get(&signature) else {
+        let Some(current_starts) = current_signature_starts.get(&signature) else {
             continue;
         };
         for &curr_start in current_starts {
-            if prev_start <= curr_start {
-                continue;
-            }
-            let append_px = prev_start - curr_start;
+            let append_px = if forward {
+                if prev_start <= curr_start {
+                    continue;
+                }
+                prev_start - curr_start
+            } else {
+                if curr_start <= prev_start {
+                    continue;
+                }
+                curr_start - prev_start
+            };
             if append_px < min_new_content_px || append_px > max_scan {
                 continue;
             }
-            let crop_start_px = height.saturating_sub(append_px);
-            if crop_start_px <= curr_start {
-                continue;
-            }
-            let overlap_px = crop_start_px - curr_start;
-            if overlap_px < min_overlap_px {
-                continue;
+
+            if forward {
+                let crop_start_px = axis_len.saturating_sub(append_px);
+                if crop_start_px <= curr_start {
+                    continue;
+                }
+                let overlap_px = crop_start_px - curr_start;
+                if overlap_px < min_overlap_px {
+                    continue;
+                }
+            } else {
+                let overlap_px = axis_len.saturating_sub(append_px);
+                if overlap_px < min_overlap_px {
+                    continue;
+                }
             }
 
             delta_hints
@@ -377,27 +420,38 @@ fn find_vertical_down_fixed_chrome_candidate(
             continue;
         }
 
-        let crop_start_px = height.saturating_sub(append_px);
-        if crop_start_px <= hint.min_current_line {
-            continue;
-        }
-        let overlap_px = crop_start_px - hint.min_current_line;
-        if overlap_px < min_overlap_px {
-            continue;
-        }
-        let prev_start = height.saturating_sub(overlap_px);
-        let (ratio, mean_diff, texture_score, content_ratio) = vertical_overlap_score(
+        let (overlap_px, prev_start, curr_start, crop_start_px) = if forward {
+            let crop_start_px = axis_len.saturating_sub(append_px);
+            if crop_start_px <= hint.min_current_line {
+                continue;
+            }
+            let overlap_px = crop_start_px - hint.min_current_line;
+            if overlap_px < min_overlap_px {
+                continue;
+            }
+            let prev_start = axis_len.saturating_sub(overlap_px);
+            (overlap_px, prev_start, hint.min_current_line, crop_start_px)
+        } else {
+            let overlap_px = axis_len.saturating_sub(append_px);
+            if overlap_px < min_overlap_px {
+                continue;
+            }
+            (overlap_px, 0, append_px, append_px)
+        };
+
+        let (ratio, mean_diff, texture_score, content_ratio) = overlap_score(
             previous,
             current,
+            axis,
             prev_start,
-            hint.min_current_line,
+            curr_start,
             overlap_px,
             cross_axis_weights,
             cross_axis_offsets,
         );
         let confidence = score_confidence(ratio, mean_diff);
         let candidate = CandidateAnalysis {
-            direction: LongCaptureDirection::Down,
+            direction,
             overlap_px,
             crop_start_px,
             append_px,
@@ -407,7 +461,7 @@ fn find_vertical_down_fixed_chrome_candidate(
             content_ratio,
         };
         if best
-            .map(|item| candidate_is_better(candidate, item, height, min_new_content_px))
+            .map(|item| candidate_is_better(candidate, item, axis_len, min_new_content_px))
             .unwrap_or(true)
         {
             best = Some(candidate);
@@ -417,339 +471,7 @@ fn find_vertical_down_fixed_chrome_candidate(
     best
 }
 
-fn find_vertical_up_fixed_chrome_candidate(
-    previous: &RgbImage,
-    current: &RgbImage,
-    max_scan: u32,
-    min_overlap_px: u32,
-    min_new_content_px: u32,
-    cross_axis_weights: &[f64],
-    cross_axis_offsets: &[u32],
-) -> Option<CandidateAnalysis> {
-    let height = previous.height();
-    let signature_window = LINE_SIGNATURE_WINDOW.min(height).max(1);
-    let signature_offsets =
-        choose_signature_cross_axis_offsets(cross_axis_weights, cross_axis_offsets);
-    let previous_signatures =
-        rolling_line_signatures(previous, &signature_offsets, signature_window);
-    let current_signatures = rolling_line_signatures(current, &signature_offsets, signature_window);
-    if previous_signatures.is_empty() || current_signatures.is_empty() {
-        return None;
-    }
-
-    let mut current_signature_rows = HashMap::<RollingLineSignature, Vec<u32>>::new();
-    let current_last_start = height - signature_window;
-    for start in 0..=current_last_start {
-        if let Some(signature) = current_signatures[start as usize] {
-            current_signature_rows
-                .entry(signature)
-                .or_default()
-                .push(start);
-        }
-    }
-
-    let mut delta_hints = HashMap::<u32, SignatureDeltaHint>::new();
-    let previous_last_start = height - signature_window;
-    for prev_start in 0..=previous_last_start {
-        let Some(signature) = previous_signatures[prev_start as usize] else {
-            continue;
-        };
-        let Some(current_starts) = current_signature_rows.get(&signature) else {
-            continue;
-        };
-        for &curr_start in current_starts {
-            if curr_start <= prev_start {
-                continue;
-            }
-            let append_px = curr_start - prev_start;
-            if append_px < min_new_content_px || append_px > max_scan {
-                continue;
-            }
-            let overlap_px = height.saturating_sub(append_px);
-            if overlap_px < min_overlap_px {
-                continue;
-            }
-
-            delta_hints
-                .entry(append_px)
-                .and_modify(|hint| {
-                    hint.match_count += 1;
-                    hint.min_current_line = hint.min_current_line.min(curr_start);
-                })
-                .or_insert(SignatureDeltaHint {
-                    match_count: 1,
-                    min_current_line: curr_start,
-                });
-        }
-    }
-
-    let mut best: Option<CandidateAnalysis> = None;
-    for (append_px, hint) in delta_hints {
-        if hint.match_count < 2 {
-            continue;
-        }
-
-        let overlap_px = height.saturating_sub(append_px);
-        if overlap_px < min_overlap_px {
-            continue;
-        }
-        let (ratio, mean_diff, texture_score, content_ratio) = vertical_overlap_score(
-            previous,
-            current,
-            0,
-            append_px,
-            overlap_px,
-            cross_axis_weights,
-            cross_axis_offsets,
-        );
-        let confidence = score_confidence(ratio, mean_diff);
-        let candidate = CandidateAnalysis {
-            direction: LongCaptureDirection::Up,
-            overlap_px,
-            crop_start_px: append_px,
-            append_px,
-            confidence: (confidence + (hint.match_count as f64 * 0.015)).clamp(0.0, 1.0),
-            mean_diff,
-            texture_score,
-            content_ratio,
-        };
-        if best
-            .map(|item| candidate_is_better(candidate, item, height, min_new_content_px))
-            .unwrap_or(true)
-        {
-            best = Some(candidate);
-        }
-    }
-
-    best
-}
-
-fn find_horizontal_right_fixed_chrome_candidate(
-    previous: &RgbImage,
-    current: &RgbImage,
-    max_scan: u32,
-    min_overlap_px: u32,
-    min_new_content_px: u32,
-    cross_axis_weights: &[f64],
-    cross_axis_offsets: &[u32],
-) -> Option<CandidateAnalysis> {
-    let width = previous.width();
-    let signature_window = LINE_SIGNATURE_WINDOW.min(width).max(1);
-    let signature_offsets =
-        choose_signature_cross_axis_offsets(cross_axis_weights, cross_axis_offsets);
-    let previous_signatures =
-        rolling_column_signatures(previous, &signature_offsets, signature_window);
-    let current_signatures =
-        rolling_column_signatures(current, &signature_offsets, signature_window);
-    if previous_signatures.is_empty() || current_signatures.is_empty() {
-        return None;
-    }
-
-    let mut current_signature_columns = HashMap::<RollingLineSignature, Vec<u32>>::new();
-    let current_last_start = width - signature_window;
-    for start in 0..=current_last_start {
-        if let Some(signature) = current_signatures[start as usize] {
-            current_signature_columns
-                .entry(signature)
-                .or_default()
-                .push(start);
-        }
-    }
-
-    let mut delta_hints = HashMap::<u32, SignatureDeltaHint>::new();
-    let previous_last_start = width - signature_window;
-    for prev_start in 0..=previous_last_start {
-        let Some(signature) = previous_signatures[prev_start as usize] else {
-            continue;
-        };
-        let Some(current_starts) = current_signature_columns.get(&signature) else {
-            continue;
-        };
-        for &curr_start in current_starts {
-            if prev_start <= curr_start {
-                continue;
-            }
-            let append_px = prev_start - curr_start;
-            if append_px < min_new_content_px || append_px > max_scan {
-                continue;
-            }
-            let crop_start_px = width.saturating_sub(append_px);
-            if crop_start_px <= curr_start {
-                continue;
-            }
-            let overlap_px = crop_start_px - curr_start;
-            if overlap_px < min_overlap_px {
-                continue;
-            }
-
-            delta_hints
-                .entry(append_px)
-                .and_modify(|hint| {
-                    hint.match_count += 1;
-                    hint.min_current_line = hint.min_current_line.min(curr_start);
-                })
-                .or_insert(SignatureDeltaHint {
-                    match_count: 1,
-                    min_current_line: curr_start,
-                });
-        }
-    }
-
-    let mut best: Option<CandidateAnalysis> = None;
-    for (append_px, hint) in delta_hints {
-        if hint.match_count < 2 {
-            continue;
-        }
-
-        let crop_start_px = width.saturating_sub(append_px);
-        if crop_start_px <= hint.min_current_line {
-            continue;
-        }
-        let overlap_px = crop_start_px - hint.min_current_line;
-        if overlap_px < min_overlap_px {
-            continue;
-        }
-        let prev_start = width.saturating_sub(overlap_px);
-        let (ratio, mean_diff, texture_score, content_ratio) = horizontal_overlap_score(
-            previous,
-            current,
-            prev_start,
-            hint.min_current_line,
-            overlap_px,
-            cross_axis_weights,
-            cross_axis_offsets,
-        );
-        let confidence = score_confidence(ratio, mean_diff);
-        let candidate = CandidateAnalysis {
-            direction: LongCaptureDirection::Right,
-            overlap_px,
-            crop_start_px,
-            append_px,
-            confidence: (confidence + (hint.match_count as f64 * 0.015)).clamp(0.0, 1.0),
-            mean_diff,
-            texture_score,
-            content_ratio,
-        };
-        if best
-            .map(|item| candidate_is_better(candidate, item, width, min_new_content_px))
-            .unwrap_or(true)
-        {
-            best = Some(candidate);
-        }
-    }
-
-    best
-}
-
-fn find_horizontal_left_fixed_chrome_candidate(
-    previous: &RgbImage,
-    current: &RgbImage,
-    max_scan: u32,
-    min_overlap_px: u32,
-    min_new_content_px: u32,
-    cross_axis_weights: &[f64],
-    cross_axis_offsets: &[u32],
-) -> Option<CandidateAnalysis> {
-    let width = previous.width();
-    let signature_window = LINE_SIGNATURE_WINDOW.min(width).max(1);
-    let signature_offsets =
-        choose_signature_cross_axis_offsets(cross_axis_weights, cross_axis_offsets);
-    let previous_signatures =
-        rolling_column_signatures(previous, &signature_offsets, signature_window);
-    let current_signatures =
-        rolling_column_signatures(current, &signature_offsets, signature_window);
-    if previous_signatures.is_empty() || current_signatures.is_empty() {
-        return None;
-    }
-
-    let mut current_signature_columns = HashMap::<RollingLineSignature, Vec<u32>>::new();
-    let current_last_start = width - signature_window;
-    for start in 0..=current_last_start {
-        if let Some(signature) = current_signatures[start as usize] {
-            current_signature_columns
-                .entry(signature)
-                .or_default()
-                .push(start);
-        }
-    }
-
-    let mut delta_hints = HashMap::<u32, SignatureDeltaHint>::new();
-    let previous_last_start = width - signature_window;
-    for prev_start in 0..=previous_last_start {
-        let Some(signature) = previous_signatures[prev_start as usize] else {
-            continue;
-        };
-        let Some(current_starts) = current_signature_columns.get(&signature) else {
-            continue;
-        };
-        for &curr_start in current_starts {
-            if curr_start <= prev_start {
-                continue;
-            }
-            let append_px = curr_start - prev_start;
-            if append_px < min_new_content_px || append_px > max_scan {
-                continue;
-            }
-            let overlap_px = width.saturating_sub(append_px);
-            if overlap_px < min_overlap_px {
-                continue;
-            }
-
-            delta_hints
-                .entry(append_px)
-                .and_modify(|hint| {
-                    hint.match_count += 1;
-                    hint.min_current_line = hint.min_current_line.min(curr_start);
-                })
-                .or_insert(SignatureDeltaHint {
-                    match_count: 1,
-                    min_current_line: curr_start,
-                });
-        }
-    }
-
-    let mut best: Option<CandidateAnalysis> = None;
-    for (append_px, hint) in delta_hints {
-        if hint.match_count < 2 {
-            continue;
-        }
-
-        let overlap_px = width.saturating_sub(append_px);
-        if overlap_px < min_overlap_px {
-            continue;
-        }
-        let (ratio, mean_diff, texture_score, content_ratio) = horizontal_overlap_score(
-            previous,
-            current,
-            0,
-            append_px,
-            overlap_px,
-            cross_axis_weights,
-            cross_axis_offsets,
-        );
-        let confidence = score_confidence(ratio, mean_diff);
-        let candidate = CandidateAnalysis {
-            direction: LongCaptureDirection::Left,
-            overlap_px,
-            crop_start_px: append_px,
-            append_px,
-            confidence: (confidence + (hint.match_count as f64 * 0.015)).clamp(0.0, 1.0),
-            mean_diff,
-            texture_score,
-            content_ratio,
-        };
-        if best
-            .map(|item| candidate_is_better(candidate, item, width, min_new_content_px))
-            .unwrap_or(true)
-        {
-            best = Some(candidate);
-        }
-    }
-
-    best
-}
-
-pub(crate) fn is_near_duplicate_image(previous: &RgbImage, current: &RgbImage) -> bool {
+pub(crate) fn is_near_duplicate_image(pub(crate) fn is_near_duplicate_image(previous: &RgbImage, current: &RgbImage) -> bool {
     if previous.width() != current.width() || previous.height() != current.height() {
         return false;
     }
@@ -818,79 +540,45 @@ fn candidate_is_fast_recording_match(
         && candidate.mean_diff <= 12.0
 }
 
-fn vertical_cross_axis_weights(
+fn cross_axis_weights(
     previous: &RgbImage,
     current: &RgbImage,
+    axis: LongCaptureAxis,
     edge_ignore: u32,
 ) -> Vec<f64> {
-    let width = previous.width();
-    let height = previous.height();
-    let start_x = edge_ignore.min(width);
-    let end_x = width.saturating_sub(edge_ignore).max(start_x);
-    let rows = sample_count(height);
-    let mut weights = vec![0.0; width as usize];
+    let cross_len = image_cross_len(previous, axis);
+    let along_len = image_axis_len(previous, axis);
+    let start = edge_ignore.min(cross_len);
+    let end = cross_len.saturating_sub(edge_ignore).max(start);
+    let along_samples = sample_count(along_len);
+    let mut weights = vec![0.0; cross_len as usize];
     let mut total_weight = 0.0;
 
-    for x in start_x..end_x {
+    for cross in start..end {
         let mut significant_count = 0;
         let mut max_diff = 0;
-        for row_index in 0..rows {
-            let y = sampled_offset(row_index, rows, height);
+        for along_index in 0..along_samples {
+            let along = sampled_offset(along_index, along_samples, along_len);
+            let (x, y) = axis_xy(axis, along, cross);
             let diff = pixel_diff_sum(previous.get_pixel(x, y).0, current.get_pixel(x, y).0);
             if diff >= 45 {
                 significant_count += 1;
             }
             max_diff = max_diff.max(diff);
         }
-        let weight = dynamic_column_or_row_weight(significant_count, max_diff, rows);
-        weights[x as usize] = weight;
+        let weight = dynamic_column_or_row_weight(significant_count, max_diff, along_samples);
+        weights[cross as usize] = weight;
         total_weight += weight;
     }
 
     if total_weight < 1.0 {
-        fallback_uniform_weights(&mut weights, start_x, end_x);
+        fallback_uniform_weights(&mut weights, start, end);
     }
 
     weights
 }
 
-fn horizontal_cross_axis_weights(
-    previous: &RgbImage,
-    current: &RgbImage,
-    edge_ignore: u32,
-) -> Vec<f64> {
-    let width = previous.width();
-    let height = previous.height();
-    let start_y = edge_ignore.min(height);
-    let end_y = height.saturating_sub(edge_ignore).max(start_y);
-    let columns = sample_count(width);
-    let mut weights = vec![0.0; height as usize];
-    let mut total_weight = 0.0;
-
-    for y in start_y..end_y {
-        let mut significant_count = 0;
-        let mut max_diff = 0;
-        for column_index in 0..columns {
-            let x = sampled_offset(column_index, columns, width);
-            let diff = pixel_diff_sum(previous.get_pixel(x, y).0, current.get_pixel(x, y).0);
-            if diff >= 45 {
-                significant_count += 1;
-            }
-            max_diff = max_diff.max(diff);
-        }
-        let weight = dynamic_column_or_row_weight(significant_count, max_diff, columns);
-        weights[y as usize] = weight;
-        total_weight += weight;
-    }
-
-    if total_weight < 1.0 {
-        fallback_uniform_weights(&mut weights, start_y, end_y);
-    }
-
-    weights
-}
-
-fn local_texture_strength(image: &RgbImage, x: u32, y: u32) -> u32 {
+fn local_texture_strength(fn local_texture_strength(image: &RgbImage, x: u32, y: u32) -> u32 {
     let pixel = image.get_pixel(x, y).0;
     let mut strength = 0;
 
@@ -941,65 +629,60 @@ fn motion_weight(diff: u32) -> f64 {
     0.02 + 0.98 * (diff as f64 / 96.0).clamp(0.0, 1.0)
 }
 
-fn vertical_overlap_score(
+fn overlap_score(
     previous: &RgbImage,
     current: &RgbImage,
-    prev_y: u32,
-    curr_y: u32,
+    axis: LongCaptureAxis,
+    prev_along: u32,
+    curr_along: u32,
     overlap_len: u32,
     cross_axis_weights: &[f64],
     cross_axis_offsets: &[u32],
 ) -> (f64, f64, f64, f64) {
-    let rows = sample_count(overlap_len);
+    let along_samples = sample_count(overlap_len);
     let mut matched = 0.0;
     let mut total = 0.0;
     let mut diff_total = 0.0;
     let mut texture_total = 0.0;
     let mut texture_count = 0.0f64;
     let mut content_total = 0.0;
+    let same_viewport_limit = image_axis_len(previous, axis);
 
-    for row_index in 0..rows {
-        let y_offset = sampled_offset(row_index, rows, overlap_len);
-        for &x in cross_axis_offsets {
-            let weight = cross_axis_weights.get(x as usize).copied().unwrap_or(1.0);
+    for along_index in 0..along_samples {
+        let along_offset = sampled_offset(along_index, along_samples, overlap_len);
+        for &cross in cross_axis_offsets {
+            let weight = cross_axis_weights.get(cross as usize).copied().unwrap_or(1.0);
             if weight <= 0.0 {
                 continue;
             }
+            let (prev_x, prev_y) = axis_xy(axis, prev_along + along_offset, cross);
+            let (curr_x, curr_y) = axis_xy(axis, curr_along + along_offset, cross);
             let diff = pixel_diff_sum(
-                previous.get_pixel(x, prev_y + y_offset).0,
-                current.get_pixel(x, curr_y + y_offset).0,
+                previous.get_pixel(prev_x, prev_y).0,
+                current.get_pixel(curr_x, curr_y).0,
             );
-            let same_viewport_y = curr_y + y_offset;
-            let same_viewport_diff = if same_viewport_y < previous.height() {
+            let same_viewport_along = curr_along + along_offset;
+            let same_viewport_diff = if same_viewport_along < same_viewport_limit {
+                let (same_x, same_y) = axis_xy(axis, same_viewport_along, cross);
                 pixel_diff_sum(
-                    previous.get_pixel(x, same_viewport_y).0,
-                    current.get_pixel(x, same_viewport_y).0,
+                    previous.get_pixel(same_x, same_y).0,
+                    current.get_pixel(same_x, same_y).0,
                 )
             } else {
                 diff
             };
             let weight = weight
-                * pixel_texture_weight(
-                    previous,
-                    current,
-                    x,
-                    prev_y + y_offset,
-                    x,
-                    curr_y + y_offset,
-                )
+                * pixel_texture_weight(previous, current, prev_x, prev_y, curr_x, curr_y)
                 * motion_weight(same_viewport_diff);
-            texture_total += local_texture_strength(previous, x, prev_y + y_offset)
-                .max(local_texture_strength(current, x, curr_y + y_offset))
-                .max(color_content_strength(
-                    previous.get_pixel(x, prev_y + y_offset).0,
-                ))
-                .max(color_content_strength(
-                    current.get_pixel(x, curr_y + y_offset).0,
-                )) as f64
+            texture_total += local_texture_strength(previous, prev_x, prev_y)
+                .max(local_texture_strength(current, curr_x, curr_y))
+                .max(color_content_strength(previous.get_pixel(prev_x, prev_y).0))
+                .max(color_content_strength(current.get_pixel(curr_x, curr_y).0))
+                as f64
                 * weight;
             texture_count += weight;
-            if is_content_pixel(previous.get_pixel(x, prev_y + y_offset).0)
-                || is_content_pixel(current.get_pixel(x, curr_y + y_offset).0)
+            if is_content_pixel(previous.get_pixel(prev_x, prev_y).0)
+                || is_content_pixel(current.get_pixel(curr_x, curr_y).0)
             {
                 content_total += weight;
             }
@@ -1023,89 +706,7 @@ fn vertical_overlap_score(
     )
 }
 
-fn horizontal_overlap_score(
-    previous: &RgbImage,
-    current: &RgbImage,
-    prev_x: u32,
-    curr_x: u32,
-    overlap_len: u32,
-    cross_axis_weights: &[f64],
-    cross_axis_offsets: &[u32],
-) -> (f64, f64, f64, f64) {
-    let columns = sample_count(overlap_len);
-    let mut matched = 0.0;
-    let mut total = 0.0;
-    let mut diff_total = 0.0;
-    let mut texture_total = 0.0;
-    let mut texture_count = 0.0f64;
-    let mut content_total = 0.0;
-
-    for column_index in 0..columns {
-        let x_offset = sampled_offset(column_index, columns, overlap_len);
-        for &y in cross_axis_offsets {
-            let weight = cross_axis_weights.get(y as usize).copied().unwrap_or(1.0);
-            if weight <= 0.0 {
-                continue;
-            }
-            let diff = pixel_diff_sum(
-                previous.get_pixel(prev_x + x_offset, y).0,
-                current.get_pixel(curr_x + x_offset, y).0,
-            );
-            let same_viewport_x = curr_x + x_offset;
-            let same_viewport_diff = if same_viewport_x < previous.width() {
-                pixel_diff_sum(
-                    previous.get_pixel(same_viewport_x, y).0,
-                    current.get_pixel(same_viewport_x, y).0,
-                )
-            } else {
-                diff
-            };
-            let weight = weight
-                * pixel_texture_weight(
-                    previous,
-                    current,
-                    prev_x + x_offset,
-                    y,
-                    curr_x + x_offset,
-                    y,
-                )
-                * motion_weight(same_viewport_diff);
-            texture_total += local_texture_strength(previous, prev_x + x_offset, y)
-                .max(local_texture_strength(current, curr_x + x_offset, y))
-                .max(color_content_strength(
-                    previous.get_pixel(prev_x + x_offset, y).0,
-                ))
-                .max(color_content_strength(
-                    current.get_pixel(curr_x + x_offset, y).0,
-                )) as f64
-                * weight;
-            texture_count += weight;
-            if is_content_pixel(previous.get_pixel(prev_x + x_offset, y).0)
-                || is_content_pixel(current.get_pixel(curr_x + x_offset, y).0)
-            {
-                content_total += weight;
-            }
-            if diff <= 30 {
-                matched += weight;
-            }
-            diff_total += diff as f64 * weight;
-            total += weight;
-        }
-    }
-
-    if total <= 0.0 {
-        return (0.0, 255.0, 0.0, 0.0);
-    }
-
-    (
-        matched / total,
-        diff_total / total,
-        texture_total / texture_count.max(1.0),
-        content_total / total,
-    )
-}
-
-fn score_confidence(match_ratio: f64, mean_diff: f64) -> f64 {
+fn score_confidence(fn score_confidence(match_ratio: f64, mean_diff: f64) -> f64 {
     let diff_score = (1.0 - (mean_diff / 64.0)).clamp(0.0, 1.0);
     (0.70 * match_ratio + 0.30 * diff_score).clamp(0.0, 1.0)
 }
@@ -1152,262 +753,134 @@ fn candidate_is_better(
     }
 }
 
-fn analyze_vertical_direction(
+fn analyze_direction(
     previous: &RgbImage,
     current: &RgbImage,
+    axis: LongCaptureAxis,
     direction: LongCaptureDirection,
     max_scan: u32,
     min_overlap_px: u32,
     min_new_content_px: u32,
 ) -> Option<CandidateAnalysis> {
-    if previous.width() != current.width() || previous.height() != current.height() {
+    if previous.width() != current.width()
+        || previous.height() != current.height()
+        || !direction_matches_axis(direction, axis)
+    {
         return None;
     }
 
-    let height = previous.height();
-    if height == 0 {
+    let axis_len = image_axis_len(previous, axis);
+    if axis_len == 0 {
         return None;
     }
 
-    let limit = max_scan.min(height.saturating_sub(1)).max(1);
+    let limit = max_scan.min(axis_len.saturating_sub(1)).max(1);
     let min_overlap = min_overlap_px.min(limit).max(1);
-    let edge_ignore = default_edge_ignore(previous.width());
-    let cross_axis_weights = vertical_cross_axis_weights(previous, current, edge_ignore);
-    let cross_axis_offsets = sampled_cross_axis_offsets(previous.width(), edge_ignore);
+    let cross_len = image_cross_len(previous, axis);
+    let edge_ignore = default_edge_ignore(cross_len);
+    let cross_axis_weights = cross_axis_weights(previous, current, axis, edge_ignore);
+    let cross_axis_offsets = sampled_cross_axis_offsets(cross_len, edge_ignore);
     let mut best: Option<CandidateAnalysis> = None;
 
-    match direction {
-        LongCaptureDirection::Down => {
-            if let Some(candidate) = find_vertical_down_fixed_chrome_candidate(
+    if let Some(candidate) = find_fixed_chrome_candidate(
+        previous,
+        current,
+        axis,
+        direction,
+        max_scan,
+        min_overlap,
+        min_new_content_px,
+        &cross_axis_weights,
+        &cross_axis_offsets,
+    ) {
+        if candidate_is_fast_recording_match(candidate, min_new_content_px, axis_len) {
+            return Some(candidate);
+        }
+        best = Some(candidate);
+    }
+
+    if direction_is_forward(direction) {
+        for overlap_px in min_overlap..=limit {
+            let prev_start = axis_len.saturating_sub(overlap_px);
+            let (ratio, mean_diff, texture_score, content_ratio) = overlap_score(
                 previous,
                 current,
-                max_scan,
-                min_overlap,
-                min_new_content_px,
+                axis,
+                prev_start,
+                0,
+                overlap_px,
                 &cross_axis_weights,
                 &cross_axis_offsets,
-            ) {
-                if candidate_is_fast_recording_match(candidate, min_new_content_px, height) {
-                    return Some(candidate);
-                }
+            );
+            let confidence = score_confidence(ratio, mean_diff);
+            let append_px = axis_len.saturating_sub(overlap_px);
+            let candidate = CandidateAnalysis {
+                direction,
+                overlap_px,
+                crop_start_px: overlap_px,
+                append_px,
+                confidence,
+                mean_diff,
+                texture_score,
+                content_ratio,
+            };
+            if best
+                .map(|item| candidate_is_better(candidate, item, axis_len, min_new_content_px))
+                .unwrap_or(true)
+            {
                 best = Some(candidate);
             }
-            for overlap_px in min_overlap..=limit {
-                let prev_start = height.saturating_sub(overlap_px);
-                let (ratio, mean_diff, texture_score, content_ratio) = vertical_overlap_score(
-                    previous,
-                    current,
-                    prev_start,
-                    0,
-                    overlap_px,
-                    &cross_axis_weights,
-                    &cross_axis_offsets,
-                );
-                let confidence = score_confidence(ratio, mean_diff);
-                let append_px = height.saturating_sub(overlap_px);
-                let candidate = CandidateAnalysis {
-                    direction,
-                    overlap_px,
-                    crop_start_px: overlap_px,
-                    append_px,
-                    confidence,
-                    mean_diff,
-                    texture_score,
-                    content_ratio,
-                };
-                if best
-                    .map(|item| candidate_is_better(candidate, item, height, min_new_content_px))
-                    .unwrap_or(true)
-                {
-                    best = Some(candidate);
-                }
-            }
         }
-        LongCaptureDirection::Up => {
-            if let Some(candidate) = find_vertical_up_fixed_chrome_candidate(
+    } else {
+        let search_start = axis_len.saturating_sub(limit);
+        let search_end = axis_len.saturating_sub(min_overlap);
+        for curr_start in search_start..=search_end {
+            let overlap_px = axis_len.saturating_sub(curr_start);
+            let (ratio, mean_diff, texture_score, content_ratio) = overlap_score(
                 previous,
                 current,
-                max_scan,
-                min_overlap,
-                min_new_content_px,
+                axis,
+                0,
+                curr_start,
+                overlap_px,
                 &cross_axis_weights,
                 &cross_axis_offsets,
-            ) {
-                if candidate_is_fast_recording_match(candidate, min_new_content_px, height) {
-                    return Some(candidate);
-                }
+            );
+            let confidence = score_confidence(ratio, mean_diff);
+            let append_px = curr_start;
+            let candidate = CandidateAnalysis {
+                direction,
+                overlap_px,
+                crop_start_px: curr_start,
+                append_px,
+                confidence,
+                mean_diff,
+                texture_score,
+                content_ratio,
+            };
+            if best
+                .map(|item| candidate_is_better(candidate, item, axis_len, min_new_content_px))
+                .unwrap_or(true)
+            {
                 best = Some(candidate);
             }
-            let search_start = height.saturating_sub(limit);
-            let search_end = height.saturating_sub(min_overlap);
-            for curr_start in search_start..=search_end {
-                let overlap_px = height.saturating_sub(curr_start);
-                let (ratio, mean_diff, texture_score, content_ratio) = vertical_overlap_score(
-                    previous,
-                    current,
-                    0,
-                    curr_start,
-                    overlap_px,
-                    &cross_axis_weights,
-                    &cross_axis_offsets,
-                );
-                let confidence = score_confidence(ratio, mean_diff);
-                let append_px = curr_start;
-                let candidate = CandidateAnalysis {
-                    direction,
-                    overlap_px,
-                    crop_start_px: curr_start,
-                    append_px,
-                    confidence,
-                    mean_diff,
-                    texture_score,
-                    content_ratio,
-                };
-                if best
-                    .map(|item| candidate_is_better(candidate, item, height, min_new_content_px))
-                    .unwrap_or(true)
-                {
-                    best = Some(candidate);
-                }
-            }
         }
-        LongCaptureDirection::Right | LongCaptureDirection::Left => return None,
     }
 
     best
 }
 
-fn analyze_horizontal_direction(
-    previous: &RgbImage,
-    current: &RgbImage,
-    direction: LongCaptureDirection,
-    max_scan: u32,
-    min_overlap_px: u32,
-    min_new_content_px: u32,
-) -> Option<CandidateAnalysis> {
-    if previous.width() != current.width() || previous.height() != current.height() {
-        return None;
-    }
-
-    let width = previous.width();
-    if width == 0 {
-        return None;
-    }
-
-    let limit = max_scan.min(width.saturating_sub(1)).max(1);
-    let min_overlap = min_overlap_px.min(limit).max(1);
-    let edge_ignore = default_edge_ignore(previous.height());
-    let cross_axis_weights = horizontal_cross_axis_weights(previous, current, edge_ignore);
-    let cross_axis_offsets = sampled_cross_axis_offsets(previous.height(), edge_ignore);
-    let mut best: Option<CandidateAnalysis> = None;
-
-    match direction {
-        LongCaptureDirection::Right => {
-            if let Some(candidate) = find_horizontal_right_fixed_chrome_candidate(
-                previous,
-                current,
-                max_scan,
-                min_overlap,
-                min_new_content_px,
-                &cross_axis_weights,
-                &cross_axis_offsets,
-            ) {
-                if candidate_is_fast_recording_match(candidate, min_new_content_px, width) {
-                    return Some(candidate);
-                }
-                best = Some(candidate);
-            }
-            for overlap_px in min_overlap..=limit {
-                let prev_start = width.saturating_sub(overlap_px);
-                let (ratio, mean_diff, texture_score, content_ratio) = horizontal_overlap_score(
-                    previous,
-                    current,
-                    prev_start,
-                    0,
-                    overlap_px,
-                    &cross_axis_weights,
-                    &cross_axis_offsets,
-                );
-                let confidence = score_confidence(ratio, mean_diff);
-                let append_px = width.saturating_sub(overlap_px);
-                let candidate = CandidateAnalysis {
-                    direction,
-                    overlap_px,
-                    crop_start_px: overlap_px,
-                    append_px,
-                    confidence,
-                    mean_diff,
-                    texture_score,
-                    content_ratio,
-                };
-                if best
-                    .map(|item| candidate_is_better(candidate, item, width, min_new_content_px))
-                    .unwrap_or(true)
-                {
-                    best = Some(candidate);
-                }
-            }
-        }
-        LongCaptureDirection::Left => {
-            if let Some(candidate) = find_horizontal_left_fixed_chrome_candidate(
-                previous,
-                current,
-                max_scan,
-                min_overlap,
-                min_new_content_px,
-                &cross_axis_weights,
-                &cross_axis_offsets,
-            ) {
-                if candidate_is_fast_recording_match(candidate, min_new_content_px, width) {
-                    return Some(candidate);
-                }
-                best = Some(candidate);
-            }
-            let search_start = width.saturating_sub(limit);
-            let search_end = width.saturating_sub(min_overlap);
-            for curr_start in search_start..=search_end {
-                let overlap_px = width.saturating_sub(curr_start);
-                let (ratio, mean_diff, texture_score, content_ratio) = horizontal_overlap_score(
-                    previous,
-                    current,
-                    0,
-                    curr_start,
-                    overlap_px,
-                    &cross_axis_weights,
-                    &cross_axis_offsets,
-                );
-                let confidence = score_confidence(ratio, mean_diff);
-                let append_px = curr_start;
-                let candidate = CandidateAnalysis {
-                    direction,
-                    overlap_px,
-                    crop_start_px: curr_start,
-                    append_px,
-                    confidence,
-                    mean_diff,
-                    texture_score,
-                    content_ratio,
-                };
-                if best
-                    .map(|item| candidate_is_better(candidate, item, width, min_new_content_px))
-                    .unwrap_or(true)
-                {
-                    best = Some(candidate);
-                }
-            }
-        }
-        LongCaptureDirection::Down | LongCaptureDirection::Up => return None,
-    }
-
-    best
-}
-
-fn direction_axis(direction: LongCaptureDirection) -> LongCaptureAxis {
+fn direction_axis(fn direction_axis(direction: LongCaptureDirection) -> LongCaptureAxis {
     match direction {
         LongCaptureDirection::Down | LongCaptureDirection::Up => LongCaptureAxis::Vertical,
         LongCaptureDirection::Right | LongCaptureDirection::Left => LongCaptureAxis::Horizontal,
     }
 }
+
+fn direction_matches_axis(direction: LongCaptureDirection, axis: LongCaptureAxis) -> bool {
+    direction_axis(direction) == axis
+}
+
 
 fn candidate_directions(
     axis: Option<LongCaptureAxis>,
@@ -1418,12 +891,10 @@ fn candidate_directions(
     }
 
     match axis {
-        Some(LongCaptureAxis::Vertical) => {
-            vec![LongCaptureDirection::Down, LongCaptureDirection::Up]
-        }
-        Some(LongCaptureAxis::Horizontal) => {
-            vec![LongCaptureDirection::Right, LongCaptureDirection::Left]
-        }
+        Some(axis) => vec![
+            forward_direction_for_axis(axis),
+            reverse_direction_for_axis(axis),
+        ],
         None => vec![
             LongCaptureDirection::Down,
             LongCaptureDirection::Up,
@@ -1477,33 +948,21 @@ fn analyze_axis_candidate(
     min_overlap_px: Option<u32>,
     min_new_content_px: u32,
 ) -> Option<CandidateAnalysis> {
-    let axis_len = match axis {
-        LongCaptureAxis::Vertical => previous.height(),
-        LongCaptureAxis::Horizontal => previous.width(),
-    };
+    let axis_len = image_axis_len(previous, axis);
     let min_overlap_px =
         min_overlap_px.unwrap_or_else(|| default_min_overlap_px(axis_len, max_scan));
     let mut best: Option<CandidateAnalysis> = None;
 
     for &direction in directions {
-        let candidate = match axis {
-            LongCaptureAxis::Vertical => analyze_vertical_direction(
-                previous,
-                current,
-                direction,
-                max_scan,
-                min_overlap_px,
-                min_new_content_px,
-            ),
-            LongCaptureAxis::Horizontal => analyze_horizontal_direction(
-                previous,
-                current,
-                direction,
-                max_scan,
-                min_overlap_px,
-                min_new_content_px,
-            ),
-        };
+        let candidate = analyze_direction(
+            previous,
+            current,
+            axis,
+            direction,
+            max_scan,
+            min_overlap_px,
+            min_new_content_px,
+        );
 
         if let Some(candidate) = candidate {
             if best
@@ -1644,31 +1103,19 @@ pub fn analyze_long_capture_pair_images(
     let mut best: Option<(LongCaptureAxis, CandidateAnalysis)> = None;
     for direction in candidate_directions(options.axis, options.direction) {
         let candidate_axis = direction_axis(direction);
-        let axis_len = match candidate_axis {
-            LongCaptureAxis::Vertical => previous.height(),
-            LongCaptureAxis::Horizontal => previous.width(),
-        };
+        let axis_len = image_axis_len(previous, candidate_axis);
         let min_overlap_px = options
             .min_overlap_px
             .unwrap_or_else(|| default_min_overlap_px(axis_len, max_scan));
-        let candidate = match candidate_axis {
-            LongCaptureAxis::Vertical => analyze_vertical_direction(
-                previous,
-                current,
-                direction,
-                max_scan,
-                min_overlap_px,
-                min_new_content_px,
-            ),
-            LongCaptureAxis::Horizontal => analyze_horizontal_direction(
-                previous,
-                current,
-                direction,
-                max_scan,
-                min_overlap_px,
-                min_new_content_px,
-            ),
-        };
+        let candidate = analyze_direction(
+            previous,
+            current,
+            candidate_axis,
+            direction,
+            max_scan,
+            min_overlap_px,
+            min_new_content_px,
+        );
 
         if let Some(candidate) = candidate {
             let axis = direction_axis(candidate.direction);
@@ -2032,15 +1479,8 @@ fn signature_hash_mix(mut hash: u64, value: u64) -> u64 {
 }
 
 fn aggregate_signature_cross_axis_offsets(image: &RgbImage, axis: LongCaptureAxis) -> Vec<u32> {
-    let cross_len = match axis {
-        LongCaptureAxis::Vertical => image.width(),
-        LongCaptureAxis::Horizontal => image.height(),
-    };
-    let edge_ignore = if cross_len >= 160 {
-        default_edge_ignore(cross_len).max(24).min(cross_len / 4)
-    } else {
-        default_edge_ignore(cross_len)
-    };
+    let cross_len = image_cross_len(image, axis);
+    let edge_ignore = aggregate_signature_edge_ignore(cross_len);
     let offsets = sampled_cross_axis_offsets(cross_len, edge_ignore);
     if offsets.is_empty() {
         sampled_cross_axis_offsets(cross_len, 0)
@@ -2062,35 +1502,18 @@ fn axis_line_signature(
     let mut texture = 0u64;
     let mut content = 0u32;
 
-    match axis {
-        LongCaptureAxis::Vertical => {
-            for &x in cross_axis_offsets {
-                let pixel = image.get_pixel(x, index).0;
-                r += pixel[0] as u64;
-                g += pixel[1] as u64;
-                b += pixel[2] as u64;
-                texture += local_texture_strength(image, x, index) as u64;
-                if is_content_pixel(pixel) {
-                    content += 1;
-                }
-                let packed = ((pixel[0] as u64) << 16) | ((pixel[1] as u64) << 8) | pixel[2] as u64;
-                hash = signature_hash_mix(hash, packed ^ x as u64);
-            }
+    for &cross in cross_axis_offsets {
+        let (x, y) = axis_xy(axis, index, cross);
+        let pixel = image.get_pixel(x, y).0;
+        r += pixel[0] as u64;
+        g += pixel[1] as u64;
+        b += pixel[2] as u64;
+        texture += local_texture_strength(image, x, y) as u64;
+        if is_content_pixel(pixel) {
+            content += 1;
         }
-        LongCaptureAxis::Horizontal => {
-            for &y in cross_axis_offsets {
-                let pixel = image.get_pixel(index, y).0;
-                r += pixel[0] as u64;
-                g += pixel[1] as u64;
-                b += pixel[2] as u64;
-                texture += local_texture_strength(image, index, y) as u64;
-                if is_content_pixel(pixel) {
-                    content += 1;
-                }
-                let packed = ((pixel[0] as u64) << 16) | ((pixel[1] as u64) << 8) | pixel[2] as u64;
-                hash = signature_hash_mix(hash, packed ^ y as u64);
-            }
-        }
+        let packed = ((pixel[0] as u64) << 16) | ((pixel[1] as u64) << 8) | pixel[2] as u64;
+        hash = signature_hash_mix(hash, packed ^ cross as u64);
     }
 
     AxisLineSignature {
@@ -2225,11 +1648,11 @@ fn motion_signature_candidate_for_direction(
         return None;
     }
 
-    let min_match_windows = (min_overlap_px / 3)
-        .max(1)
-        .min(24)
-        .min(current_informative_windows.min(previous_informative_windows) as i64)
-        .max(1) as u32;
+    let min_match_windows = aggregate_min_match_windows(
+        min_overlap_px,
+        current_informative_windows,
+        previous_informative_windows,
+    );
     let mut best: Option<AggregateMatch> = None;
 
     for overlap_px in min_overlap_px..=max_overlap_px {
@@ -2239,13 +1662,10 @@ fn motion_signature_candidate_for_direction(
         }
 
         let (previous_window_start, current_window_start, prepend_px, append_px, origin) =
-            match direction {
-                LongCaptureDirection::Down | LongCaptureDirection::Right => {
-                    (previous_axis_len - overlap_px, 0, 0, new_px, new_px)
-                }
-                LongCaptureDirection::Up | LongCaptureDirection::Left => {
-                    (0, current_axis_len - overlap_px, new_px, 0, -new_px)
-                }
+            if direction_is_forward(direction) {
+                (previous_axis_len - overlap_px, 0, 0, new_px, new_px)
+            } else {
+                (0, current_axis_len - overlap_px, new_px, 0, -new_px)
             };
 
         let Some((match_windows, overlap_windows)) = aligned_signature_match_counts(
@@ -2323,9 +1743,10 @@ fn motion_signature_analysis_for_axis(
 
     best.map(|(direction, candidate)| {
         let append_px = (candidate.prepend_px + candidate.append_px).max(0) as u32;
-        let crop_start_px = match direction {
-            LongCaptureDirection::Down | LongCaptureDirection::Right => candidate.overlap_px,
-            LongCaptureDirection::Up | LongCaptureDirection::Left => append_px as i64,
+        let crop_start_px = if direction_is_forward(direction) {
+            candidate.overlap_px
+        } else {
+            append_px as i64
         }
         .max(0) as u32;
         LongCaptureOverlapAnalysis {
@@ -2339,6 +1760,33 @@ fn motion_signature_analysis_for_axis(
             seam_px: crop_start_px,
         }
     })
+}
+
+fn analysis_to_aggregate_match(analysis: &LongCaptureOverlapAnalysis) -> AggregateMatch {
+    let forward = analysis
+        .direction
+        .map(direction_is_forward)
+        .unwrap_or(true);
+    AggregateMatch {
+        origin: if forward {
+            analysis.append_px as i64
+        } else {
+            -(analysis.append_px as i64)
+        },
+        overlap_px: analysis.overlap_px as i64,
+        prepend_px: if forward {
+            0
+        } else {
+            analysis.append_px as i64
+        },
+        append_px: if forward {
+            analysis.append_px as i64
+        } else {
+            0
+        },
+        match_windows: (analysis.confidence * analysis.overlap_px.max(1) as f64).round() as u32,
+        overlap_windows: analysis.overlap_px.max(1),
+    }
 }
 
 pub(crate) fn analyze_long_capture_motion_fingerprints(
@@ -2386,69 +1834,10 @@ pub(crate) fn analyze_long_capture_motion_fingerprints(
         }
         if best
             .map(|current| {
-                let candidate = AggregateMatch {
-                    origin: match analysis.direction {
-                        Some(LongCaptureDirection::Down | LongCaptureDirection::Right) => {
-                            analysis.append_px as i64
-                        }
-                        Some(LongCaptureDirection::Up | LongCaptureDirection::Left) => {
-                            -(analysis.append_px as i64)
-                        }
-                        None => 0,
-                    },
-                    overlap_px: analysis.overlap_px as i64,
-                    prepend_px: if matches!(
-                        analysis.direction,
-                        Some(LongCaptureDirection::Up | LongCaptureDirection::Left)
-                    ) {
-                        analysis.append_px as i64
-                    } else {
-                        0
-                    },
-                    append_px: if matches!(
-                        analysis.direction,
-                        Some(LongCaptureDirection::Down | LongCaptureDirection::Right)
-                    ) {
-                        analysis.append_px as i64
-                    } else {
-                        0
-                    },
-                    match_windows: (analysis.confidence * analysis.overlap_px.max(1) as f64).round()
-                        as u32,
-                    overlap_windows: analysis.overlap_px.max(1),
-                };
-                let current = AggregateMatch {
-                    origin: match current.direction {
-                        Some(LongCaptureDirection::Down | LongCaptureDirection::Right) => {
-                            current.append_px as i64
-                        }
-                        Some(LongCaptureDirection::Up | LongCaptureDirection::Left) => {
-                            -(current.append_px as i64)
-                        }
-                        None => 0,
-                    },
-                    overlap_px: current.overlap_px as i64,
-                    prepend_px: if matches!(
-                        current.direction,
-                        Some(LongCaptureDirection::Up | LongCaptureDirection::Left)
-                    ) {
-                        current.append_px as i64
-                    } else {
-                        0
-                    },
-                    append_px: if matches!(
-                        current.direction,
-                        Some(LongCaptureDirection::Down | LongCaptureDirection::Right)
-                    ) {
-                        current.append_px as i64
-                    } else {
-                        0
-                    },
-                    match_windows: (current.confidence * current.overlap_px.max(1) as f64).round()
-                        as u32,
-                    overlap_windows: current.overlap_px.max(1),
-                };
-                aggregate_match_is_better(candidate, current)
+                aggregate_match_is_better(
+                    analysis_to_aggregate_match(&analysis),
+                    analysis_to_aggregate_match(&current),
+                )
             })
             .unwrap_or(true)
         {
@@ -2463,17 +1852,13 @@ fn aggregate_candidate_direction(
     axis: LongCaptureAxis,
     origin: i64,
 ) -> Option<LongCaptureDirection> {
-    match axis {
-        LongCaptureAxis::Vertical if origin > 0 => Some(LongCaptureDirection::Down),
-        LongCaptureAxis::Vertical if origin < 0 => Some(LongCaptureDirection::Up),
-        LongCaptureAxis::Horizontal if origin > 0 => Some(LongCaptureDirection::Right),
-        LongCaptureAxis::Horizontal if origin < 0 => Some(LongCaptureDirection::Left),
-        _ => None,
+    if origin > 0 {
+        Some(forward_direction_for_axis(axis))
+    } else if origin < 0 {
+        Some(reverse_direction_for_axis(axis))
+    } else {
+        None
     }
-}
-
-fn direction_matches_axis(direction: LongCaptureDirection, axis: LongCaptureAxis) -> bool {
-    direction_axis(direction) == axis
 }
 
 fn aggregate_direction_allowed(
@@ -2514,12 +1899,13 @@ fn aggregate_match_is_better(candidate: AggregateMatch, current: AggregateMatch)
             && candidate.origin.abs() < current.origin.abs())
 }
 
-fn aligned_signature_match_counts(
+fn aligned_signature_match_counts_with(
     aggregate_signatures: &AxisSignatureList,
     current_signatures: &AxisSignatureList,
     aggregate_window_start: i64,
     current_window_start: i64,
     overlap_px: i64,
+    fuzzy: bool,
 ) -> Option<(u32, u32)> {
     let window_size = aggregate_signatures.window_size as i64;
     if overlap_px < window_size
@@ -2527,7 +1913,15 @@ fn aligned_signature_match_counts(
     {
         return None;
     }
+    if fuzzy && aggregate_signatures.cross_len != current_signatures.cross_len {
+        return None;
+    }
 
+    let sample_count = if fuzzy {
+        aggregate_signature_cross_axis_offset_count(aggregate_signatures.cross_len)
+    } else {
+        0
+    };
     let overlap_windows = overlap_px - window_size + 1;
     let mut match_windows = 0u32;
     let mut informative_windows = 0u32;
@@ -2551,7 +1945,17 @@ fn aligned_signature_match_counts(
         }
 
         informative_windows += 1;
-        if aggregate_signature == current_signature {
+        let matched = if fuzzy {
+            axis_window_signature_fuzzy_matches(
+                aggregate_signature,
+                current_signature,
+                sample_count,
+                aggregate_signatures.window_size,
+            )
+        } else {
+            aggregate_signature == current_signature
+        };
+        if matched {
             match_windows += 1;
         }
     }
@@ -2563,12 +1967,24 @@ fn aligned_signature_match_counts(
     }
 }
 
-fn aggregate_signature_cross_axis_offset_count(cross_len: u32) -> u64 {
-    let edge_ignore = if cross_len >= 160 {
-        default_edge_ignore(cross_len).max(24).min(cross_len / 4)
-    } else {
-        default_edge_ignore(cross_len)
-    };
+fn aligned_signature_match_counts(
+    aggregate_signatures: &AxisSignatureList,
+    current_signatures: &AxisSignatureList,
+    aggregate_window_start: i64,
+    current_window_start: i64,
+    overlap_px: i64,
+) -> Option<(u32, u32)> {
+    aligned_signature_match_counts_with(
+        aggregate_signatures,
+        current_signatures,
+        aggregate_window_start,
+        current_window_start,
+        overlap_px,
+        false,
+    )
+}
+fn aggregate_signature_cross_axis_offset_count(fn aggregate_signature_cross_axis_offset_count(cross_len: u32) -> u64 {
+    let edge_ignore = aggregate_signature_edge_ignore(cross_len);
     let offsets = sampled_cross_axis_offsets(cross_len, edge_ignore);
     if offsets.is_empty() {
         sampled_cross_axis_offsets(cross_len, 0).len() as u64
@@ -2613,56 +2029,17 @@ fn aligned_signature_fuzzy_match_counts(
     current_window_start: i64,
     overlap_px: i64,
 ) -> Option<(u32, u32)> {
-    let window_size = aggregate_signatures.window_size as i64;
-    if overlap_px < window_size
-        || aggregate_signatures.window_size != current_signatures.window_size
-        || aggregate_signatures.cross_len != current_signatures.cross_len
-    {
-        return None;
-    }
-
-    let sample_count = aggregate_signature_cross_axis_offset_count(aggregate_signatures.cross_len);
-    let overlap_windows = overlap_px - window_size + 1;
-    let mut match_windows = 0u32;
-    let mut informative_windows = 0u32;
-    for offset in 0..overlap_windows {
-        let aggregate_index = aggregate_window_start + offset;
-        let current_index = current_window_start + offset;
-        if aggregate_index < 0
-            || current_index < 0
-            || aggregate_index as usize >= aggregate_signatures.windows.len()
-            || current_index as usize >= current_signatures.windows.len()
-        {
-            return None;
-        }
-
-        let aggregate_signature = aggregate_signatures.windows[aggregate_index as usize];
-        let current_signature = current_signatures.windows[current_index as usize];
-        if !aggregate_window_signature_is_informative(&aggregate_signature)
-            && !aggregate_window_signature_is_informative(&current_signature)
-        {
-            continue;
-        }
-
-        informative_windows += 1;
-        if axis_window_signature_fuzzy_matches(
-            aggregate_signature,
-            current_signature,
-            sample_count,
-            aggregate_signatures.window_size,
-        ) {
-            match_windows += 1;
-        }
-    }
-
-    if informative_windows == 0 {
-        None
-    } else {
-        Some((match_windows, informative_windows))
-    }
+    aligned_signature_match_counts_with(
+        aggregate_signatures,
+        current_signatures,
+        aggregate_window_start,
+        current_window_start,
+        overlap_px,
+        true,
+    )
 }
 
-fn aggregate_match_required_windows(min_match_windows: u32, overlap_windows: u32) -> u32 {
+fn aggregate_match_required_windows(fn aggregate_match_required_windows(min_match_windows: u32, overlap_windows: u32) -> u32 {
     min_match_windows.max(((overlap_windows as f64) * 0.65).ceil().max(1.0) as u32)
 }
 
@@ -2904,81 +2281,36 @@ fn aggregate_boundary_fuzzy_match_confirms(
     direction: LongCaptureDirection,
     overlap_px: u32,
 ) -> bool {
+    if !direction_matches_axis(direction, axis) {
+        return false;
+    }
     let boundary = match crop_aggregate_boundary(aggregate, axis, direction, overlap_px) {
         Some(boundary) => boundary,
         None => return false,
     };
 
-    match direction {
-        LongCaptureDirection::Down if axis == LongCaptureAxis::Vertical => {
-            if boundary.width() != current.width()
-                || overlap_px == 0
-                || overlap_px > current.height()
-            {
-                return false;
-            }
-            let edge_ignore = default_edge_ignore(current.width());
-            let offsets = sampled_cross_axis_offsets(current.width(), edge_ignore);
-            let weights = vec![1.0; current.width() as usize];
-            let (ratio, mean_diff, texture_score, content_ratio) =
-                vertical_overlap_score(&boundary, current, 0, 0, overlap_px, &weights, &offsets);
-            score_confidence(ratio, mean_diff) >= 0.65
-                && (texture_score >= 12.0 || content_ratio >= 0.01)
-        }
-        LongCaptureDirection::Up if axis == LongCaptureAxis::Vertical => {
-            if boundary.width() != current.width()
-                || overlap_px == 0
-                || overlap_px > current.height()
-            {
-                return false;
-            }
-            let edge_ignore = default_edge_ignore(current.width());
-            let offsets = sampled_cross_axis_offsets(current.width(), edge_ignore);
-            let weights = vec![1.0; current.width() as usize];
-            let curr_start = current.height() - overlap_px;
-            let (ratio, mean_diff, texture_score, content_ratio) = vertical_overlap_score(
-                &boundary, current, 0, curr_start, overlap_px, &weights, &offsets,
-            );
-            score_confidence(ratio, mean_diff) >= 0.65
-                && (texture_score >= 12.0 || content_ratio >= 0.01)
-        }
-        LongCaptureDirection::Right if axis == LongCaptureAxis::Horizontal => {
-            if boundary.height() != current.height()
-                || overlap_px == 0
-                || overlap_px > current.width()
-            {
-                return false;
-            }
-            let edge_ignore = default_edge_ignore(current.height());
-            let offsets = sampled_cross_axis_offsets(current.height(), edge_ignore);
-            let weights = vec![1.0; current.height() as usize];
-            let (ratio, mean_diff, texture_score, content_ratio) =
-                horizontal_overlap_score(&boundary, current, 0, 0, overlap_px, &weights, &offsets);
-            score_confidence(ratio, mean_diff) >= 0.65
-                && (texture_score >= 12.0 || content_ratio >= 0.01)
-        }
-        LongCaptureDirection::Left if axis == LongCaptureAxis::Horizontal => {
-            if boundary.height() != current.height()
-                || overlap_px == 0
-                || overlap_px > current.width()
-            {
-                return false;
-            }
-            let edge_ignore = default_edge_ignore(current.height());
-            let offsets = sampled_cross_axis_offsets(current.height(), edge_ignore);
-            let weights = vec![1.0; current.height() as usize];
-            let curr_start = current.width() - overlap_px;
-            let (ratio, mean_diff, texture_score, content_ratio) = horizontal_overlap_score(
-                &boundary, current, 0, curr_start, overlap_px, &weights, &offsets,
-            );
-            score_confidence(ratio, mean_diff) >= 0.65
-                && (texture_score >= 12.0 || content_ratio >= 0.01)
-        }
-        _ => false,
+    let axis_len = image_axis_len(current, axis);
+    let cross_len = image_cross_len(current, axis);
+    if image_cross_len(&boundary, axis) != cross_len || overlap_px == 0 || overlap_px > axis_len {
+        return false;
     }
+
+    let edge_ignore = default_edge_ignore(cross_len);
+    let offsets = sampled_cross_axis_offsets(cross_len, edge_ignore);
+    let weights = vec![1.0; cross_len as usize];
+    let curr_start = if direction_is_forward(direction) {
+        0
+    } else {
+        axis_len - overlap_px
+    };
+    let (ratio, mean_diff, texture_score, content_ratio) = overlap_score(
+        &boundary, current, axis, 0, curr_start, overlap_px, &weights, &offsets,
+    );
+    score_confidence(ratio, mean_diff) >= 0.65
+        && (texture_score >= 12.0 || content_ratio >= 0.01)
 }
 
-fn aggregate_match_from_adjacent_signatures(
+fn aggregate_match_from_adjacent_signatures(fn aggregate_match_from_adjacent_signatures(
     aggregate: &LongCaptureAggregate,
     previous_signatures: &AxisSignatureList,
     current: &RgbImage,
@@ -3038,10 +2370,7 @@ fn aggregate_match_from_adjacent_signatures(
             continue;
         }
 
-        let direction = match axis {
-            LongCaptureAxis::Vertical => LongCaptureDirection::Down,
-            LongCaptureAxis::Horizontal => LongCaptureDirection::Right,
-        };
+        let direction = forward_direction_for_axis(axis);
         if aggregate_direction_allowed(axis, aggregate_axis_len - overlap_px, options.direction) {
             if let Some((match_windows, overlap_windows)) = aligned_signature_match_counts(
                 previous_signatures,
@@ -3079,10 +2408,7 @@ fn aggregate_match_from_adjacent_signatures(
             }
         }
 
-        let direction = match axis {
-            LongCaptureAxis::Vertical => LongCaptureDirection::Up,
-            LongCaptureAxis::Horizontal => LongCaptureDirection::Left,
-        };
+        let direction = reverse_direction_for_axis(axis);
         if aggregate_direction_allowed(axis, -new_px, options.direction) {
             if let Some((match_windows, overlap_windows)) = aligned_signature_match_counts(
                 previous_signatures,
@@ -3131,20 +2457,12 @@ fn aggregate_match_direction(
     matched: AggregateMatch,
     axis: LongCaptureAxis,
 ) -> Option<LongCaptureDirection> {
-    match axis {
-        LongCaptureAxis::Vertical if matched.append_px > 0 && matched.prepend_px == 0 => {
-            Some(LongCaptureDirection::Down)
-        }
-        LongCaptureAxis::Vertical if matched.prepend_px > 0 && matched.append_px == 0 => {
-            Some(LongCaptureDirection::Up)
-        }
-        LongCaptureAxis::Horizontal if matched.append_px > 0 && matched.prepend_px == 0 => {
-            Some(LongCaptureDirection::Right)
-        }
-        LongCaptureAxis::Horizontal if matched.prepend_px > 0 && matched.append_px == 0 => {
-            Some(LongCaptureDirection::Left)
-        }
-        _ => None,
+    if matched.append_px > 0 && matched.prepend_px == 0 {
+        Some(forward_direction_for_axis(axis))
+    } else if matched.prepend_px > 0 && matched.append_px == 0 {
+        Some(reverse_direction_for_axis(axis))
+    } else {
+        None
     }
 }
 
@@ -3338,10 +2656,7 @@ fn find_aggregate_signature_match(
                             min_match_windows,
                             overlap_windows,
                         );
-                        let direction = match axis {
-                            LongCaptureAxis::Vertical => LongCaptureDirection::Down,
-                            LongCaptureAxis::Horizontal => LongCaptureDirection::Right,
-                        };
+                        let direction = forward_direction_for_axis(axis);
                         if match_windows >= required_match_windows
                             && aggregate_boundary_fuzzy_match_confirms(
                                 aggregate,
@@ -3406,10 +2721,7 @@ fn find_aggregate_signature_match(
                             min_match_windows,
                             overlap_windows,
                         );
-                        let direction = match axis {
-                            LongCaptureAxis::Vertical => LongCaptureDirection::Up,
-                            LongCaptureAxis::Horizontal => LongCaptureDirection::Left,
-                        };
+                        let direction = reverse_direction_for_axis(axis);
                         if match_windows >= required_match_windows
                             && aggregate_boundary_fuzzy_match_confirms(
                                 aggregate,
