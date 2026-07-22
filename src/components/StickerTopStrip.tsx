@@ -17,11 +17,14 @@ import type { StickerRasterizeScope } from "../services/stickerRasterize";
 import { rasterizeStickerAnnotations } from "../services/stickerRasterizeActions";
 import { syncService } from "../services/syncService";
 import { addOrUpdateRect, removeRect } from "../services/uiRegistry";
+import { addRecycleBinEntry } from "../services/stickerLibraryModel";
+import { captureFrozenStickerSnapshot } from "../services/stickerSnapshot";
 import { copyStickerImageById } from "../hooks/useClipboard";
 import {
     draggingStickerId,
     selectedStickerAnnotationId,
     selectedStickerAnnotationIds,
+    selectionActions,
     stickerEditHistories,
     stickerToolSettings,
     uiActions,
@@ -581,7 +584,7 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
     );
     const isHistoryEnabled = createMemo(() => (currentHistoryAction() === "undo" ? canUndo() : canRedo()));
     const currentSticker = createMemo(() => stickerStore.stickers.find((item) => item.id === props.stickerId));
-    const selectedAnnotationIds = createMemo(() => [...selectedStickerAnnotationIds]);
+    const selectedAnnotationIds = () => selectedStickerAnnotationIds as string[];
     const selectedExistingAnnotationType = createMemo<StickerAnnotation["type"] | null>(() => {
         const annotationIds = selectedAnnotationIds();
         if (annotationIds.length !== 1) return null;
@@ -711,9 +714,24 @@ export const StickerTopStrip: Component<StickerTopStripProps> = (props) => {
 
     const runConfirmCopy = async () => {
         setOpenMenu(null);
-        // Always copy the whole sticker image (not annotation duplicate path).
+        // Finish flow: copy whole sticker, then close it into the recycle bin.
         uiActions.setSelectedStickerAnnotation(null);
-        await copyStickerImageById(props.stickerId);
+        const copied = await copyStickerImageById(props.stickerId);
+        if (!copied) return;
+
+        const unit = stickerStore.stickers.find((item) => item.id === props.stickerId);
+        if (!unit) return;
+
+        stickerStore.setRecycleBin(
+            addRecycleBinEntry(stickerStore.recycleBin, captureFrozenStickerSnapshot(unit)),
+        );
+        stickerStore.actions.removeSticker(props.stickerId);
+        uiActions.clearStickerHistory(props.stickerId);
+        uiActions.clearStickerUiState(props.stickerId);
+        selectionActions.clear();
+        uiActions.hideStickerToolbar();
+        void syncService.updateBackendRects();
+        void syncService.scheduleSessionSync();
     };
 
     createEffect(() => {

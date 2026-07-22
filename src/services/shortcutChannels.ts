@@ -47,7 +47,6 @@ export const SHORTCUT_ACTION_OWNERS: readonly ShortcutActionOwner[] = [
     {
         action: "toggle_toolbar",
         primary: "global-plugin",
-        // Intentionally no window registration — see useShortcuts.
     },
     {
         action: "open_image",
@@ -138,9 +137,3 @@ export const SHORTCUT_ACTION_OWNERS: readonly ShortcutActionOwner[] = [
 export const WINDOW_SHORTCUT_IDS: readonly string[] = SHORTCUT_ACTION_OWNERS.flatMap(
     (owner) => (owner.primary === "window" ? owner.windowShortcutIds ?? [] : []),
 );
-
-/** FE ShortcutManager ids owned exclusively by a non-window primary channel. */
-export const GLOBAL_ONLY_SHORTCUT_IDS = [
-    "toggle-sticker-toolbar",
-    "open-image",
-] as const;

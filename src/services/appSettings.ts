@@ -23,6 +23,9 @@ export const emptyShortcutBinding = (): ShortcutBinding => ({
 
 export const isShortcutUnbound = (binding: ShortcutBinding): boolean => !binding.key.trim();
 
+const isPrintScreenKey = (key: string) =>
+    key === "PrintScreen" || key === "PrtSc" || key === "PrtScn" || key === "Snapshot";
+
 export const defaultAppSettings = (): AppSettings => ({
     autoStart: false,
     stickerToolbarDefaultVisible: false,
@@ -45,6 +48,9 @@ const normalizeBinding = (
     const key = value.key.trim();
     if (!key) {
         return emptyShortcutBinding();
+    }
+    if (isPrintScreenKey(key)) {
+        return { key: "PrintScreen", modifiers: [] };
     }
     return {
         key,
@@ -96,7 +102,7 @@ export const formatShortcutBinding = (binding: ShortcutBinding): string => {
         ? binding.key.slice(5)
         : binding.key.startsWith("Key")
           ? binding.key.slice(3)
-          : binding.key === "PrintScreen" || binding.key === "Snapshot"
+          : binding.key === "PrintScreen"
             ? "PrtSc"
             : binding.key;
     parts.push(key);
@@ -110,7 +116,7 @@ export const shortcutBindingFromKeyboardEvent = (event: KeyboardEvent): Shortcut
     if (event.shiftKey) modifiers.push("Shift");
     if (event.metaKey) modifiers.push("Meta");
 
-    // PrintScreen often arrives with empty/unstable code in WebView2; accept key name too.
+    // WebView2 may omit code for PrintScreen; fall back to key name.
     const code =
         event.code && event.code !== "Unidentified"
             ? event.code
@@ -130,6 +136,10 @@ export const shortcutBindingFromKeyboardEvent = (event: KeyboardEvent): Shortcut
         code === "MetaRight"
     ) {
         return null;
+    }
+
+    if (isPrintScreenKey(code) || event.key === "PrintScreen") {
+        return { key: "PrintScreen", modifiers: [] };
     }
 
     return { key: code, modifiers };

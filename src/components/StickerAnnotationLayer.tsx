@@ -213,7 +213,7 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
             (stickerToolSettings.domain === "sticker" && stickerToolSettings.activeCanvasTool === "crop") ||
             (draftShape() ? isBoundedBoxMode(draftShape()!.mode) : false),
     );
-    const selectedAnnotationIds = createMemo(() => [...selectedStickerAnnotationIds]);
+    const selectedAnnotationIds = () => selectedStickerAnnotationIds as string[];
     const selectedAnnotations = createMemo(() => {
         const idSet = new Set(selectedAnnotationIds());
         return annotationState().elements.filter((annotation) => idSet.has(annotation.id));
@@ -486,10 +486,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
     const pendingTextInputStyle = createMemo(() => {
         const draft = pendingTextInput();
         if (!draft) return {};
+        // annotation.y is the top of the text box (geometry / export agree).
         const width = Math.max(160, props.width - draft.x);
         const height = Math.max(24, draft.fontSize + 8);
         const left = clamp(draft.x, 0, Math.max(0, props.width - width));
-        const top = clamp(draft.y - draft.fontSize, 0, Math.max(0, props.height - height));
+        const top = clamp(draft.y, 0, Math.max(0, props.height - height));
         return {
             left: `${left}px`,
             top: `${top}px`,
@@ -1901,13 +1902,25 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
         const serialMetrics = createMemo(() => buildSerialAnnotationMetrics(text().style.cornerRadius ?? 14));
         const serialFontSize = createMemo(() => text().fontSize ?? serialMetrics().fontSize);
         const serialBorderWidth = createMemo(() => text().style.width || serialMetrics().borderWidth);
+        const resolvedFontSize = createMemo(() =>
+            text().fontSize === undefined
+                ? (text().type === "serial" ? serialMetrics().fontSize : stickerToolSettings.textSize)
+                : text().fontSize!,
+        );
+        // Geometry/export treat text.y as the TOP of the box. SVG default baseline
+        // would park glyphs above the selection rect — center vertically instead.
+        const textCenterY = createMemo(() =>
+            text().type === "serial"
+                ? text().y - serialFontSize() / 2
+                : text().y + resolvedFontSize() / 2,
+        );
         const rotationTransform = createMemo(() => buildAnnotationRotationTransform(text()));
         return (
             <g transform={rotationTransform()}>
                 <Show when={text().type === "serial"}>
                     <circle
                         cx={text().x + serialMetrics().radius}
-                        cy={text().y - serialFontSize() / 2}
+                        cy={textCenterY()}
                         r={serialMetrics().radius}
                         fill={getVisibleFill(text().style.fill)}
                         stroke={getVisibleStroke(text().style.color, serialBorderWidth())}
@@ -1916,13 +1929,11 @@ export const StickerAnnotationLayer: Component<StickerAnnotationLayerProps> = (p
                 </Show>
                 <text
                     x={text().x + (text().type === "serial" ? serialMetrics().radius : 0)}
-                    y={text().type === "serial" ? text().y - serialFontSize() / 2 : text().y}
+                    y={textCenterY()}
                     text-anchor={text().type === "serial" ? "middle" : "start"}
-                    dominant-baseline={text().type === "serial" ? "central" : undefined}
+                    dominant-baseline="central"
                     fill={text().style.color}
-                    font-size={text().fontSize === undefined
-                        ? String(text().type === "serial" ? serialMetrics().fontSize : stickerToolSettings.textSize)
-                        : String(text().fontSize)}
+                    font-size={String(resolvedFontSize())}
                     font-family={text().fontFamily ?? (text().type === "serial" ? stickerToolSettings.serialFontFamily : stickerToolSettings.textFontFamily)}
                     font-weight={text().type === "serial" ? 700 : 500}
                 >

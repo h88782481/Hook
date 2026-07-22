@@ -2,13 +2,11 @@ import type { StickerPoint } from "../types/stickerEditing";
 import { toDisplayImageSrc } from "./imageSource";
 import {
     getDashSegments,
-    getStrokeDashArray,
     traceStrokePolyline,
     type StickerDashPattern,
 } from "./stickerStrokePath";
 
 export type { StickerDashPattern };
-export { getStrokeDashArray };
 
 /**
  * Render-order rank for sticker annotations. Censoring effects sit at the bottom

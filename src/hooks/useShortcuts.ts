@@ -14,7 +14,6 @@ interface ShortcutHandlers {
   // Clipboard
   onCopy?: () => void | Promise<void>;
   onPaste?: () => void | Promise<void>;
-  onOpenImage?: () => void | Promise<void>;
   onToggleHistory?: () => void | Promise<void>;
   onSave?: () => void | Promise<void>;
   onUndoEdit?: () => void | Promise<void>;
@@ -25,10 +24,9 @@ interface ShortcutHandlers {
   onCancelSelection?: () => void | Promise<void>;
   onCancelStickerEdit?: () => void | Promise<void>;
 
-  // UI Toggles
+  // UI Toggles (toolbar / open-image are Rust global-plugin only)
   onToggleActions?: () => void | Promise<void>;
   onToggleSidePanel?: () => void | Promise<void>;
-  onToggleStickerToolbar?: () => void | Promise<void>;
   onToggleCleanView?: () => void | Promise<void>;
   onTransformSelect?: () => void | Promise<void>;
   onTransformMove?: () => void | Promise<void>;

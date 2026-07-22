@@ -613,7 +613,6 @@ export default function App() {
           onCopy: handleCopy,
           onPaste: handlePaste,
           onSave: handleSave,
-          onOpenImage: openImageForEdit,
           onToggleHistory: () => uiActions.toggleHistoryPanel(),
           onUndoEdit: () => applyStickerHistorySnapshot("undo"),
           onRedoEdit: () => applyStickerHistorySnapshot("redo"),
@@ -636,9 +635,6 @@ export default function App() {
           },
           onCancelStickerEdit: () => {
               uiActions.requestStickerEditCancel();
-          },
-          onToggleStickerToolbar: tauriRuntime ? undefined : () => {
-              toggleStickerToolbarVisibility();
           },
           onToggleActions: () => {
               const id = selectedStickerId();

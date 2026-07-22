@@ -4960,6 +4960,15 @@ fn register_configured_global_shortcuts(
             append_runtime_log_line(&format!("register_shortcut_skipped_unbound :: name={}", name));
             continue;
         }
+        // PrintScreen is unreliable via RegisterHotKey on Windows (often "succeeds"
+        // but never delivers). Leave the registered flag false so rdev owns it.
+        if app_settings::binding_is_print_screen(binding) {
+            append_runtime_log_line(&format!(
+                "register_shortcut_skipped_printscreen_use_rdev :: name={}",
+                name
+            ));
+            continue;
+        }
         match binding.to_shortcut() {
             Ok(shortcut) => {
                 if let Err(error) = app.global_shortcut().register(shortcut) {
@@ -5426,15 +5435,14 @@ pub fn run() {
                                         }
                                     }
 
+                                    // PrintScreen is always owned by rdev (global-plugin skipped).
                                     if matches!(key, rdev::Key::PrintScreen)
                                         && input_state.last_capture_trigger.elapsed()
                                             > std::time::Duration::from_millis(500)
                                     {
                                         if app_settings::binding_is_print_screen(
                                             &settings.shortcuts.capture,
-                                        ) && !capture_global_registered_for_rdev
-                                            .load(Ordering::Relaxed)
-                                        {
+                                        ) {
                                             input_state.last_capture_trigger =
                                                 std::time::Instant::now();
                                             append_runtime_log_line(
@@ -5445,9 +5453,7 @@ pub fn run() {
                                         }
                                         if app_settings::binding_is_print_screen(
                                             &settings.shortcuts.long_capture,
-                                        ) && !long_capture_global_registered_for_rdev
-                                            .load(Ordering::Relaxed)
-                                        {
+                                        ) {
                                             input_state.last_capture_trigger =
                                                 std::time::Instant::now();
                                             append_runtime_log_line(

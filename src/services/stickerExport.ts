@@ -178,7 +178,8 @@ const drawAnnotation = (
             const serialMetrics = buildSerialAnnotationMetrics(text.style.cornerRadius ?? 14);
             const fontSize = text.fontSize ?? (annotation.type === "serial" ? serialMetrics.fontSize : 18);
             context.font = `${annotation.type === "serial" ? "700" : "500"} ${fontSize}px "${text.fontFamily || "Segoe UI"}", sans-serif`;
-            context.textBaseline = annotation.type === "serial" ? "middle" : "top";
+            // text.y is the TOP of the selection box; paint at vertical center to match SVG.
+            context.textBaseline = "middle";
             applyAnnotationRotation(context, text);
             if (annotation.type === "serial") {
                 const serialCenterY = text.y - fontSize / 2;
@@ -202,7 +203,7 @@ const drawAnnotation = (
                 context.fillText(text.text, text.x + serialMetrics.radius - measure.width / 2, serialCenterY);
             } else {
                 context.fillStyle = text.style.color;
-                context.fillText(text.text, text.x, text.y);
+                context.fillText(text.text, text.x, text.y + fontSize / 2);
             }
             context.restore();
             return;

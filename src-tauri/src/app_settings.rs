@@ -172,6 +172,15 @@ fn normalize_app_settings(mut settings: AppSettings) -> AppSettings {
 fn normalize_binding(binding: &mut ShortcutBinding) {
     if binding.key.trim().is_empty() {
         *binding = ShortcutBinding::unbound();
+        return;
+    }
+    // PrtSc is handled by rdev as a bare key; strip accidental modifiers from recording.
+    if matches!(
+        binding.key.as_str(),
+        "PrintScreen" | "PrtSc" | "PrtScn" | "Snapshot"
+    ) {
+        binding.key = "PrintScreen".to_string();
+        binding.modifiers.clear();
     }
 }
 
@@ -378,8 +387,6 @@ pub fn binding_digit(binding: &ShortcutBinding) -> Option<u8> {
 }
 
 pub fn binding_is_print_screen(binding: &ShortcutBinding) -> bool {
-    matches!(
-        binding.key.as_str(),
-        "PrintScreen" | "PrtSc" | "PrtScn" | "Snapshot"
-    ) && binding.modifiers.is_empty()
+    // Canonical key after normalize_binding; modifiers are always cleared for PrtSc.
+    binding.key == "PrintScreen" && binding.modifiers.is_empty()
 }

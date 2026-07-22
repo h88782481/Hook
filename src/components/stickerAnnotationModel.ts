@@ -1,12 +1,9 @@
 import { pointToSegmentDistance } from "../services/stickerGeometry";
 import type { StickerPoint } from "../types/stickerEditing";
 
-export type ScreenColorSample = {
-    hex: string;
-    rgb: { r: number; g: number; b: number };
-};
-
 export type TransformAxisMode = "xy" | "x" | "y";
+
+type ScreenRgb = { r: number; g: number; b: number };
 
 interface TransformGizmoOptions {
     axisLength?: number;
@@ -150,14 +147,14 @@ export type GlobalColorPickerMousePayload = {
     globalX?: number;
     globalY?: number;
     hex?: string;
-    rgb?: ScreenColorSample["rgb"];
+    rgb?: ScreenRgb;
 };
 
 export type ColorPickerPreview = {
     x: number;
     y: number;
     hex: string;
-    rgb: ScreenColorSample["rgb"];
+    rgb: ScreenRgb;
 };
 
 export type PendingTextInput = {
@@ -190,10 +187,8 @@ export const isStraightLineMode = (mode: DraftLine["mode"]) =>
 export const isMeasuredLineMode = (mode: DraftLine["mode"]) =>
     mode === "line" || mode === "arrow";
 
-export {
-    annotationRenderRank,
-    getStrokeDashArray,
-} from "../services/stickerCanvas";
+export { annotationRenderRank } from "../services/stickerCanvas";
+export { getStrokeDashArray } from "../services/stickerStrokePath";
 
 export {
     getAnnotationCornerRadius,
