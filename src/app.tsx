@@ -1251,52 +1251,56 @@ export default function App() {
         onMouseUp={handleGlobalMouseUp}
         onContextMenu={(e) => e.preventDefault()}
     >
-        <CanvasLinks />
+        <div class="hook-capture-hide contents">
+            <CanvasLinks />
 
-        <StickerGroupBar />
-        <HistoryPanel
-            onReuseScreenshot={(thumbnail) => {
-                const center = {
-                    x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
-                    y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
-                };
-                createImageSticker(thumbnail, center);
-                void syncService.notify({ persist: true });
-            }}
-        />
+            <StickerGroupBar />
+            <HistoryPanel
+                onReuseScreenshot={(thumbnail) => {
+                    const center = {
+                        x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
+                        y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
+                    };
+                    createImageSticker(thumbnail, center);
+                    void syncService.notify({ persist: true });
+                }}
+            />
 
-        <div id="ports-layer" ref={portsLayerRef!} class="absolute inset-0 z-[5] pointer-events-none overflow-visible"></div>
+            <div id="ports-layer" ref={portsLayerRef!} class="absolute inset-0 z-[5] pointer-events-none overflow-visible"></div>
 
-        <CanvasStickers
-            onStartDrag={onStartDragSticker}
-            onDoubleClick={handleDoubleClick}
+            <CanvasStickers
+                onStartDrag={onStartDragSticker}
+                onDoubleClick={handleDoubleClick}
 
-            onDelete={(id) => {
-                stickerStore.actions.removeSticker(id);
-                if (selectedStickerId() === id) {
-                    uiActions.hideStickerToolbar();
-                }
-                void syncService.notify({ layout: true, persist: true });
-            }}
+                onDelete={(id) => {
+                    stickerStore.actions.removeSticker(id);
+                    if (selectedStickerId() === id) {
+                        uiActions.hideStickerToolbar();
+                    }
+                    void syncService.notify({ layout: true, persist: true });
+                }}
 
-            onLinkStart={startLinking}
-            onLinkDrop={handleLinkDrop}
-            onLinkMove={handleInputLinkDrag}
-            onLinkHover={handleLinkHover}
+                onLinkStart={startLinking}
+                onLinkDrop={handleLinkDrop}
+                onLinkMove={handleInputLinkDrag}
+                onLinkHover={handleLinkHover}
 
-            onRendered={(id, dataUrl) => {
-                stickerStore.actions.updateStickerData(id, {
-                    previewSrc: dataUrl,
-                });
-                propagateFromSticker(id);
-                void syncService.notify({ persist: true });
-            }}
+                onRendered={(id, dataUrl) => {
+                    stickerStore.actions.updateStickerData(id, {
+                        previewSrc: dataUrl,
+                    });
+                    propagateFromSticker(id);
+                    void syncService.notify({ persist: true });
+                }}
 
-            resolveLinkedImage={resolveLinkedImage}
-            portsLayerRef={portsLayerRef}
-        />
+                resolveLinkedImage={resolveLinkedImage}
+                portsLayerRef={portsLayerRef}
+            />
 
-        {/* Layer 3: Selection Overlay */}
+            <StickerContextMenuLayer />
+        </div>
+
+        {/* Layer 3: Selection Overlay (kept mounted — only light dim panels + border) */}
         <CanvasSelection />
 
         <Show when={longCaptureSession()}>
@@ -1311,8 +1315,6 @@ export default function App() {
                 </div>
             )}
         </Show>
-
-        <StickerContextMenuLayer />
     </main>
     </ErrorBoundary>
   );

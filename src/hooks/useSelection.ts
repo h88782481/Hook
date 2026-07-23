@@ -42,6 +42,8 @@ import {
 let lastPreciseRequestTime = 0;
 let isPreciseRequestPending = false;
 let cachedStickerRects: {id: string, x: number, y: number, w: number, h: number}[] = [];
+let captureMoveRafId: number | null = null;
+let pendingCaptureMove: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey"> | null = null;
 
 export function useSelection() {
     let autoLongCaptureRect: CaptureRect | null = null;
@@ -563,7 +565,7 @@ export function useSelection() {
          }));
     };
 
-    const handleSelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
+    const applySelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
         const start = startPos();
         if ((!isSelecting() && !isBoxSelecting()) || !start) return;
 
@@ -670,9 +672,37 @@ export function useSelection() {
         }
     };
 
+    const handleSelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
+        // Capture drag: coalesce to one layout/paint per frame (high-Hz mice).
+        if (isSelecting()) {
+            pendingCaptureMove = {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                shiftKey: e.shiftKey,
+                ctrlKey: e.ctrlKey,
+            };
+            if (captureMoveRafId !== null) return;
+            captureMoveRafId = window.requestAnimationFrame(() => {
+                captureMoveRafId = null;
+                const next = pendingCaptureMove;
+                pendingCaptureMove = null;
+                if (next) applySelectionMove(next);
+            });
+            return;
+        }
+        applySelectionMove(e);
+    };
+
     const handleSelectionEnd = async (event?: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
-        if (event && isSelecting() && startPos()) {
-            handleSelectionMove(event);
+        if (captureMoveRafId !== null) {
+            window.cancelAnimationFrame(captureMoveRafId);
+            captureMoveRafId = null;
+        }
+        const flushed = pendingCaptureMove;
+        pendingCaptureMove = null;
+        if (isSelecting() && startPos()) {
+            const latest = event ?? flushed;
+            if (latest) applySelectionMove(latest);
         }
 
         if (isBoxSelecting()) {

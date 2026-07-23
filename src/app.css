@@ -100,6 +100,16 @@ html.hook-capturing main {
   cursor: crosshair !important;
 }
 
+/*
+ * Capture selection must stay cheap (Snow Shot / ShareX style):
+ * hide sticker/UI trees so WebView2 is not painting dozens of images +
+ * annotation layers under every selection drag frame.
+ */
+html.hook-capturing .hook-capture-hide {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .animate-in {
   animation: zoomIn 0.2s ease-out forwards;
 }
