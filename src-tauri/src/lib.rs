@@ -6,6 +6,7 @@ mod dialogs;
 mod fonts;
 mod scroll_capture;
 mod scroll_capture_session;
+mod scroll_line_stitch;
 mod mouse_monitor;
 mod native_capture;
 mod overlay;

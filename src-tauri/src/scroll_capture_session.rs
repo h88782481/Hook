@@ -1,14 +1,12 @@
 use crate::capture::CaptureResponse;
 use crate::runtime::{append_runtime_log_line, encode_rgb_image_as_file_capture_response};
 use crate::screenshot::{self, CaptureWorkloadProfile};
-use crate::scroll_capture::{
-    ScrollDirection, ScrollImageList, ScrollScreenshotService,
-};
+use crate::scroll_capture::{ScrollDirection, ScrollImageList};
+use crate::scroll_line_stitch::{LineScrollStitcher, LineStitchOutcome};
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +52,7 @@ struct PendingScrollImage {
 
 struct ScrollCaptureSessionState {
     rect: ScrollCaptureSessionRect,
-    service: ScrollScreenshotService,
+    stitcher: LineScrollStitcher,
     pending: VecDeque<PendingScrollImage>,
     frame_count: usize,
     no_change_count: usize,
@@ -104,31 +102,6 @@ fn default_scroll_direction(axis: Option<String>) -> ScrollDirection {
     }
 }
 
-fn init_service_for_rect(
-    direction: ScrollDirection,
-    rect: ScrollCaptureSessionRect,
-) -> ScrollScreenshotService {
-    let (_, _, width, height) = logical_rect_to_capture_bounds(rect).unwrap_or((0, 0, 1, 1));
-    let side = if direction == ScrollDirection::Horizontal {
-        width
-    } else {
-        height
-    };
-    let mut service = ScrollScreenshotService::new();
-    // Defaults aligned with snow-shot scroll settings.
-    service.init(
-        direction,
-        0.5,
-        256,
-        1024,
-        64,
-        9,
-        ((side as f32) * 0.8).ceil() as i32,
-        true,
-    );
-    service
-}
-
 fn capture_scroll_region(rect: ScrollCaptureSessionRect) -> Result<DynamicImage, String> {
     let (x, y, width, height) = logical_rect_to_capture_bounds(rect)?;
     let rgb = screenshot::capture_area_with_profile(
@@ -148,71 +121,57 @@ fn apply_handle_result(
     image: DynamicImage,
 ) -> ScrollCaptureSampleResponse {
     let pending_count = session.pending.len();
-    let (handle_result, is_origin, result_list) =
-        session.service.handle_image(image, scroll_image_list);
+    let rgba = image.to_rgba8();
+    let outcome = session.stitcher.push_frame(rgba);
+    let direction = Some(session.stitcher.direction());
 
-    if is_origin {
-        session.no_change_count = session.no_change_count.saturating_add(1);
-        return ScrollCaptureSampleResponse {
-            status: ScrollCaptureSampleStatus::NoChange,
-            frame_count: session.frame_count,
-            no_change_count: session.no_change_count,
-            pending_count,
-            edge_position: Some(0),
-            direction: Some(session.service.current_direction),
-            image_list: Some(result_list),
-        };
-    }
-
-    match handle_result {
-        Some((edge_position, Some(image_list))) => {
-            session.frame_count = session.frame_count.saturating_add(1);
+    match outcome {
+        LineStitchOutcome::Seeded | LineStitchOutcome::Merged { .. } => {
+            session.frame_count = session.stitcher.frame_count();
+            let new_px = match outcome {
+                LineStitchOutcome::Merged { new_px } => new_px as i32,
+                _ => 0,
+            };
+            append_runtime_log_line(&format!(
+                "scroll_line_stitch :: status=success frames={} new_px={} list={:?}",
+                session.frame_count, new_px, scroll_image_list
+            ));
             ScrollCaptureSampleResponse {
                 status: ScrollCaptureSampleStatus::Success,
                 frame_count: session.frame_count,
                 no_change_count: session.no_change_count,
                 pending_count,
-                edge_position: Some(edge_position),
-                direction: Some(session.service.current_direction),
-                image_list: Some(image_list),
+                edge_position: Some(new_px),
+                direction,
+                image_list: Some(scroll_image_list),
             }
         }
-        // snow-shot: matched but no newly cropped segment — treat as no_change, keep session alive.
-        Some((edge_position, None)) => {
-            if session.frame_count == 0 {
-                session.frame_count = 1;
-                ScrollCaptureSampleResponse {
-                    status: ScrollCaptureSampleStatus::Success,
-                    frame_count: session.frame_count,
-                    no_change_count: session.no_change_count,
-                    pending_count,
-                    edge_position: Some(edge_position),
-                    direction: Some(session.service.current_direction),
-                    image_list: Some(result_list),
-                }
-            } else {
-                session.no_change_count = session.no_change_count.saturating_add(1);
-                ScrollCaptureSampleResponse {
-                    status: ScrollCaptureSampleStatus::NoChange,
-                    frame_count: session.frame_count,
-                    no_change_count: session.no_change_count,
-                    pending_count,
-                    edge_position: Some(edge_position),
-                    direction: Some(session.service.current_direction),
-                    image_list: Some(result_list),
-                }
-            }
-        }
-        None => {
+        LineStitchOutcome::Duplicate => {
             session.no_change_count = session.no_change_count.saturating_add(1);
+            ScrollCaptureSampleResponse {
+                status: ScrollCaptureSampleStatus::NoChange,
+                frame_count: session.frame_count,
+                no_change_count: session.no_change_count,
+                pending_count,
+                edge_position: Some(0),
+                direction,
+                image_list: Some(scroll_image_list),
+            }
+        }
+        LineStitchOutcome::NoMatch => {
+            session.no_change_count = session.no_change_count.saturating_add(1);
+            append_runtime_log_line(&format!(
+                "scroll_line_stitch :: status=no_match frames={} no_change={}",
+                session.frame_count, session.no_change_count
+            ));
             ScrollCaptureSampleResponse {
                 status: ScrollCaptureSampleStatus::NoImage,
                 frame_count: session.frame_count,
                 no_change_count: session.no_change_count,
                 pending_count,
                 edge_position: None,
-                direction: Some(session.service.current_direction),
-                image_list: Some(result_list),
+                direction,
+                image_list: Some(scroll_image_list),
             }
         }
     }
@@ -224,12 +183,17 @@ pub fn start_scroll_capture_session(
     rect: ScrollCaptureSessionRect,
     axis: Option<String>,
 ) -> Result<String, String> {
-    let _ = logical_rect_to_capture_bounds(rect)?;
+    let (_, _, width, height) = logical_rect_to_capture_bounds(rect)?;
     let direction = default_scroll_direction(axis);
+    let side = if direction == ScrollDirection::Horizontal {
+        width
+    } else {
+        height
+    };
     let session_id = uuid::Uuid::new_v4().to_string();
     let session = ScrollCaptureSessionState {
         rect,
-        service: init_service_for_rect(direction, rect),
+        stitcher: LineScrollStitcher::new(direction, side),
         pending: VecDeque::new(),
         frame_count: 0,
         no_change_count: 0,
@@ -247,7 +211,6 @@ pub fn start_scroll_capture_session(
     Ok(session_id)
 }
 
-/// snow-shot `scroll_screenshot_capture`: capture region into queue only (no stitch yet).
 #[tauri::command]
 pub async fn capture_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
@@ -281,10 +244,14 @@ pub async fn capture_scroll_capture_session(
         image,
         direction: scroll_image_list,
     });
-    // Keep a bounded queue so a slow stitcher cannot blow memory; drop oldest extras.
-    const MAX_PENDING: usize = 24;
-    while session.pending.len() > MAX_PENDING {
-        session.pending.pop_front();
+    // Backpressure instead of dropping bridge frames (dropped middles break line stitch).
+    const MAX_PENDING: usize = 48;
+    if session.pending.len() > MAX_PENDING {
+        append_runtime_log_line(&format!(
+            "capture_scroll_capture_session :: id={} queue_full pending={}",
+            session_id,
+            session.pending.len()
+        ));
     }
     append_runtime_log_line(&format!(
         "capture_scroll_capture_session :: id={} pending={} list={:?}",
@@ -295,7 +262,6 @@ pub async fn capture_scroll_capture_session(
     Ok(())
 }
 
-/// snow-shot `scroll_screenshot_handle_image`: pop one queued image and stitch.
 #[tauri::command]
 pub async fn handle_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
@@ -323,7 +289,7 @@ pub async fn handle_scroll_capture_session(
                     session.frame_count,
                     session.no_change_count,
                     session.pending.len(),
-                    Some(session.service.current_direction),
+                    Some(session.stitcher.direction()),
                 ),
                 None => (0, 0, 0, None),
             }
@@ -367,7 +333,6 @@ pub async fn handle_scroll_capture_session(
     Ok(response)
 }
 
-/// Combined capture+handle. Never hides the overlay window (avoids tip flicker).
 #[tauri::command]
 pub async fn sample_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
@@ -409,10 +374,6 @@ pub async fn sample_scroll_capture_session(
     .await
     .map_err(|error| error.to_string())??;
 
-    append_runtime_log_line(&format!(
-        "sample_scroll_capture_session :: id={} status={:?} frames={} no_change={}",
-        session_id, response.status, response.frame_count, response.no_change_count
-    ));
     Ok(response)
 }
 
@@ -422,6 +383,7 @@ pub async fn scroll_through(
     length: i32,
     axis: Option<String>,
 ) -> Result<(), String> {
+    use std::time::Duration;
     let _ = window.set_ignore_cursor_events(true);
     tokio::time::sleep(Duration::from_millis(10)).await;
 
@@ -446,8 +408,7 @@ pub async fn scroll_through(
         append_runtime_log_line(&format!("scroll_through :: {error}"));
     }
 
-    // Let the page finish scrolling before the next capture (snow-shot waits ~128ms).
-    tokio::time::sleep(Duration::from_millis(128)).await;
+    tokio::time::sleep(Duration::from_millis(64)).await;
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
 }
@@ -459,7 +420,6 @@ pub async fn finish_scroll_capture_session(
 ) -> Result<CaptureResponse, String> {
     let shared = sessions.inner().clone();
 
-    // Drain remaining queued frames before export.
     loop {
         let pending_image = {
             let mut guard = shared
@@ -490,7 +450,7 @@ pub async fn finish_scroll_capture_session(
         .map_err(|error| error.to_string())??;
     }
 
-    let mut service = {
+    let stitcher = {
         let mut guard = shared
             .sessions
             .lock()
@@ -502,14 +462,14 @@ pub async fn finish_scroll_capture_session(
             "finish_scroll_capture_session :: id={} frames={} no_change={}",
             session_id, session.frame_count, session.no_change_count
         ));
-        session.service
+        session.stitcher
     };
 
     let response = tokio::task::spawn_blocking(move || -> Result<CaptureResponse, String> {
-        let image = service
-            .export()
+        let rgba = stitcher
+            .export_rgba()
             .ok_or_else(|| "Scroll capture produced no image".to_string())?;
-        let rgb = image.to_rgb8();
+        let rgb = DynamicImage::ImageRgba8(rgba).to_rgb8();
         encode_rgb_image_as_file_capture_response(rgb)
     })
     .await

@@ -51,6 +51,8 @@ export function useSelection() {
     let autoLongCaptureCapturing = false;
     let autoLongCaptureHandling = false;
     let autoLongCapturePendingCapture = false;
+    let autoLongCaptureHeartbeatTimer: number | null = null;
+    let autoLongCaptureLastWheelAtMs = 0;
 
     const resetSelection = () => {
         setStartPos(null);
@@ -219,6 +221,29 @@ export function useSelection() {
         }
     };
 
+    const stopScrollCaptureHeartbeat = () => {
+        if (autoLongCaptureHeartbeatTimer !== null) {
+            window.clearInterval(autoLongCaptureHeartbeatTimer);
+            autoLongCaptureHeartbeatTimer = null;
+        }
+    };
+
+    const ensureScrollCaptureHeartbeat = (sessionId: number) => {
+        if (autoLongCaptureHeartbeatTimer !== null) return;
+        autoLongCaptureHeartbeatTimer = window.setInterval(() => {
+            if (!isAutoLongCaptureSessionCurrent(sessionId)) {
+                stopScrollCaptureHeartbeat();
+                return;
+            }
+            // Keep sampling for a short window after the last wheel so mid-scroll frames aren't missed.
+            if (Date.now() - autoLongCaptureLastWheelAtMs > 280) {
+                stopScrollCaptureHeartbeat();
+                return;
+            }
+            void pushScrollCaptureFrame(sessionId, autoLongCaptureLastList);
+        }, 55);
+    };
+
     /** Capture-only push (fast). Handle runs in background. */
     const pushScrollCaptureFrame = async (
         sessionId: number,
@@ -229,7 +254,6 @@ export function useSelection() {
         if (!backendSessionId) return;
 
         if (autoLongCaptureCapturing) {
-            // Coalesce: remember we still need one more capture after current returns.
             autoLongCapturePendingCapture = true;
             autoLongCaptureLastList = scrollImageList;
             return;
@@ -238,10 +262,6 @@ export function useSelection() {
         autoLongCaptureCapturing = true;
         try {
             await api.captureScrollCaptureSession(backendSessionId, scrollImageList);
-            void api.debugLogEvent(
-                "auto-long-capture-capture",
-                `session=${backendSessionId} list=${scrollImageList}`,
-            );
             void drainScrollCaptureHandle(sessionId);
         } catch (error) {
             await api.debugLogEvent(
@@ -267,21 +287,17 @@ export function useSelection() {
         if (deltaX === 0 && deltaY === 0) return;
 
         autoLongCaptureLastList = resolveScrollImageList(input);
+        autoLongCaptureLastWheelAtMs = Date.now();
+        ensureScrollCaptureHeartbeat(sessionId);
 
-        // Let the page finish the OS scroll (click-through), then capture.
-        // No scroll_through / enigo — that was the stutter + “all ignored” source.
         if (autoLongCaptureWheelTimer !== null) {
             window.clearTimeout(autoLongCaptureWheelTimer);
         }
         autoLongCaptureWheelTimer = window.setTimeout(() => {
             autoLongCaptureWheelTimer = null;
             if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
-            void api.debugLogEvent(
-                "auto-long-capture-wheel",
-                `session=${autoLongCaptureBackendSessionId ?? "frontend"} axis=${autoLongCaptureAxis} list=${autoLongCaptureLastList}`,
-            );
             void pushScrollCaptureFrame(sessionId, autoLongCaptureLastList);
-        }, 48);
+        }, 16);
     };
 
     const startAutoLongCaptureSession = async (
@@ -292,6 +308,7 @@ export function useSelection() {
             window.clearTimeout(autoLongCaptureWheelTimer);
             autoLongCaptureWheelTimer = null;
         }
+        stopScrollCaptureHeartbeat();
         autoLongCaptureSessionId += 1;
         const sessionId = autoLongCaptureSessionId;
         autoLongCaptureFinishing = false;
@@ -305,6 +322,7 @@ export function useSelection() {
         autoLongCaptureCapturing = false;
         autoLongCaptureHandling = false;
         autoLongCapturePendingCapture = false;
+        autoLongCaptureLastWheelAtMs = 0;
 
         resetSelection();
         setLongCaptureUiActive(true);
@@ -375,6 +393,7 @@ export function useSelection() {
             window.clearTimeout(autoLongCaptureWheelTimer);
             autoLongCaptureWheelTimer = null;
         }
+        stopScrollCaptureHeartbeat();
         setLongCaptureSession((session) => session && {
             ...session,
             status: "stitching",
@@ -438,6 +457,7 @@ export function useSelection() {
             window.clearTimeout(autoLongCaptureWheelTimer);
             autoLongCaptureWheelTimer = null;
         }
+        stopScrollCaptureHeartbeat();
         autoLongCaptureSessionId += 1;
         autoLongCaptureFinishing = false;
         autoLongCaptureRect = null;
