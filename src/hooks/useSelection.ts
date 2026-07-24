@@ -178,7 +178,7 @@ export function useSelection() {
         return deltaY >= 0 ? "Bottom" : "Top";
     };
 
-    /** Drain all queued frames in one backend pass (avoids stuck pending). */
+    /** Drain stitch queue without blocking the next capture (snow-shot split). */
     const drainScrollCaptureHandle = async (sessionId: number) => {
         if (autoLongCaptureHandling) return;
         const backendSessionId = autoLongCaptureBackendSessionId;
@@ -186,29 +186,31 @@ export function useSelection() {
 
         autoLongCaptureHandling = true;
         try {
-            if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
-            const response = await api.handleScrollCaptureSession(backendSessionId);
-            if (response.status === "no_data") return;
+            for (;;) {
+                if (!isAutoLongCaptureSessionCurrent(sessionId)) break;
+                const response = await api.handleScrollCaptureSession(backendSessionId);
+                if (response.status === "no_data") break;
 
-            autoLongCaptureBackendFrameCount = Math.max(
-                autoLongCaptureBackendFrameCount,
-                response.frameCount,
-            );
-            autoLongCaptureNoChangeCount = response.noChangeCount;
-            if (response.direction === "Horizontal") {
-                autoLongCaptureAxis = "horizontal";
-            } else if (response.direction === "Vertical") {
-                autoLongCaptureAxis = "vertical";
+                autoLongCaptureBackendFrameCount = Math.max(
+                    autoLongCaptureBackendFrameCount,
+                    response.frameCount,
+                );
+                autoLongCaptureNoChangeCount = response.noChangeCount;
+                if (response.direction === "Horizontal") {
+                    autoLongCaptureAxis = "horizontal";
+                } else if (response.direction === "Vertical") {
+                    autoLongCaptureAxis = "vertical";
+                }
+                updateAutoLongCaptureSession({
+                    axis: autoLongCaptureAxis,
+                    noChangeCount: response.noChangeCount,
+                    message: describeScrollCaptureStatus(response.status),
+                });
+                void api.debugLogEvent(
+                    "auto-long-capture-handle",
+                    `session=${backendSessionId} status=${response.status} frames=${response.frameCount} noChange=${response.noChangeCount} pending=${response.pendingCount}`,
+                );
             }
-            updateAutoLongCaptureSession({
-                axis: autoLongCaptureAxis,
-                noChangeCount: response.noChangeCount,
-                message: describeScrollCaptureStatus(response.status),
-            });
-            void api.debugLogEvent(
-                "auto-long-capture-handle",
-                `session=${backendSessionId} status=${response.status} frames=${response.frameCount} noChange=${response.noChangeCount} pending=${response.pendingCount}`,
-            );
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-handle-failed",
@@ -233,13 +235,13 @@ export function useSelection() {
                 stopScrollCaptureHeartbeat();
                 return;
             }
-            // Keep sampling while wheel is active; denser samples = smaller scroll steps = better overlap.
-            if (Date.now() - autoLongCaptureLastWheelAtMs > 320) {
+            // Keep sampling for a short window after the last wheel so mid-scroll frames aren't missed.
+            if (Date.now() - autoLongCaptureLastWheelAtMs > 280) {
                 stopScrollCaptureHeartbeat();
                 return;
             }
             void pushScrollCaptureFrame(sessionId, autoLongCaptureLastList);
-        }, 40);
+        }, 55);
     };
 
     /** Capture-only push (fast). Handle runs in background. */
@@ -271,9 +273,7 @@ export function useSelection() {
             if (autoLongCapturePendingCapture && isAutoLongCaptureSessionCurrent(sessionId)) {
                 autoLongCapturePendingCapture = false;
                 void pushScrollCaptureFrame(sessionId, autoLongCaptureLastList);
-                return;
             }
-            void drainScrollCaptureHandle(sessionId);
         }
     };
 

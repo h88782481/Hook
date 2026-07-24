@@ -267,6 +267,44 @@ pub async fn handle_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
     session_id: String,
 ) -> Result<ScrollCaptureSampleResponse, String> {
+    let pending_image = {
+        let mut guard = sessions
+            .sessions
+            .lock()
+            .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+        let session = guard
+            .get_mut(&session_id)
+            .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
+        session.pending.pop_front()
+    };
+
+    let Some(pending) = pending_image else {
+        let (frame_count, no_change_count, pending_count, direction) = {
+            let guard = sessions
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            match guard.get(&session_id) {
+                Some(session) => (
+                    session.frame_count,
+                    session.no_change_count,
+                    session.pending.len(),
+                    Some(session.stitcher.direction()),
+                ),
+                None => (0, 0, 0, None),
+            }
+        };
+        return Ok(ScrollCaptureSampleResponse {
+            status: ScrollCaptureSampleStatus::NoData,
+            frame_count,
+            no_change_count,
+            pending_count,
+            edge_position: None,
+            direction,
+            image_list: None,
+        });
+    };
+
     let response = tokio::task::spawn_blocking({
         let sessions = sessions.inner().clone();
         let session_id = session_id.clone();
@@ -278,28 +316,7 @@ pub async fn handle_scroll_capture_session(
             let session = guard
                 .get_mut(&session_id)
                 .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
-
-            if session.pending.is_empty() {
-                return Ok(ScrollCaptureSampleResponse {
-                    status: ScrollCaptureSampleStatus::NoData,
-                    frame_count: session.frame_count,
-                    no_change_count: session.no_change_count,
-                    pending_count: 0,
-                    edge_position: None,
-                    direction: Some(session.stitcher.direction()),
-                    image_list: None,
-                });
-            }
-
-            let mut last_response: Option<ScrollCaptureSampleResponse> = None;
-            while let Some(pending) = session.pending.pop_front() {
-                last_response = Some(apply_handle_result(
-                    session,
-                    pending.direction,
-                    pending.image,
-                ));
-            }
-            Ok(last_response.unwrap())
+            Ok(apply_handle_result(session, pending.direction, pending.image))
         }
     })
     .await

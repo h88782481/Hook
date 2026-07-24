@@ -612,11 +612,7 @@ pub fn capture_area_with_profile(
             ));
         }
 
-        let display = if profile == CaptureWorkloadProfile::LongCapture {
-            Display::get_containing_cursor().unwrap_or_else(Display::primary)
-        } else {
-            Display::primary()
-        };
+        let display = Display::primary();
         let display_id = display.id();
 
         let physical = display
