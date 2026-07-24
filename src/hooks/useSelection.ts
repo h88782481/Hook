@@ -76,7 +76,13 @@ export function useSelection() {
     };
 
     const restorePostCaptureInteractivity = async () => {
+        await api.showOverlayHost(true);
         await api.setOverlayClickThrough(true);
+        try {
+            await api.setOverlayCaptureExclusion(false);
+        } catch {
+            // ignore
+        }
         if (stickerStore.stickers.length > 0) {
             await api.setMouseMonitorActive(true);
             await syncService.notify({ layout: true });
@@ -379,11 +385,12 @@ export function useSelection() {
         });
         await api.debugLogEvent("auto-long-capture-start", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
         await api.setMouseMonitorActive(false);
+        // Show status UI as a transparent click-through overlay. Do NOT enable
+        // capture exclusion — that was flipping every scroll sample to Duplicate.
+        await api.showOverlayHost(true);
         await api.setOverlayClickThrough(true);
-        // Exclude Hook from WGC/GDI samples so scrolling content underneath is
-        // what gets fingerprinted — otherwise every frame matches the overlay.
         try {
-            await api.setOverlayCaptureExclusion(true);
+            await api.setOverlayCaptureExclusion(false);
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-overlay-exclusion-failed",

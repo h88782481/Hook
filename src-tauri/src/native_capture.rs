@@ -107,7 +107,10 @@ pub(crate) fn begin_native_capture(app: AppHandle, mode: NativeCaptureMode) {
                             "native_capture_freeze_failed :: {}",
                             error
                         ));
-                        finish_native_capture_session(&app, None);
+                        finish_native_capture_session(
+                            &app,
+                            NativeOverlayRestore::Show { click_through: true },
+                        );
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("native-capture-cancelled", ());
                         }
@@ -124,7 +127,10 @@ pub(crate) fn begin_native_capture(app: AppHandle, mode: NativeCaptureMode) {
                     }
                     Ok(CaptureUiEvent::Cancelled) | Err(_) => {
                         append_runtime_log_line("native_capture_cancelled");
-                        finish_native_capture_session(&app, None);
+                        finish_native_capture_session(
+                            &app,
+                            NativeOverlayRestore::Show { click_through: true },
+                        );
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("native-capture-cancelled", ());
                         }
@@ -166,7 +172,10 @@ fn handle_selection_finished(
                         "native_capture_crop_failed :: {}",
                         error
                     ));
-                    finish_native_capture_session(app, None);
+                    finish_native_capture_session(
+                        app,
+                        NativeOverlayRestore::Show { click_through: true },
+                    );
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("native-capture-cancelled", ());
                     }
@@ -182,7 +191,10 @@ fn handle_selection_finished(
                         file_path: response.file_path,
                         rect: logical,
                     };
-                    finish_native_capture_session(app, Some(true));
+                    finish_native_capture_session(
+                        app,
+                        NativeOverlayRestore::Show { click_through: true },
+                    );
                     if let Some(window) = app.get_webview_window("main") {
                         if let Err(error) = window.emit("native-capture-result", payload) {
                             append_runtime_log_line(&format!(
@@ -199,7 +211,10 @@ fn handle_selection_finished(
                         "native_capture_encode_failed :: {}",
                         error
                     ));
-                    finish_native_capture_session(app, None);
+                    finish_native_capture_session(
+                        app,
+                        NativeOverlayRestore::Show { click_through: true },
+                    );
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("native-capture-cancelled", ());
                     }
@@ -207,7 +222,9 @@ fn handle_selection_finished(
             }
         }
         NativeCaptureMode::Long => {
-            finish_native_capture_session(app, Some(true));
+            // Leave the host hidden; frontend shows click-through status overlay
+            // without capture-exclusion (same as the old working long-capture path).
+            finish_native_capture_session(app, NativeOverlayRestore::KeepHidden);
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(error) = window.emit("native-long-capture-rect", logical) {
                     append_runtime_log_line(&format!(
@@ -222,17 +239,27 @@ fn handle_selection_finished(
     }
 }
 
-fn finish_native_capture_session(app: &AppHandle, show_overlay_click_through: Option<bool>) {
+#[derive(Debug, Clone, Copy)]
+enum NativeOverlayRestore {
+    /// Show the WebView host again (region done / cancelled).
+    Show { click_through: bool },
+    /// Leave host hidden — long-capture frontend will show status itself.
+    KeepHidden,
+}
+
+fn finish_native_capture_session(app: &AppHandle, restore: NativeOverlayRestore) {
     NATIVE_CAPTURE_BUSY.store(false, Ordering::SeqCst);
-    if let Some(click_through) = show_overlay_click_through {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_content_protected(false);
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.set_content_protected(false);
+    match restore {
+        NativeOverlayRestore::Show { click_through } => {
             show_overlay_host_impl(&window, click_through);
         }
-    } else if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_content_protected(false);
-        // Cancelled with no stickers yet — still restore overlay host click-through.
-        show_overlay_host_impl(&window, true);
+        NativeOverlayRestore::KeepHidden => {
+            let _ = window.hide();
+        }
     }
 }
 
