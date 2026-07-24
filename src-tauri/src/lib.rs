@@ -4,8 +4,8 @@ mod capture_coords;
 mod cli;
 mod dialogs;
 mod fonts;
-mod long_capture;
-mod long_capture_session;
+mod scroll_capture;
+mod scroll_capture_session;
 mod mouse_monitor;
 mod native_capture;
 mod overlay;
@@ -27,7 +27,7 @@ pub(crate) use runtime::{
 };
 
 use crate::cli::boot_profile_from_env;
-use crate::long_capture_session::SharedLongCaptureSessions;
+use crate::scroll_capture_session::SharedScrollCaptureSessions;
 use crate::mouse_monitor::SharedHitMap;
 use crate::overlay::{
     enter_capture_mode, enter_long_capture_mode, force_restore_system_cursors, hide_to_tray_impl,
@@ -391,6 +391,7 @@ pub fn run() {
             cli::get_boot_profile,
             overlay::show_canvas_window,
             overlay::show_overlay_host,
+            overlay::hide_overlay_host,
             overlay::set_overlay_click_through,
             overlay::set_native_drag_preflight_active,
             overlay::set_overlay_keyboard_capture_active,
@@ -400,10 +401,11 @@ pub fn run() {
             overlay::trigger_capture_mode,
             runtime::append_runtime_log,
             precise_selection::get_precise_selection,
-            long_capture_session::start_long_capture_session,
-            long_capture_session::sample_long_capture_session,
-            long_capture_session::finish_long_capture_session,
-            long_capture_session::cancel_long_capture_session,
+            scroll_capture_session::start_scroll_capture_session,
+            scroll_capture_session::sample_scroll_capture_session,
+            scroll_capture_session::finish_scroll_capture_session,
+            scroll_capture_session::cancel_scroll_capture_session,
+            scroll_capture_session::scroll_through,
             native_capture::set_long_capture_ui_active,
             sticker_io::read_image_from_path,
             dialogs::open_image_for_edit,
@@ -439,7 +441,7 @@ pub fn run() {
                 app.manage(hit_map.clone());
                 let capture_input_state = SharedCaptureInputState::new();
                 app.manage(capture_input_state.clone());
-                let long_capture_sessions = SharedLongCaptureSessions::new();
+                let long_capture_sessions = SharedScrollCaptureSessions::new();
                 app.manage(long_capture_sessions.clone());
 
                 if let Err(error) = cleanup_clipboard_cache() {

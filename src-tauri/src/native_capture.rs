@@ -10,7 +10,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::encode_rgb_image_as_file_capture_response;
-use crate::long_capture_session::SharedLongCaptureSessions;
+use crate::scroll_capture_session::SharedScrollCaptureSessions;
 use crate::overlay::{
     set_capture_input_runtime_active_with_hook, show_overlay_host_impl,
 };
@@ -62,7 +62,7 @@ pub(crate) fn begin_native_capture(app: AppHandle, mode: NativeCaptureMode) {
     {
         if mode == NativeCaptureMode::Long {
             let backend_active = app
-                .try_state::<SharedLongCaptureSessions>()
+                .try_state::<SharedScrollCaptureSessions>()
                 .map(|sessions| sessions.has_any_sessions())
                 .unwrap_or(false);
             if backend_active || LONG_CAPTURE_UI_ACTIVE.load(Ordering::SeqCst) {

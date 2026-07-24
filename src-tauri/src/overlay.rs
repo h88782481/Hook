@@ -1,6 +1,6 @@
 use crate::app_settings;
 use crate::capture_coords::{normalize_global_physical_to_local_logical, CaptureWindowMetrics};
-use crate::long_capture_session::{LongCaptureWheelEvent, SharedLongCaptureSessions};
+use crate::scroll_capture_session::{ScrollCaptureWheelEvent, SharedScrollCaptureSessions};
 use crate::mouse_monitor::{self, SharedHitMap};
 use crate::runtime::append_runtime_log_line;
 use serde::{Deserialize, Serialize};
@@ -1980,6 +1980,17 @@ pub(crate) fn show_canvas_window_impl(window: &tauri::WebviewWindow) {
     }
 }
 
+pub(crate) fn hide_overlay_host_impl(window: &tauri::WebviewWindow) {
+    let _ = window.set_content_protected(false);
+    OVERLAY_CLICK_THROUGH_ACTIVE.store(false, Ordering::SeqCst);
+    if let Err(e) = window.hide() {
+        println!("Failed to hide overlay host: {}", e);
+        append_runtime_log_line(&format!("hide_overlay_host_failed :: {}", e));
+    } else {
+        append_runtime_log_line("hide_overlay_host");
+    }
+}
+
 pub(crate) fn show_overlay_host_impl(window: &tauri::WebviewWindow, click_through: bool) {
     setup_overlay_window(window);
     let _ = window.set_ignore_cursor_events(click_through);
@@ -2082,6 +2093,16 @@ pub fn show_overlay_host(app: tauri::AppHandle, click_through: Option<bool>) -> 
 }
 
 #[tauri::command]
+pub fn hide_overlay_host(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        hide_overlay_host_impl(&window);
+        return Ok(());
+    }
+
+    Err("Window not found".to_string())
+}
+
+#[tauri::command]
 pub fn set_overlay_click_through(app: tauri::AppHandle, click_through: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         set_overlay_click_through_impl(&window, click_through);
@@ -2176,7 +2197,7 @@ pub(crate) fn install_rdev_input_listener(
     window: tauri::WebviewWindow,
     hit_map: SharedHitMap,
     capture_input_state: SharedCaptureInputState,
-    long_capture_sessions: SharedLongCaptureSessions,
+    long_capture_sessions: SharedScrollCaptureSessions,
     shared_app_settings: app_settings::SharedAppSettings,
 ) {
     std::thread::spawn(move || {
@@ -2294,7 +2315,7 @@ pub(crate) fn install_rdev_input_listener(
                         ));
                         let _ = window.emit(
                             "trigger-long-capture-wheel",
-                            LongCaptureWheelEvent {
+                            ScrollCaptureWheelEvent {
                                 delta_x: *delta_x,
                                 delta_y: *delta_y,
                             },

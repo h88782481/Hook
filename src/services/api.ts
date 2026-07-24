@@ -8,7 +8,8 @@ import type { SessionSticker, SessionLink, SessionGroup } from "../types/sticker
 import type {
     CaptureResponse,
     LongCaptureAxis,
-    LongCaptureDirection,
+    ScrollCaptureImageList,
+    ScrollCaptureSampleResponse,
 } from "./captureState";
 
 interface SessionData {
@@ -125,6 +126,9 @@ export const api = {
     showOverlayHost: (clickThrough = true): Promise<void> =>
         safeInvoke("show_overlay_host", { clickThrough }, () => undefined, false),
 
+    hideOverlayHost: (): Promise<void> =>
+        safeInvoke("hide_overlay_host", undefined, () => undefined, false),
+
     setOverlayClickThrough: (clickThrough: boolean): Promise<void> =>
         safeInvoke("set_overlay_click_through", { clickThrough }, () => undefined, false),
 
@@ -185,24 +189,27 @@ export const api = {
             w,
             h,
         }),
-    startLongCaptureSession: (
+    startScrollCaptureSession: (
         rect: { x: number; y: number; w: number; h: number },
         axis?: LongCaptureAxis,
     ): Promise<string> =>
-        safeInvoke("start_long_capture_session", { rect, axis }),
-    sampleLongCaptureSession: (sessionId: string): Promise<{
-        status: "recorded" | "duplicate";
-        frameCount: number;
-        duplicateCount: number;
-        recorded: boolean;
-        axis?: LongCaptureAxis | null;
-        direction?: LongCaptureDirection | null;
-    }> =>
-        safeInvoke("sample_long_capture_session", { sessionId }),
-    finishLongCaptureSession: (sessionId: string): Promise<CaptureResponse> =>
-        safeInvoke("finish_long_capture_session", { sessionId }),
-    cancelLongCaptureSession: (sessionId: string): Promise<void> =>
-        safeInvoke("cancel_long_capture_session", { sessionId }),
+        safeInvoke("start_scroll_capture_session", { rect, axis }),
+    sampleScrollCaptureSession: (
+        sessionId: string,
+        scrollImageList: ScrollCaptureImageList = "Bottom",
+        hideOverlayBeforeCapture = true,
+    ): Promise<ScrollCaptureSampleResponse> =>
+        safeInvoke("sample_scroll_capture_session", {
+            sessionId,
+            scrollImageList,
+            hideOverlayBeforeCapture,
+        }),
+    finishScrollCaptureSession: (sessionId: string): Promise<CaptureResponse> =>
+        safeInvoke("finish_scroll_capture_session", { sessionId }),
+    cancelScrollCaptureSession: (sessionId: string): Promise<void> =>
+        safeInvoke("cancel_scroll_capture_session", { sessionId }),
+    scrollThrough: (length: number, axis: LongCaptureAxis = "vertical"): Promise<void> =>
+        safeInvoke("scroll_through", { length, axis }),
 
     // --- System ---
     getCursorPosition: (): Promise<{x: number, y: number}> =>

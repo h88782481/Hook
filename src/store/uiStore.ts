@@ -23,7 +23,7 @@ import type {
     StickerTransformMode,
 } from "../types/stickerEditing";
 import { resolveToolCursorFromMode } from "../services/toolSettings";
-import type { CaptureRect, LongCaptureAxis, LongCaptureDirection } from "../services/captureState";
+import type { CaptureRect, LongCaptureAxis } from "../services/captureState";
 import {
     addColorToHistory,
     addScreenshotToHistory,
@@ -76,11 +76,9 @@ export const [longCaptureSession, setLongCaptureSession] = createSignal<{
     active: boolean;
     rect: CaptureRect;
     frameCount: number;
-    duplicateCount?: number;
+    noChangeCount?: number;
     status: "capturing" | "stitching";
     axis?: LongCaptureAxis;
-    direction?: LongCaptureDirection;
-    confidence?: number;
     lastMessage?: string;
 } | null>(null);
 // Box Selection (Multi-Select)
