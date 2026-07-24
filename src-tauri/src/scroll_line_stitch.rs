@@ -134,6 +134,8 @@ impl LineScrollStitcher {
         };
 
         if best_offset < self.min_new_px || best_score > self.max_mean_abs_diff {
+            // Advance anchor so a later frame can recover instead of comparing to stale content forever.
+            self.last_frame = Some(frame);
             return LineStitchOutcome::NoMatch;
         }
 
@@ -210,6 +212,8 @@ impl LineScrollStitcher {
         };
 
         if best_offset < self.min_new_px || best_score > self.max_mean_abs_diff {
+            // Advance anchor so a later frame can recover instead of comparing to stale content forever.
+            self.last_frame = Some(frame);
             return LineStitchOutcome::NoMatch;
         }
 
