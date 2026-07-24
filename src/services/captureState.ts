@@ -30,7 +30,7 @@ export type LongCaptureAxis = "vertical" | "horizontal";
 export type LongCaptureDirection = "down" | "up" | "right" | "left";
 
 /** snow-shot style sample result. */
-export type ScrollCaptureSampleStatus = "success" | "no_change" | "no_image";
+export type ScrollCaptureSampleStatus = "success" | "no_change" | "no_image" | "no_data";
 export type ScrollCaptureImageList = "Top" | "Bottom";
 export type ScrollCaptureDirection = "Vertical" | "Horizontal";
 

@@ -42,6 +42,8 @@ export function useSelection() {
     let autoLongCaptureNoChangeCount = 0;
     let autoLongCaptureAxis: LongCaptureAxis = "vertical";
     let autoLongCapturePendingScrollThrough = false;
+    let autoLongCaptureWheelTimer: number | null = null;
+    let autoLongCaptureLastWheel: { deltaX: number; deltaY: number } | null = null;
 
     const resetSelection = () => {
         setStartPos(null);
@@ -129,6 +131,8 @@ export function useSelection() {
                 return "画面未变化，可继续滚动";
             case "no_image":
                 return "未匹配到可拼接内容，稍慢滚动再试";
+            case "no_data":
+                return "等待采集…";
         }
     };
 
@@ -163,10 +167,17 @@ export function useSelection() {
         return deltaY >= 0 ? "Bottom" : "Top";
     };
 
-    const sampleScrollCaptureFrame = async (
+    /**
+     * snow-shot style tick:
+     * 1) scroll_through (page moves)
+     * 2) wait one frame
+     * 3) capture + handle (overlay stays visible; excluded from capture)
+     */
+    const runScrollCaptureTick = async (
         sessionId: number,
         scrollImageList: ScrollCaptureImageList,
-        options?: { scrollThroughLength?: number; scrollAxis?: LongCaptureAxis },
+        scrollLength: number,
+        scrollAxis: LongCaptureAxis,
     ) => {
         if (!isAutoLongCaptureSessionCurrent(sessionId) || !autoLongCaptureRect) return;
         if (autoLongCaptureBusySessionId === sessionId) return;
@@ -179,8 +190,30 @@ export function useSelection() {
 
         autoLongCaptureBusySessionId = sessionId;
         try {
-            // snow-shot: hide UI tip for ~1 frame, capture region, then scroll-through.
-            const response = await api.sampleScrollCaptureSession(backendSessionId, scrollImageList, true);
+            // Overlay stays up (no window.hide). Tips stay visible too — the window is
+            // content-protected / excluded from capture so UI never enters the stitch.
+            if (scrollLength !== 0 && !autoLongCapturePendingScrollThrough) {
+                autoLongCapturePendingScrollThrough = true;
+                try {
+                    await api.scrollThrough(scrollLength > 0 ? 1 : -1, scrollAxis);
+                } catch (error) {
+                    await api.debugLogEvent(
+                        "auto-long-capture-scroll-through-failed",
+                        error instanceof Error ? error.message : String(error),
+                    );
+                } finally {
+                    autoLongCapturePendingScrollThrough = false;
+                }
+            } else {
+                // First seed frame: tiny settle wait.
+                await sleep(17);
+            }
+
+            const response = await api.sampleScrollCaptureSession(
+                backendSessionId,
+                scrollImageList,
+                false,
+            );
             if (!isAutoLongCaptureSessionCurrent(sessionId)) return;
 
             autoLongCaptureBackendFrameCount = response.frameCount;
@@ -200,39 +233,17 @@ export function useSelection() {
                 "auto-long-capture-frame",
                 `session=${backendSessionId} status=${response.status} frames=${response.frameCount} noChange=${response.noChangeCount} list=${scrollImageList}`,
             );
-
-            const scrollLength = options?.scrollThroughLength;
-            const scrollAxis = options?.scrollAxis ?? autoLongCaptureAxis;
-            if (scrollLength != null && scrollLength !== 0 && !autoLongCapturePendingScrollThrough) {
-                autoLongCapturePendingScrollThrough = true;
-                try {
-                    await api.scrollThrough(scrollLength > 0 ? 1 : -1, scrollAxis);
-                } catch (error) {
-                    await api.debugLogEvent(
-                        "auto-long-capture-scroll-through-failed",
-                        error instanceof Error ? error.message : String(error),
-                    );
-                } finally {
-                    autoLongCapturePendingScrollThrough = false;
-                }
-            }
-
-            // Restore tip visibility after sample (overlay was briefly hidden by backend).
-            // Keep click-through off so wheel is owned by Hook + scroll_through (snow-shot).
-            await api.showOverlayHost(false);
-            await api.setOverlayClickThrough(false);
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-frame-failed",
                 error instanceof Error ? error.message : String(error),
             );
+        } finally {
             try {
-                await api.showOverlayHost(false);
                 await api.setOverlayClickThrough(false);
             } catch {
                 // ignore
             }
-        } finally {
             if (autoLongCaptureBusySessionId === sessionId) {
                 autoLongCaptureBusySessionId = null;
             }
@@ -248,58 +259,39 @@ export function useSelection() {
         const deltaY = input.deltaY ?? 0;
         if (deltaX === 0 && deltaY === 0) return;
 
-        // Prefer the dominant wheel axis for this gesture.
-        const nextAxis: LongCaptureAxis =
-            Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+        autoLongCaptureLastWheel = { deltaX, deltaY };
 
-        // snow-shot locks direction at init — restart early if axis changes before real scrolling progress.
-        if (
-            nextAxis !== autoLongCaptureAxis
-            && autoLongCaptureBackendFrameCount <= 1
-            && autoLongCaptureRect
-        ) {
-            autoLongCaptureAxis = nextAxis;
-            updateAutoLongCaptureSession({
-                axis: nextAxis,
-                message: nextAxis === "horizontal" ? "已切换为水平滚动拼接" : "已切换为垂直滚动拼接",
-            });
-            try {
-                if (autoLongCaptureBackendSessionId) {
-                    await api.cancelScrollCaptureSession(autoLongCaptureBackendSessionId);
-                }
-                autoLongCaptureBackendSessionId = await api.startScrollCaptureSession(
-                    autoLongCaptureRect,
-                    nextAxis,
-                );
-                autoLongCaptureBackendFrameCount = 0;
-                autoLongCaptureNoChangeCount = 0;
-                await sampleScrollCaptureFrame(sessionId, "Bottom");
-            } catch (error) {
-                await api.debugLogEvent(
-                    "auto-long-capture-axis-switch-failed",
-                    error instanceof Error ? error.message : String(error),
-                );
-            }
-        } else {
-            autoLongCaptureAxis = nextAxis;
+        // snow-shot throttles capture; coalesce rapid wheel events into one tick.
+        if (autoLongCaptureWheelTimer !== null) {
+            window.clearTimeout(autoLongCaptureWheelTimer);
         }
+        autoLongCaptureWheelTimer = window.setTimeout(() => {
+            autoLongCaptureWheelTimer = null;
+            const last = autoLongCaptureLastWheel;
+            if (!last || !isAutoLongCaptureSessionCurrent(sessionId)) return;
 
-        const list = resolveScrollImageList(input);
-        const scrollLength = autoLongCaptureAxis === "horizontal" ? deltaX : deltaY;
-        void api.debugLogEvent(
-            "auto-long-capture-wheel",
-            `session=${autoLongCaptureBackendSessionId ?? "frontend"} axis=${autoLongCaptureAxis} deltaX=${deltaX} deltaY=${deltaY} list=${list}`,
-        );
-        await sampleScrollCaptureFrame(sessionId, list, {
-            scrollThroughLength: scrollLength,
-            scrollAxis: autoLongCaptureAxis,
-        });
+            const nextAxis: LongCaptureAxis =
+                Math.abs(last.deltaX) > Math.abs(last.deltaY) ? "horizontal" : "vertical";
+            autoLongCaptureAxis = nextAxis;
+
+            const list = resolveScrollImageList(last);
+            const scrollLength = nextAxis === "horizontal" ? last.deltaX : last.deltaY;
+            void api.debugLogEvent(
+                "auto-long-capture-wheel",
+                `session=${autoLongCaptureBackendSessionId ?? "frontend"} axis=${nextAxis} deltaX=${last.deltaX} deltaY=${last.deltaY} list=${list}`,
+            );
+            void runScrollCaptureTick(sessionId, list, scrollLength, nextAxis);
+        }, 32);
     };
 
     const startAutoLongCaptureSession = async (
         rect: CaptureRect,
         origin: { x: number; y: number },
     ) => {
+        if (autoLongCaptureWheelTimer !== null) {
+            window.clearTimeout(autoLongCaptureWheelTimer);
+            autoLongCaptureWheelTimer = null;
+        }
         autoLongCaptureSessionId += 1;
         const sessionId = autoLongCaptureSessionId;
         autoLongCaptureBusySessionId = null;
@@ -311,6 +303,7 @@ export function useSelection() {
         autoLongCaptureBackendFrameCount = 0;
         autoLongCaptureNoChangeCount = 0;
         autoLongCapturePendingScrollThrough = false;
+        autoLongCaptureLastWheel = null;
 
         resetSelection();
         setLongCaptureUiActive(true);
@@ -321,16 +314,18 @@ export function useSelection() {
             noChangeCount: 0,
             status: "capturing",
             axis: "vertical",
+            tipVisible: true,
             lastMessage: "长截图中：滚动页面采集，Enter 完成拼接，Esc 取消",
         });
         await api.debugLogEvent("auto-long-capture-start", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
         await api.setMouseMonitorActive(false);
 
-        // Keep overlay visible for status tip; do NOT click-through — scroll goes through scroll_through.
+        // Keep overlay visible (no hide/show flicker). Exclude it from WGC/GDI capture
+        // so tips never enter the stitch pipeline — same idea as snow-shot tip opacity hide.
         await api.showOverlayHost(false);
         await api.setOverlayClickThrough(false);
         try {
-            await api.setOverlayCaptureExclusion(false);
+            await api.setOverlayCaptureExclusion(true);
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-overlay-exclusion-failed",
@@ -357,9 +352,9 @@ export function useSelection() {
             return;
         }
 
-        // snow-shot: first capture happens on first wheel (axis known). Seed one frame so Enter always works.
+        // Seed first frame (no scroll), snow-shot also builds index from the first image.
         await sleep(17);
-        await sampleScrollCaptureFrame(sessionId, "Bottom");
+        await runScrollCaptureTick(sessionId, "Bottom", 0, "vertical");
     };
 
     const finishAutoLongCaptureSession = async () => {
@@ -376,9 +371,14 @@ export function useSelection() {
         const backendSessionId = autoLongCaptureBackendSessionId;
 
         autoLongCaptureFinishing = true;
+        if (autoLongCaptureWheelTimer !== null) {
+            window.clearTimeout(autoLongCaptureWheelTimer);
+            autoLongCaptureWheelTimer = null;
+        }
         setLongCaptureSession((session) => session && {
             ...session,
             status: "stitching",
+            tipVisible: true,
             lastMessage: "正在导出长截图…",
         });
 
@@ -387,8 +387,7 @@ export function useSelection() {
                 await api.debugLogEvent("auto-long-capture-finish-empty", `session=${sessionId}`);
                 return false;
             }
-            // Wait briefly if a sample is in flight.
-            const deadline = Date.now() + 400;
+            const deadline = Date.now() + 800;
             while (autoLongCaptureBusySessionId === sessionId && Date.now() < deadline) {
                 await sleep(24);
             }
@@ -415,6 +414,7 @@ export function useSelection() {
             autoLongCaptureBackendFrameCount = 0;
             autoLongCaptureNoChangeCount = 0;
             autoLongCapturePendingScrollThrough = false;
+            autoLongCaptureLastWheel = null;
             setLongCaptureSession(null);
             setLongCaptureUiActive(false);
             resetSelection();
@@ -426,6 +426,10 @@ export function useSelection() {
     const cancelAutoLongCaptureSession = async () => {
         await api.setCaptureInputActive(false);
         if (!autoLongCaptureRect) return false;
+        if (autoLongCaptureWheelTimer !== null) {
+            window.clearTimeout(autoLongCaptureWheelTimer);
+            autoLongCaptureWheelTimer = null;
+        }
         autoLongCaptureSessionId += 1;
         autoLongCaptureBusySessionId = null;
         autoLongCaptureFinishing = false;
@@ -445,6 +449,7 @@ export function useSelection() {
         autoLongCaptureBackendFrameCount = 0;
         autoLongCaptureNoChangeCount = 0;
         autoLongCapturePendingScrollThrough = false;
+        autoLongCaptureLastWheel = null;
         setLongCaptureSession(null);
         setLongCaptureUiActive(false);
         resetSelection();

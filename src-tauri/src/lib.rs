@@ -402,6 +402,8 @@ pub fn run() {
             runtime::append_runtime_log,
             precise_selection::get_precise_selection,
             scroll_capture_session::start_scroll_capture_session,
+            scroll_capture_session::capture_scroll_capture_session,
+            scroll_capture_session::handle_scroll_capture_session,
             scroll_capture_session::sample_scroll_capture_session,
             scroll_capture_session::finish_scroll_capture_session,
             scroll_capture_session::cancel_scroll_capture_session,

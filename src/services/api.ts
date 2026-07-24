@@ -197,13 +197,20 @@ export const api = {
     sampleScrollCaptureSession: (
         sessionId: string,
         scrollImageList: ScrollCaptureImageList = "Bottom",
-        hideOverlayBeforeCapture = true,
+        hideOverlayBeforeCapture = false,
     ): Promise<ScrollCaptureSampleResponse> =>
         safeInvoke("sample_scroll_capture_session", {
             sessionId,
             scrollImageList,
             hideOverlayBeforeCapture,
         }),
+    captureScrollCaptureSession: (
+        sessionId: string,
+        scrollImageList: ScrollCaptureImageList = "Bottom",
+    ): Promise<void> =>
+        safeInvoke("capture_scroll_capture_session", { sessionId, scrollImageList }),
+    handleScrollCaptureSession: (sessionId: string): Promise<ScrollCaptureSampleResponse> =>
+        safeInvoke("handle_scroll_capture_session", { sessionId }),
     finishScrollCaptureSession: (sessionId: string): Promise<CaptureResponse> =>
         safeInvoke("finish_scroll_capture_session", { sessionId }),
     cancelScrollCaptureSession: (sessionId: string): Promise<void> =>

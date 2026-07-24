@@ -79,6 +79,7 @@ export const [longCaptureSession, setLongCaptureSession] = createSignal<{
     noChangeCount?: number;
     status: "capturing" | "stitching";
     axis?: LongCaptureAxis;
+    tipVisible?: boolean;
     lastMessage?: string;
 } | null>(null);
 // Box Selection (Multi-Select)

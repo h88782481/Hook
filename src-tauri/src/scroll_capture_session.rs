@@ -6,12 +6,9 @@ use crate::scroll_capture::{
 };
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::Manager;
-
-const SCROLL_CAPTURE_PRE_CAPTURE_HIDE_MS: u64 = 17;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +32,7 @@ pub enum ScrollCaptureSampleStatus {
     Success,
     NoChange,
     NoImage,
+    NoData,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,14 +41,21 @@ pub struct ScrollCaptureSampleResponse {
     pub status: ScrollCaptureSampleStatus,
     pub frame_count: usize,
     pub no_change_count: usize,
+    pub pending_count: usize,
     pub edge_position: Option<i32>,
     pub direction: Option<ScrollDirection>,
     pub image_list: Option<ScrollImageList>,
 }
 
+struct PendingScrollImage {
+    image: DynamicImage,
+    direction: ScrollImageList,
+}
+
 struct ScrollCaptureSessionState {
     rect: ScrollCaptureSessionRect,
     service: ScrollScreenshotService,
+    pending: VecDeque<PendingScrollImage>,
     frame_count: usize,
     no_change_count: usize,
 }
@@ -142,6 +147,7 @@ fn apply_handle_result(
     scroll_image_list: ScrollImageList,
     image: DynamicImage,
 ) -> ScrollCaptureSampleResponse {
+    let pending_count = session.pending.len();
     let (handle_result, is_origin, result_list) =
         session.service.handle_image(image, scroll_image_list);
 
@@ -151,6 +157,7 @@ fn apply_handle_result(
             status: ScrollCaptureSampleStatus::NoChange,
             frame_count: session.frame_count,
             no_change_count: session.no_change_count,
+            pending_count,
             edge_position: Some(0),
             direction: Some(session.service.current_direction),
             image_list: Some(result_list),
@@ -164,31 +171,36 @@ fn apply_handle_result(
                 status: ScrollCaptureSampleStatus::Success,
                 frame_count: session.frame_count,
                 no_change_count: session.no_change_count,
+                pending_count,
                 edge_position: Some(edge_position),
                 direction: Some(session.service.current_direction),
                 image_list: Some(image_list),
             }
         }
-        Some((edge_position, None)) if session.frame_count == 0 => {
-            session.frame_count = 1;
-            ScrollCaptureSampleResponse {
-                status: ScrollCaptureSampleStatus::Success,
-                frame_count: session.frame_count,
-                no_change_count: session.no_change_count,
-                edge_position: Some(edge_position),
-                direction: Some(session.service.current_direction),
-                image_list: Some(result_list),
-            }
-        }
+        // snow-shot: matched but no newly cropped segment — treat as no_change, keep session alive.
         Some((edge_position, None)) => {
-            session.no_change_count = session.no_change_count.saturating_add(1);
-            ScrollCaptureSampleResponse {
-                status: ScrollCaptureSampleStatus::NoChange,
-                frame_count: session.frame_count,
-                no_change_count: session.no_change_count,
-                edge_position: Some(edge_position),
-                direction: Some(session.service.current_direction),
-                image_list: Some(result_list),
+            if session.frame_count == 0 {
+                session.frame_count = 1;
+                ScrollCaptureSampleResponse {
+                    status: ScrollCaptureSampleStatus::Success,
+                    frame_count: session.frame_count,
+                    no_change_count: session.no_change_count,
+                    pending_count,
+                    edge_position: Some(edge_position),
+                    direction: Some(session.service.current_direction),
+                    image_list: Some(result_list),
+                }
+            } else {
+                session.no_change_count = session.no_change_count.saturating_add(1);
+                ScrollCaptureSampleResponse {
+                    status: ScrollCaptureSampleStatus::NoChange,
+                    frame_count: session.frame_count,
+                    no_change_count: session.no_change_count,
+                    pending_count,
+                    edge_position: Some(edge_position),
+                    direction: Some(session.service.current_direction),
+                    image_list: Some(result_list),
+                }
             }
         }
         None => {
@@ -197,6 +209,7 @@ fn apply_handle_result(
                 status: ScrollCaptureSampleStatus::NoImage,
                 frame_count: session.frame_count,
                 no_change_count: session.no_change_count,
+                pending_count,
                 edge_position: None,
                 direction: Some(session.service.current_direction),
                 image_list: Some(result_list),
@@ -217,6 +230,7 @@ pub fn start_scroll_capture_session(
     let session = ScrollCaptureSessionState {
         rect,
         service: init_service_for_rect(direction, rect),
+        pending: VecDeque::new(),
         frame_count: 0,
         no_change_count: 0,
     };
@@ -233,17 +247,14 @@ pub fn start_scroll_capture_session(
     Ok(session_id)
 }
 
+/// snow-shot `scroll_screenshot_capture`: capture region into queue only (no stitch yet).
 #[tauri::command]
-pub async fn sample_scroll_capture_session(
-    app: tauri::AppHandle,
+pub async fn capture_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
     session_id: String,
     scroll_image_list: Option<ScrollImageList>,
-    hide_overlay_before_capture: Option<bool>,
-) -> Result<ScrollCaptureSampleResponse, String> {
+) -> Result<(), String> {
     let scroll_image_list = scroll_image_list.unwrap_or(ScrollImageList::Bottom);
-    let hide_overlay = hide_overlay_before_capture.unwrap_or(true);
-
     let rect = {
         let guard = sessions
             .sessions
@@ -255,24 +266,9 @@ pub async fn sample_scroll_capture_session(
         session.rect
     };
 
-    if hide_overlay {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.hide();
-        }
-        tokio::time::sleep(Duration::from_millis(SCROLL_CAPTURE_PRE_CAPTURE_HIDE_MS)).await;
-    }
-
     let image = tokio::task::spawn_blocking(move || capture_scroll_region(rect))
         .await
         .map_err(|error| error.to_string())??;
-
-    if hide_overlay {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.show();
-            // Keep mouse ownership on Hook; frontend sets click-through policy.
-            let _ = window.set_ignore_cursor_events(false);
-        }
-    }
 
     let mut guard = sessions
         .sessions
@@ -281,15 +277,121 @@ pub async fn sample_scroll_capture_session(
     let session = guard
         .get_mut(&session_id)
         .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
-
-    let response = apply_handle_result(session, scroll_image_list, image);
+    session.pending.push_back(PendingScrollImage {
+        image,
+        direction: scroll_image_list,
+    });
     append_runtime_log_line(&format!(
-        "sample_scroll_capture_session :: id={} status={:?} frames={} no_change={} edge={:?}",
+        "capture_scroll_capture_session :: id={} pending={} list={:?}",
+        session_id,
+        session.pending.len(),
+        scroll_image_list
+    ));
+    Ok(())
+}
+
+/// snow-shot `scroll_screenshot_handle_image`: pop one queued image and stitch.
+#[tauri::command]
+pub async fn handle_scroll_capture_session(
+    sessions: tauri::State<'_, SharedScrollCaptureSessions>,
+    session_id: String,
+) -> Result<ScrollCaptureSampleResponse, String> {
+    let pending_image = {
+        let mut guard = sessions
+            .sessions
+            .lock()
+            .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+        let session = guard
+            .get_mut(&session_id)
+            .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
+        session.pending.pop_front()
+    };
+
+    let Some(pending) = pending_image else {
+        return Ok(ScrollCaptureSampleResponse {
+            status: ScrollCaptureSampleStatus::NoData,
+            frame_count: 0,
+            no_change_count: 0,
+            pending_count: 0,
+            edge_position: None,
+            direction: None,
+            image_list: None,
+        });
+    };
+
+    let response = tokio::task::spawn_blocking({
+        let sessions = sessions.inner().clone();
+        let session_id = session_id.clone();
+        move || -> Result<ScrollCaptureSampleResponse, String> {
+            let mut guard = sessions
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            let session = guard
+                .get_mut(&session_id)
+                .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
+            Ok(apply_handle_result(session, pending.direction, pending.image))
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+
+    append_runtime_log_line(&format!(
+        "handle_scroll_capture_session :: id={} status={:?} frames={} no_change={} pending={}",
         session_id,
         response.status,
         response.frame_count,
         response.no_change_count,
-        response.edge_position
+        response.pending_count
+    ));
+    Ok(response)
+}
+
+/// Combined capture+handle. Never hides the overlay window (avoids tip flicker).
+#[tauri::command]
+pub async fn sample_scroll_capture_session(
+    sessions: tauri::State<'_, SharedScrollCaptureSessions>,
+    session_id: String,
+    scroll_image_list: Option<ScrollImageList>,
+    #[allow(unused_variables)] hide_overlay_before_capture: Option<bool>,
+) -> Result<ScrollCaptureSampleResponse, String> {
+    let scroll_image_list = scroll_image_list.unwrap_or(ScrollImageList::Bottom);
+    let shared = sessions.inner().clone();
+    let rect = {
+        let guard = shared
+            .sessions
+            .lock()
+            .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+        let session = guard
+            .get(&session_id)
+            .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
+        session.rect
+    };
+
+    let image = tokio::task::spawn_blocking(move || capture_scroll_region(rect))
+        .await
+        .map_err(|error| error.to_string())??;
+
+    let response = tokio::task::spawn_blocking({
+        let shared = shared.clone();
+        let session_id = session_id.clone();
+        move || -> Result<ScrollCaptureSampleResponse, String> {
+            let mut guard = shared
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            let session = guard
+                .get_mut(&session_id)
+                .ok_or_else(|| format!("Scroll capture session not found: {session_id}"))?;
+            Ok(apply_handle_result(session, scroll_image_list, image))
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+
+    append_runtime_log_line(&format!(
+        "sample_scroll_capture_session :: id={} status={:?} frames={} no_change={}",
+        session_id, response.status, response.frame_count, response.no_change_count
     ));
     Ok(response)
 }
@@ -324,8 +426,9 @@ pub async fn scroll_through(
         append_runtime_log_line(&format!("scroll_through :: {error}"));
     }
 
+    // Let the page finish scrolling before the next capture (snow-shot waits ~128ms).
     tokio::time::sleep(Duration::from_millis(128)).await;
-    // Leave ignore=true; frontend restores click-through policy for the session.
+    let _ = window.set_ignore_cursor_events(true);
     Ok(())
 }
 
@@ -334,8 +437,41 @@ pub async fn finish_scroll_capture_session(
     sessions: tauri::State<'_, SharedScrollCaptureSessions>,
     session_id: String,
 ) -> Result<CaptureResponse, String> {
+    let shared = sessions.inner().clone();
+
+    // Drain remaining queued frames before export.
+    loop {
+        let pending_image = {
+            let mut guard = shared
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            let Some(session) = guard.get_mut(&session_id) else {
+                break;
+            };
+            session.pending.pop_front()
+        };
+        let Some(pending) = pending_image else {
+            break;
+        };
+        let shared_for_handle = shared.clone();
+        let session_id_for_handle = session_id.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let mut guard = shared_for_handle
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            let session = guard
+                .get_mut(&session_id_for_handle)
+                .ok_or_else(|| format!("Scroll capture session not found: {session_id_for_handle}"))?;
+            Ok::<_, String>(apply_handle_result(session, pending.direction, pending.image))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    }
+
     let mut service = {
-        let mut guard = sessions
+        let mut guard = shared
             .sessions
             .lock()
             .map_err(|_| "scroll capture session lock poisoned".to_string())?;
