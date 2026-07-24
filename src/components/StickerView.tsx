@@ -5,7 +5,6 @@ import {
   activeStickerEditTargetId,
   draggingStickerId,
   isCleanView,
-  isSelecting,
   longCaptureSession,
   selectionActions,
   selectedStickerAnnotationId,
@@ -504,7 +503,7 @@ export const StickerView: Component<Props> = (props) => {
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (isSelecting() || longCaptureSession()?.active) return;
+        if (longCaptureSession()?.active) return;
         selectionActions.set([props.unit.id]);
         stickerContextMenuController.openForSticker(props.unit.id, {
             x: event.clientX,

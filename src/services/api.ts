@@ -19,13 +19,6 @@ interface SessionData {
     referenceLibrary: FrozenStickerEntry[];
 }
 
-interface PreciseSelectionResult {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-}
-
 interface ToolSettingsData {
     stickerToolSettings?: Record<string, unknown> | null;
 }
@@ -176,6 +169,9 @@ export const api = {
     setMouseMonitorActive: (active: boolean): Promise<void> =>
         safeInvoke("set_mouse_monitor_active", { active }, () => undefined, false),
 
+    setLongCaptureUiActive: (active: boolean): Promise<void> =>
+        safeInvoke("set_long_capture_ui_active", { active }, () => undefined, false),
+
     // --- Capture ---
     captureRegion: (
         x: number,
@@ -207,9 +203,6 @@ export const api = {
         safeInvoke("finish_long_capture_session", { sessionId }),
     cancelLongCaptureSession: (sessionId: string): Promise<void> =>
         safeInvoke("cancel_long_capture_session", { sessionId }),
-
-    getPreciseSelection: (x: number, y: number, w: number, h: number): Promise<PreciseSelectionResult | null> =>
-        safeInvoke("get_precise_selection", { x, y, w, h }),
 
     // --- System ---
     getCursorPosition: (): Promise<{x: number, y: number}> =>

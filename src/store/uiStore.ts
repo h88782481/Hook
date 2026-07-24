@@ -72,9 +72,6 @@ export const selectionActions = {
 export const [draggingStickerId, setDraggingStickerId] = createSignal<string | null>(null);
 // Primary dragged sticker for snapping; multi-drag offsets live in multiDragPositions.
 export const [multiDragPositions, setMultiDragPositions] = createSignal<Record<string, {x: number, y: number}> | null>(null);
-// Capture Mode (Screenshot)
-export const [isSelecting, setIsSelecting] = createSignal(false);
-export const [captureMode, setCaptureMode] = createSignal<"region" | "long">("region");
 export const [longCaptureSession, setLongCaptureSession] = createSignal<{
     active: boolean;
     rect: CaptureRect;
@@ -91,7 +88,6 @@ export const [isBoxSelecting, setIsBoxSelecting] = createSignal(false);
 
 export const [startPos, setStartPos] = createSignal<{x: number, y: number} | null>(null);
 export const [selectionRect, setSelectionRect] = createSignal<{x: number, y: number, w: number, h: number} | null>(null);
-export const [preciseRect, setPreciseRect] = createSignal<{x: number, y: number, w: number, h: number} | null>(null);
 // Clean View Mode (Hides UI overlay)
 export const [isCleanView, setIsCleanView] = createSignal(false);
 export const [activeStickerEditTargetId, setActiveStickerEditTargetId] = createSignal<string | null>(null);

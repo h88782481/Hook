@@ -1,15 +1,10 @@
 import { api } from "../services/api";
-import { logger } from "../services/logger";
 
 import {
-    isSelecting, setIsSelecting,
     isBoxSelecting, setIsBoxSelecting,
     startPos, setStartPos,
     selectionRect, setSelectionRect,
-    preciseRect, setPreciseRect,
     selectionActions,
-    captureMode,
-    setCaptureMode,
     setLongCaptureSession,
     uiActions,
 } from "../store/uiStore";
@@ -23,6 +18,7 @@ import { stickerToolbarDefaultVisible } from "../store/appSettingsStore";
 import {
     CaptureRect,
     CaptureResponse,
+    CaptureSelectionMode,
     createCaptureMeta,
     createAutoLongCaptureOptions,
     shouldDrainAutoLongCaptureBeforeFinish,
@@ -36,14 +32,9 @@ import {
     AutoLongCaptureOptions,
     LongCaptureAxis,
     LongCaptureDirection,
-    isLongCaptureMode,
 } from "../services/captureState";
 
-let lastPreciseRequestTime = 0;
-let isPreciseRequestPending = false;
 let cachedStickerRects: {id: string, x: number, y: number, w: number, h: number}[] = [];
-let captureMoveRafId: number | null = null;
-let pendingCaptureMove: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey"> | null = null;
 
 export function useSelection() {
     let autoLongCaptureRect: CaptureRect | null = null;
@@ -69,10 +60,7 @@ export function useSelection() {
     const resetSelection = () => {
         setStartPos(null);
         setSelectionRect(null);
-        setPreciseRect(null);
-        setIsSelecting(false);
         setIsBoxSelecting(false);
-        setCaptureMode("region");
         cachedStickerRects = [];
     };
 
@@ -83,11 +71,17 @@ export function useSelection() {
         }
     };
 
+    const setLongCaptureUiActive = (active: boolean) => {
+        void api.setLongCaptureUiActive(active);
+    };
+
     const restorePostCaptureInteractivity = async () => {
         await api.setOverlayClickThrough(true);
         if (stickerStore.stickers.length > 0) {
             await api.setMouseMonitorActive(true);
             await syncService.notify({ layout: true });
+        } else {
+            await api.setMouseMonitorActive(false);
         }
     };
 
@@ -95,7 +89,7 @@ export function useSelection() {
         response: CaptureResponse,
         rect: CaptureRect,
         origin: { x: number; y: number },
-        mode = captureMode(),
+        mode: CaptureSelectionMode = "region",
         scrollAxis?: LongCaptureAxis,
     ) => {
         const dpr = window.devicePixelRatio || 1;
@@ -374,6 +368,7 @@ export function useSelection() {
         autoLongCaptureBackendDuplicateCount = 0;
 
         resetSelection();
+        setLongCaptureUiActive(true);
         setLongCaptureSession({
             active: true,
             rect,
@@ -387,7 +382,6 @@ export function useSelection() {
         await api.setOverlayClickThrough(true);
         // Avoid WDA_EXCLUDEFROMCAPTURE on the fullscreen overlay: it makes the
         // OS cursor flicker while the pointer moves over the capture region.
-        // Visual chrome over the region is hidden instead (see CanvasSelection).
         try {
             await api.setOverlayCaptureExclusion(false);
         } catch (error) {
@@ -409,6 +403,7 @@ export function useSelection() {
                 error instanceof Error ? error.message : String(error),
             );
             setLongCaptureSession(null);
+            setLongCaptureUiActive(false);
             resetSelection();
             try {
                 await api.setOverlayCaptureExclusion(false);
@@ -479,6 +474,7 @@ export function useSelection() {
             autoLongCaptureBackendFrameCount = 0;
             autoLongCaptureBackendDuplicateCount = 0;
             setLongCaptureSession(null);
+            setLongCaptureUiActive(false);
             resetSelection();
             try {
                 await api.setOverlayCaptureExclusion(false);
@@ -526,6 +522,7 @@ export function useSelection() {
         autoLongCaptureBackendFrameCount = 0;
         autoLongCaptureBackendDuplicateCount = 0;
         setLongCaptureSession(null);
+        setLongCaptureUiActive(false);
         resetSelection();
         await api.debugLogEvent("auto-long-capture-cancel");
         try {
@@ -541,102 +538,32 @@ export function useSelection() {
     };
 
     const handleSelectionStart = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
-         // Mode 1: Capture (Explicitly triggered)
-         if (isSelecting()) {
-             void api.debugLogEvent("selection-start", `x=${e.clientX} y=${e.clientY}`);
-             setStartPos({ x: e.clientX, y: e.clientY });
-             setSelectionRect({ x: e.clientX, y: e.clientY, w: 0, h: 0 });
-             return;
-         }
-
-         // Mode 2: Box Selection (Implicit)
+         // Canvas box selection only (region capture is native).
          setIsBoxSelecting(true);
          setStartPos({ x: e.clientX, y: e.clientY });
          setSelectionRect({ x: e.clientX, y: e.clientY, w: 0, h: 0 });
 
-         // Clear selection if not modified
          if (!e.shiftKey && !e.ctrlKey) {
              selectionActions.clear();
          }
 
-         // Cache Geometry
          cachedStickerRects = stickerStore.stickers.map(u => ({
              id: u.id, x: u.x, y: u.y, w: u.w, h: u.h
          }));
     };
 
-    const applySelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
+    const handleSelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
         const start = startPos();
-        if ((!isSelecting() && !isBoxSelecting()) || !start) return;
+        if (!isBoxSelecting() || !start) return;
 
         const current = { x: e.clientX, y: e.clientY };
-
-        // Determine direction
         const isLeft = current.x < start.x;
         const isUp = current.y < start.y;
-
         const w = Math.abs(start.x - current.x);
         const h = Math.abs(start.y - current.y);
-
-        let snappedW = w;
-        let snappedH = h;
-
-        // === CAPTURE MODE VISUALS ===
-        if (isSelecting()) {
-            // Shift-Snap (10px increments)
-            if (e.shiftKey) {
-                snappedW = Math.round(w / 10) * 10;
-                snappedH = Math.round(h / 10) * 10;
-            }
-        }
-
-        // Ctrl-Precise Match (Backend) — only when explicitly held; UIA is expensive.
-        if (e.ctrlKey && isSelecting() && w > 0 && h > 0) {
-            const now = Date.now();
-            if (now - lastPreciseRequestTime > 120 && !isPreciseRequestPending) {
-                isPreciseRequestPending = true;
-                lastPreciseRequestTime = now;
-
-                (async () => {
-                    try {
-                        const dpr = window.devicePixelRatio || 1;
-                        const absW = Math.abs(w);
-                        const absH = Math.abs(h);
-                        const topLeftX = isLeft ? start.x - absW : start.x;
-                        const topLeftY = isUp ? start.y - absH : start.y;
-
-                        const rect = await api.getPreciseSelection(
-                            topLeftX * dpr,
-                            topLeftY * dpr,
-                            absW * dpr,
-                            absH * dpr
-                        );
-
-                        if (rect) {
-                            setPreciseRect({
-                                x: rect.x / dpr,
-                                y: rect.y / dpr,
-                                w: rect.w / dpr,
-                                h: rect.h / dpr
-                            });
-                        } else {
-                            setPreciseRect(null);
-                        }
-                    } catch (err) {
-                        // ignore
-                    } finally {
-                        isPreciseRequestPending = false;
-                    }
-                })();
-            }
-        } else if (preciseRect()) {
-            setPreciseRect(null);
-        }
-
-        const x = isLeft ? start.x - snappedW : start.x;
-        const y = isUp ? start.y - snappedH : start.y;
-
-        const nextRect = { x, y, w: snappedW, h: snappedH };
+        const x = isLeft ? start.x - w : start.x;
+        const y = isUp ? start.y - h : start.y;
+        const nextRect = { x, y, w, h };
         const prev = selectionRect();
         if (
             !prev ||
@@ -648,145 +575,27 @@ export function useSelection() {
             setSelectionRect(nextRect);
         }
 
-        // === BOX SELECTION LOGIC ===
-        if (isBoxSelecting()) {
-             const selX = x;
-             const selY = y;
-             const selR = x + snappedW;
-             const selB = y + snappedH;
-
-             const newSelection: string[] = [];
-
-             // Iterate cached rects for performance
-             for (const u of cachedStickerRects) {
-                 const uR = u.x + u.w;
-                 const uB = u.y + u.h;
-                 // AABB Intersection check
-                 const intersects = !(selR < u.x || selX > uR || selB < u.y || selY > uB);
-                 if (intersects) {
-                     newSelection.push(u.id);
-                 }
-             }
-
-             selectionActions.set(newSelection);
-        }
+        const selR = x + w;
+        const selB = y + h;
+        selectionActions.set(
+            cachedStickerRects
+                .filter((u) => {
+                    const uR = u.x + u.w;
+                    const uB = u.y + u.h;
+                    return !(selR < u.x || x > uR || selB < u.y || y > uB);
+                })
+                .map((u) => u.id),
+        );
     };
 
-    const handleSelectionMove = (e: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
-        // Capture drag: coalesce to one layout/paint per frame (high-Hz mice).
-        if (isSelecting()) {
-            pendingCaptureMove = {
-                clientX: e.clientX,
-                clientY: e.clientY,
-                shiftKey: e.shiftKey,
-                ctrlKey: e.ctrlKey,
-            };
-            if (captureMoveRafId !== null) return;
-            captureMoveRafId = window.requestAnimationFrame(() => {
-                captureMoveRafId = null;
-                const next = pendingCaptureMove;
-                pendingCaptureMove = null;
-                if (next) applySelectionMove(next);
-            });
-            return;
-        }
-        applySelectionMove(e);
-    };
-
-    const handleSelectionEnd = async (event?: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
-        if (captureMoveRafId !== null) {
-            window.cancelAnimationFrame(captureMoveRafId);
-            captureMoveRafId = null;
-        }
-        const flushed = pendingCaptureMove;
-        pendingCaptureMove = null;
-        if (isSelecting() && startPos()) {
-            const latest = event ?? flushed;
-            if (latest) applySelectionMove(latest);
-        }
-
+    const handleSelectionEnd = (_event?: Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey">) => {
         if (isBoxSelecting()) {
             setIsBoxSelecting(false);
             setSelectionRect(null);
             setStartPos(null);
             cachedStickerRects = [];
-            return;
         }
-
-        if (!isSelecting() || !selectionRect()) return;
-
-        const rect = preciseRect() || selectionRect()!;
-
-        if (rect.w < 5 || rect.h < 5) {
-            await api.setCaptureInputActive(false);
-            void api.debugLogEvent("selection-end-small", `w=${rect.w} h=${rect.h}`);
-            resetSelection();
-            await api.setOverlayClickThrough(true);
-            if (stickerStore.stickers.length > 0) {
-                await api.setMouseMonitorActive(true);
-                await syncService.notify({ layout: true });
-            }
-            return;
-        }
-
-        // CAPTURE
-        const activeCaptureMode = captureMode();
-        const isLongCapture = isLongCaptureMode(activeCaptureMode);
-        setIsSelecting(false);
-        void api.setCaptureInputActive(false);
-        void api.debugLogEvent("selection-end", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
-
-        const startX = rect.x;
-        const startY = rect.y;
-
-        // Wait for UI repaint (remove grey box)
-        setTimeout(async () => {
-             logger.debug("[Selection] Executing Capture for rect:", rect);
-            try {
-                await api.debugLogEvent("selection-capture-request", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
-                if (isLongCapture) {
-                    await api.debugLogEvent("selection-long-capture-prepare");
-                    await startAutoLongCaptureSession(rect, { x: startX, y: startY });
-                    return;
-                }
-
-                logger.debug("Requesting Capture:", rect);
-                const response = await api.captureRegion(
-                    Math.round(rect.x),
-                    Math.round(rect.y),
-                    Math.round(rect.w),
-                    Math.round(rect.h),
-                );
-                await addCaptureSticker(response, rect, { x: startX, y: startY }, activeCaptureMode);
-
-            } catch (e) {
-                console.error("Capture Failed", e);
-                await api.setCaptureInputActive(false);
-                await api.debugLogEvent("selection-capture-failure", e instanceof Error ? e.message : String(e));
-                if (isLongCapture) {
-                    resetSelection();
-                    await api.setOverlayClickThrough(true);
-                    if (stickerStore.stickers.length > 0) {
-                        await api.setMouseMonitorActive(true);
-                        await syncService.notify({ layout: true });
-                    }
-                }
-            } finally {
-                if (!isLongCapture) {
-                    resetSelection();
-                    await api.setOverlayClickThrough(true);
-                    if (stickerStore.stickers.length > 0) {
-                        await api.setMouseMonitorActive(true);
-                    } else {
-                        await api.setMouseMonitorActive(false);
-                    }
-                    await syncService.notify({ layout: true });
-                }
-            }
-        }, 50);
-
     };
-
 
     return {
         handleSelectionStart,
@@ -796,5 +605,8 @@ export function useSelection() {
         finishAutoLongCaptureSession,
         cancelAutoLongCaptureSession,
         notifyAutoLongCaptureWheel,
+        addCaptureSticker,
+        startAutoLongCaptureSession,
+        restorePostCaptureInteractivity,
     };
 }

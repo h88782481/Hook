@@ -39,7 +39,7 @@ const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'delete', key: 'Delete', modifiers: [], description: 'Delete selected unit', enabled: true, context: 'unit-selected' },
   { id: 'delete-backspace', key: 'Backspace', modifiers: [], description: 'Delete selected unit', enabled: true, context: 'unit-selected' },
   { id: 'delete-escape', key: 'Escape', modifiers: [], description: 'Delete/Deselect unit', enabled: true, context: 'unit-selected' },
-  { id: 'cancel-selection', key: 'Escape', modifiers: [], description: 'Cancel screenshot selection', enabled: true, context: 'capture-selecting' },
+  { id: 'cancel-selection', key: 'Escape', modifiers: [], description: 'Cancel long capture', enabled: true, context: 'long-capturing' },
   { id: 'cancel-sticker-edit', key: 'Escape', modifiers: [], description: 'Cancel sticker edit draft', enabled: true, context: 'sticker-editing' },
 
   // UI Toggles

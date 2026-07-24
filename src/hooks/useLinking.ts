@@ -1,5 +1,5 @@
 import { stickerStore } from "../store/stickerStore";
-import { linkingState, setLinkingState, setMousePos, setIsSelecting, setHoveringLink } from "../store/uiStore";
+import { linkingState, setLinkingState, setMousePos, setHoveringLink } from "../store/uiStore";
 import { syncService } from "../services/syncService";
 import { calculatePortY } from "../utils/stickerPortUtils";
 
@@ -17,7 +17,6 @@ export function useLinking(options: UseLinkingOptions = {}) {
             startX: x,
             startY: y
         });
-        setIsSelecting(false);
     };
 
     const handleLinkHover = (sourceId: string, targetId: string | null) => {

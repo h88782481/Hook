@@ -26,17 +26,14 @@ import {
     linkingState,
     setLinkingState,
     setMousePos,
-    isSelecting,
     selectedStickerId,
     uiActions,
-    setIsSelecting,
     isCleanView,
     setIsCleanView,
     selectedStickerIds,
     selectionActions,
     activeStickerEditTargetId,
     setActiveStickerEditTargetId,
-    setCaptureMode,
     stickerToolSettings,
     selectedStickerAnnotationId,
     longCaptureSession,
@@ -52,10 +49,8 @@ import { captureStickerEditSnapshot } from "./services/stickerHistory";
 import { removeAnnotationById } from "./services/stickerAnnotationMutations";
 import { stickerContextMenuController } from "./services/stickerContextMenuController";
 import {
-    beginCaptureSelectionState,
     resolveShortcutContext,
     shouldStartCanvasSelectionFromTarget,
-    type CaptureSelectionMode,
 } from "./services/captureState";
 
 // Hooks
@@ -95,6 +90,9 @@ export default function App() {
       finishAutoLongCaptureSession,
       cancelAutoLongCaptureSession,
       notifyAutoLongCaptureWheel,
+      addCaptureSticker,
+      startAutoLongCaptureSession,
+      restorePostCaptureInteractivity,
   } = useSelection();
   const { handleDoubleClick, propagateFromSticker } = useStickerActions();
   const { startLinking, handleLinkDrop, handleInputLinkDrag, handleLinkHover } = useLinking({
@@ -592,7 +590,7 @@ export default function App() {
   createEffect(() => {
       if (!tauriRuntime) return;
       void api.setOverlayKeyboardCaptureActive(
-          Boolean(selectedStickerId()) && !isSelecting() && !annotationTextEditing(),
+          Boolean(selectedStickerId()) && !longCaptureSession()?.active && !annotationTextEditing(),
       );
   });
 
@@ -600,7 +598,7 @@ export default function App() {
   useShortcuts({
       contextProvider: () => {
           return resolveShortcutContext({
-              isSelecting: isSelecting(),
+              isLongCapturing: Boolean(longCaptureSession()?.active),
               hasSelectedSticker: Boolean(selectedStickerId()),
               hasActiveStickerEditTarget: activeStickerEditTargetId() === selectedStickerId(),
               stickerEditingDomain: stickerToolSettings.domain,
@@ -617,20 +615,12 @@ export default function App() {
           onRedoEdit: () => applyStickerHistorySnapshot("redo"),
           onDelete: deleteSelectedStickerOrAnnotation,
           onCancelSelection: async () => {
-              await api.setCaptureInputActive(false);
+              if (longCaptureSession()?.active) {
+                  await cancelAutoLongCaptureSession();
+                  return;
+              }
               resetSelection();
               uiActions.setSelectedStickerAnnotation(null);
-              if ((activeBootProfile?.initialUiMode || "overlay") === "canvas" && stickerStore.stickers.length > 0) {
-                  await api.showCanvasWindow();
-              } else if ((activeBootProfile?.initialUiMode || "overlay") === "tray" && stickerStore.stickers.length === 0) {
-                  await api.hideToTray();
-              } else {
-                  await api.showOverlayHost(true);
-                  if (stickerStore.stickers.length > 0) {
-                      await api.setMouseMonitorActive(true);
-                      await syncService.notify({ layout: true });
-                  }
-              }
           },
           onCancelStickerEdit: () => {
               uiActions.requestStickerEditCancel();
@@ -668,47 +658,6 @@ export default function App() {
           },
       }
   });
-
-  const beginCaptureSelection = async (mode: CaptureSelectionMode) => {
-      const captureStart = beginCaptureSelectionState(mode, isSelecting());
-      if (!captureStart.shouldStart) {
-          void api.debugLogEvent(captureStart.duplicateDebugEvent);
-          return;
-      }
-
-      resetOverlaySyntheticPointerState();
-      resetSelection();
-      setCaptureMode(captureStart.captureMode);
-      setIsSelecting(true);
-      try {
-          const cursor = await api.getCursorPosition();
-          setMousePos({ x: cursor.x, y: cursor.y });
-      } catch {
-          // Best-effort only.
-      }
-      // Overlay setup must not block forever or leave selection half-armed.
-      // Use allSettled so one hung/failing IPC cannot strand isSelecting=true
-      // with click-through still on (feels like "shortcuts dead / capture frozen").
-      const overlaySetup = await Promise.allSettled([
-          api.setMouseMonitorActive(false),
-          api.setCaptureInputActive(false),
-          api.setOverlayClickThrough(false),
-      ]);
-      const overlayFailed = overlaySetup.some((result) => result.status === "rejected");
-      if (overlayFailed) {
-          void api.debugLogEvent(
-              "begin-capture-overlay-setup-partial-failure",
-              overlaySetup
-                  .map((result, index) =>
-                      result.status === "rejected"
-                          ? `${index}:${result.reason instanceof Error ? result.reason.message : String(result.reason)}`
-                          : null,
-                  )
-                  .filter(Boolean)
-                  .join("|"),
-          );
-      }
-  };
 
   // Initialization
   onMount(async () => {
@@ -772,20 +721,58 @@ export default function App() {
           });
           cleanups.push(unlistenAppSettings);
 
-          const unlistenCapture = await listen("trigger-capture", () => {
-              logger.debug("Backend Triggered Capture Mode");
-              void api.debugLogEvent("trigger-capture-listener");
-              void beginCaptureSelection("region");
+          // Native freeze+select results (region / long). No WebView selection UI.
+          const unlistenNativeCaptureResult = await listen<{
+              width: number;
+              height: number;
+              filePath: string;
+              rect: { x: number; y: number; w: number; h: number };
+          }>("native-capture-result", (event) => {
+              void api.debugLogEvent("native-capture-result-listener");
+              const { width, height, filePath, rect } = event.payload;
+              void (async () => {
+                  try {
+                      await addCaptureSticker(
+                          { width, height, filePath },
+                          rect,
+                          { x: rect.x, y: rect.y },
+                          "region",
+                      );
+                  } catch (error) {
+                      console.error("Native capture sticker failed", error);
+                      await api.debugLogEvent(
+                          "native-capture-sticker-failure",
+                          error instanceof Error ? error.message : String(error),
+                      );
+                  } finally {
+                      await restorePostCaptureInteractivity();
+                  }
+              })();
           });
 
+          const unlistenNativeLongRect = await listen<{
+              x: number;
+              y: number;
+              w: number;
+              h: number;
+          }>("native-long-capture-rect", (event) => {
+              void api.debugLogEvent("native-long-capture-rect-listener");
+              const rect = event.payload;
+              void startAutoLongCaptureSession(rect, { x: rect.x, y: rect.y });
+          });
+
+          const unlistenNativeCaptureCancelled = await listen("native-capture-cancelled", () => {
+              void api.debugLogEvent("native-capture-cancelled-listener");
+              resetSelection();
+              void restorePostCaptureInteractivity();
+          });
+
+          // Finish an in-flight long-capture session (hotkey pressed again).
           const unlistenLongCapture = await listen("trigger-long-capture", () => {
-              logger.debug("Backend Triggered Long Capture Mode");
               void api.debugLogEvent("trigger-long-capture-listener");
               if (longCaptureSession()?.active) {
                   void finishAutoLongCaptureSession();
-                  return;
               }
-              void beginCaptureSelection("long");
           });
 
           const unlistenLongCaptureFinish = await listen("trigger-long-capture-finish", () => {
@@ -844,18 +831,6 @@ export default function App() {
                   void cancelAutoLongCaptureSession();
                   return;
               }
-              if (isSelecting()) {
-                  void (async () => {
-                      await api.setCaptureInputActive(false);
-                      resetSelection();
-                      await api.setOverlayClickThrough(true);
-                      if (stickerStore.stickers.length > 0) {
-                          await api.setMouseMonitorActive(true);
-                          await syncService.notify({ layout: true });
-                      }
-                  })();
-                  return;
-              }
               if (selectedStickerId()) {
                   deleteSelectedStickerOrAnnotation();
               }
@@ -863,7 +838,7 @@ export default function App() {
 
           const unlistenDelete = await listen("trigger-delete", () => {
               void api.debugLogEvent("trigger-delete-listener");
-              if (longCaptureSession()?.active || isSelecting()) {
+              if (longCaptureSession()?.active) {
                   return;
               }
               if (!selectedStickerId()) {
@@ -875,43 +850,6 @@ export default function App() {
                   return;
               }
               deleteSelectedStickerOrAnnotation();
-          });
-
-          // Create a minimal MouseEvent-compatible object for capture events
-          const toCaptureMouseEvent = (payload: { x?: number; y?: number }): Pick<MouseEvent, "clientX" | "clientY" | "shiftKey" | "ctrlKey" | "target"> => ({
-              clientX: payload?.x ?? 0,
-              clientY: payload?.y ?? 0,
-              shiftKey: false,
-              ctrlKey: false,
-              target: document.getElementById("app-main") as HTMLElement,
-          });
-
-          const unlistenCaptureDown = await listen<{ x?: number; y?: number }>(
-              "capture/global_mouse_down",
-              (event) => {
-                  if (!isSelecting()) return;
-                  const captureEvent = toCaptureMouseEvent(event.payload);
-                  setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
-                  handleSelectionStart(captureEvent);
-              },
-          );
-
-          const unlistenCaptureMove = await listen<{ x?: number; y?: number }>(
-              "capture/global_mouse_move",
-              (event) => {
-                  if (!isSelecting()) return;
-                  const captureEvent = toCaptureMouseEvent(event.payload);
-                  setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
-                  handleSelectionMove(captureEvent);
-              },
-          );
-
-          const unlistenCaptureUp = await listen<{ x?: number; y?: number }>("capture/global_mouse_up", (event) => {
-              if (!isSelecting()) return;
-              const captureEvent = toCaptureMouseEvent(event.payload);
-              setMousePos({ x: captureEvent.clientX, y: captureEvent.clientY });
-              handleSelectionMove(captureEvent);
-              handleSelectionEnd(captureEvent);
           });
 
           const unlistenOverlayMouseDown = await listen<OverlaySyntheticMousePayload>(
@@ -974,7 +912,9 @@ export default function App() {
           );
 
           cleanups.push(
-              unlistenCapture,
+              unlistenNativeCaptureResult,
+              unlistenNativeLongRect,
+              unlistenNativeCaptureCancelled,
               unlistenLongCapture,
               unlistenLongCaptureFinish,
               unlistenLongCaptureWheel,
@@ -986,9 +926,6 @@ export default function App() {
               unlistenRedo,
               unlistenEscape,
               unlistenDelete,
-              unlistenCaptureDown,
-              unlistenCaptureMove,
-              unlistenCaptureUp,
               unlistenOverlayMouseDown,
               unlistenOverlayMouseMove,
               unlistenOverlayMouseUp,
@@ -1041,12 +978,7 @@ export default function App() {
   });
 
   createEffect(() => {
-      if (typeof document === "undefined") return;
-      document.documentElement.classList.toggle("hook-capturing", isSelecting());
-  });
-
-  createEffect(() => {
-      if (!isSelecting() && !longCaptureSession()?.active) {
+      if (!longCaptureSession()?.active) {
           return;
       }
 
@@ -1055,11 +987,6 @@ export default function App() {
 
   // Global Event Handlers
   const handleGlobalMouseMove = (e: MouseEvent) => {
-      // Capture drag must stay cheap: skip sticker/synthetic work while selecting.
-      if (isSelecting()) {
-          handleSelectionMove(e);
-          return;
-      }
       setMousePos({ x: e.clientX, y: e.clientY });
       if (!overlaySyntheticMoveRelayActive && !draggingStickerId()) {
           relayOverlaySyntheticPointerMove(e);
@@ -1077,19 +1004,8 @@ export default function App() {
   };
 
   const handleGlobalMouseDown = (e: MouseEvent) => {
-      // Background Click -> Start Selection or Clear Selection
-      // ... (logic remains)
-
-      // PRIORITY: Capture/Selection Mode — overlay is interactive (not click-through).
-      if (isSelecting()) {
-          handleSelectionStart(e);
-          return;
-      }
-
-      // Check if target is not a unit/interactive
+      // Background click → box-select stickers (region capture is native).
       if (shouldStartCanvasSelectionFromTarget(e.target)) {
-
-           // Clear Selection if not holding Shift/Ctrl?
            if (!e.shiftKey && !e.ctrlKey) {
                selectionActions.clear();
                resetSelection();
@@ -1112,23 +1028,6 @@ export default function App() {
       armStickerKeyboardDelete();
       e.stopPropagation(); // Stop propagation to canvas
       e.preventDefault();  // Stop text selection
-
-      if (isSelecting()) {
-          // If in Capture Mode, we might want to allow selection start?
-          // Existing logic: "If isSelecting, handleSelectionStart(e)".
-          // Yet here we return?
-          // If we return here, the click propagates to `handleGlobalMouseDown`?
-          // We called `e.stopPropagation()` above! So it WON'T propagate.
-          // So if isSelecting(), and we click a unit, NOTHING happens?
-          // We should probably allow the Capture Box to start if we click "over" a unit?
-          // Or we treat units as transparent to Capture?
-          // Let's assume hitting a unit acts as hitting background if isSelecting.
-          // So we should NOT stopPropagation?
-          // But preventing default is good.
-          // Let's manually trigger selection start?
-           handleSelectionStart(e);
-           return;
-      }
 
       // Multi-Select Interaction Logic
       const wasSelected = selectedStickerIds.includes(id);
@@ -1251,56 +1150,53 @@ export default function App() {
         onMouseUp={handleGlobalMouseUp}
         onContextMenu={(e) => e.preventDefault()}
     >
-        <div class="hook-capture-hide contents">
-            <CanvasLinks />
+        <CanvasLinks />
 
-            <StickerGroupBar />
-            <HistoryPanel
-                onReuseScreenshot={(thumbnail) => {
-                    const center = {
-                        x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
-                        y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
-                    };
-                    createImageSticker(thumbnail, center);
-                    void syncService.notify({ persist: true });
-                }}
-            />
+        <StickerGroupBar />
+        <HistoryPanel
+            onReuseScreenshot={(thumbnail) => {
+                const center = {
+                    x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2,
+                    y: (typeof window !== "undefined" ? window.innerHeight : 600) / 2,
+                };
+                createImageSticker(thumbnail, center);
+                void syncService.notify({ persist: true });
+            }}
+        />
 
-            <div id="ports-layer" ref={portsLayerRef!} class="absolute inset-0 z-[5] pointer-events-none overflow-visible"></div>
+        <div id="ports-layer" ref={portsLayerRef!} class="absolute inset-0 z-[5] pointer-events-none overflow-visible"></div>
 
-            <CanvasStickers
-                onStartDrag={onStartDragSticker}
-                onDoubleClick={handleDoubleClick}
+        <CanvasStickers
+            onStartDrag={onStartDragSticker}
+            onDoubleClick={handleDoubleClick}
 
-                onDelete={(id) => {
-                    stickerStore.actions.removeSticker(id);
-                    if (selectedStickerId() === id) {
-                        uiActions.hideStickerToolbar();
-                    }
-                    void syncService.notify({ layout: true, persist: true });
-                }}
+            onDelete={(id) => {
+                stickerStore.actions.removeSticker(id);
+                if (selectedStickerId() === id) {
+                    uiActions.hideStickerToolbar();
+                }
+                void syncService.notify({ layout: true, persist: true });
+            }}
 
-                onLinkStart={startLinking}
-                onLinkDrop={handleLinkDrop}
-                onLinkMove={handleInputLinkDrag}
-                onLinkHover={handleLinkHover}
+            onLinkStart={startLinking}
+            onLinkDrop={handleLinkDrop}
+            onLinkMove={handleInputLinkDrag}
+            onLinkHover={handleLinkHover}
 
-                onRendered={(id, dataUrl) => {
-                    stickerStore.actions.updateStickerData(id, {
-                        previewSrc: dataUrl,
-                    });
-                    propagateFromSticker(id);
-                    void syncService.notify({ persist: true });
-                }}
+            onRendered={(id, dataUrl) => {
+                stickerStore.actions.updateStickerData(id, {
+                    previewSrc: dataUrl,
+                });
+                propagateFromSticker(id);
+                void syncService.notify({ persist: true });
+            }}
 
-                resolveLinkedImage={resolveLinkedImage}
-                portsLayerRef={portsLayerRef}
-            />
+            resolveLinkedImage={resolveLinkedImage}
+            portsLayerRef={portsLayerRef}
+        />
 
-            <StickerContextMenuLayer />
-        </div>
+        <StickerContextMenuLayer />
 
-        {/* Layer 3: Selection Overlay (kept mounted — only light dim panels + border) */}
         <CanvasSelection />
 
         <Show when={longCaptureSession()}>

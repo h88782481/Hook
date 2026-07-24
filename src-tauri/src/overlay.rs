@@ -1147,6 +1147,17 @@ pub fn update_pin_rects(
     }
 }
 
+pub(crate) fn force_mouse_monitor_inactive(state: &SharedHitMap) {
+    if let Ok(mut state_active) = state.active.lock() {
+        *state_active = false;
+    }
+    OVERLAY_MOUSE_HIT_MAP_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_SYNTHETIC_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_MOUSE_HOOK_NATIVE_DRAG_PREFLIGHT_ACTIVE.store(false, Ordering::SeqCst);
+    OVERLAY_INPUT_SHIELD_DIRECT_DRAG_ACTIVE.store(false, Ordering::SeqCst);
+}
+
 #[tauri::command]
 pub fn set_mouse_monitor_active(
     app: tauri::AppHandle,
@@ -2006,18 +2017,12 @@ pub(crate) fn enter_capture_mode(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
     CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
     force_restore_system_cursors();
-    // Region capture owns the overlay mouse stream — do not arm the LL hook or
-    // rewrite the system cursor (both fail badly with multiple virtual desktops).
     set_capture_input_runtime_active_with_hook(false, false);
-    show_overlay_host_impl(window, false);
-
-    println!("Overlay setup done. Emitting trigger-capture...");
-    if let Err(e) = window.emit("trigger-capture", ()) {
-        println!("Failed to emit trigger-capture: {}", e);
-        append_runtime_log_line(&format!("enter_capture_mode emit_failed :: {}", e));
-    } else {
-        append_runtime_log_line("enter_capture_mode emitted_trigger_capture");
-    }
+    // Glance-style: freeze + native softbuffer select. WebView is only used after crop.
+    crate::native_capture::begin_native_capture(
+        window.app_handle().clone(),
+        crate::native_capture::NativeCaptureMode::Region,
+    );
 }
 
 pub(crate) fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
@@ -2026,14 +2031,10 @@ pub(crate) fn enter_long_capture_mode(window: &tauri::WebviewWindow) {
     CAPTURE_COLOR_SAMPLE_ACTIVE.store(false, Ordering::SeqCst);
     force_restore_system_cursors();
     set_capture_input_runtime_active_with_hook(false, false);
-    show_overlay_host_impl(window, false);
-
-    if let Err(e) = window.emit("trigger-long-capture", ()) {
-        println!("Failed to emit trigger-long-capture: {}", e);
-        append_runtime_log_line(&format!("enter_long_capture_mode emit_failed :: {}", e));
-    } else {
-        append_runtime_log_line("enter_long_capture_mode emitted_trigger_long_capture");
-    }
+    crate::native_capture::begin_native_capture(
+        window.app_handle().clone(),
+        crate::native_capture::NativeCaptureMode::Long,
+    );
 }
 
 

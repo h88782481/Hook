@@ -5,17 +5,11 @@ import type {
     StickerTransformMode,
 } from "../types/stickerEditing";
 
-export type CaptureSelectionMode = "region" | "long";
-
-type CaptureShortcutContext =
-    | "capture-selecting"
+export type CaptureShortcutContext =
+    | "long-capturing"
     | "sticker-editing"
     | "unit-selected"
     | "canvas";
-
-type CaptureDuplicateDebugEvent =
-    | "trigger-capture-ignored-duplicate"
-    | "trigger-long-capture-ignored-duplicate";
 
 export interface CaptureRect {
     x: number;
@@ -31,6 +25,7 @@ export interface CaptureResponse {
     filePath: string;
 }
 
+export type CaptureSelectionMode = "region" | "long";
 export type LongCaptureAxis = "vertical" | "horizontal";
 export type LongCaptureDirection = "down" | "up" | "right" | "left";
 
@@ -53,47 +48,17 @@ export interface AutoLongCaptureOptions {
     finishDrainRecentWheelWindowMs: number;
 }
 
-type CaptureSelectionStartState =
-    | {
-          shouldStart: true;
-          captureMode: CaptureSelectionMode;
-      }
-    | {
-          shouldStart: false;
-          duplicateDebugEvent: CaptureDuplicateDebugEvent;
-      };
-
 export const isLongCaptureMode = (mode: CaptureSelectionMode) => mode === "long";
 
-const getCaptureDuplicateDebugEvent = (mode: CaptureSelectionMode): CaptureDuplicateDebugEvent =>
-    isLongCaptureMode(mode) ? "trigger-long-capture-ignored-duplicate" : "trigger-capture-ignored-duplicate";
-
-export const beginCaptureSelectionState = (
-    requestedMode: CaptureSelectionMode,
-    currentlySelecting: boolean,
-): CaptureSelectionStartState => {
-    if (currentlySelecting) {
-        return {
-            shouldStart: false,
-            duplicateDebugEvent: getCaptureDuplicateDebugEvent(requestedMode),
-        };
-    }
-
-    return {
-        shouldStart: true,
-        captureMode: requestedMode,
-    };
-};
-
 export const resolveShortcutContext = (input: {
-    isSelecting: boolean;
+    isLongCapturing: boolean;
     hasSelectedSticker: boolean;
     hasActiveStickerEditTarget: boolean;
     stickerEditingDomain: StickerEditingDomain;
     stickerTransformMode: StickerTransformMode;
     stickerCanvasTool: StickerCanvasTool;
 }): CaptureShortcutContext => {
-    if (input.isSelecting) return "capture-selecting";
+    if (input.isLongCapturing) return "long-capturing";
     if (!input.hasSelectedSticker) return "canvas";
     if (!input.hasActiveStickerEditTarget) return "unit-selected";
     if (input.stickerEditingDomain === "create") {

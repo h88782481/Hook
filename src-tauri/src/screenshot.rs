@@ -711,3 +711,87 @@ pub fn capture_area_with_profile(
         Err(anyhow!("Only Windows is supported"))
     }
 }
+
+/// Full-monitor freeze frame for the native selection overlay (Glance-style).
+#[derive(Clone)]
+pub struct FreezeFrame {
+    pub rgb: RgbImage,
+    pub img_w: u32,
+    pub img_h: u32,
+    pub scale_factor: f64,
+    pub monitor_x: i32,
+    pub monitor_y: i32,
+}
+
+/// Capture the monitor under the cursor (fallback: primary) at physical resolution.
+pub fn capture_freeze_frame() -> anyhow::Result<FreezeFrame> {
+    #[cfg(target_os = "windows")]
+    {
+        let display = Display::get_containing_cursor().unwrap_or_else(Display::primary);
+        let physical = display
+            .physical_size()
+            .ok_or_else(|| anyhow!("No physical size"))?;
+        let logical = display
+            .logical_size()
+            .ok_or_else(|| anyhow!("No logical size"))?;
+        let position = display
+            .physical_position()
+            .ok_or_else(|| anyhow!("No physical position"))?;
+
+        if logical.width() <= 0.0 || physical.width() <= 0.0 {
+            return Err(anyhow!("Invalid display dimensions"));
+        }
+
+        let scale = physical.width() / logical.width();
+        let img_w = physical.width().round().max(1.0) as u32;
+        let img_h = physical.height().round().max(1.0) as u32;
+        let monitor_x = position.x().round() as i32;
+        let monitor_y = position.y().round() as i32;
+
+        let d3d_box = D3D11_BOX {
+            left: 0,
+            top: 0,
+            right: img_w,
+            bottom: img_h,
+            front: 0,
+            back: 1,
+        };
+
+        let rgb = if graphics_capture_available() {
+            match capture_from_wgc_session(&display.id(), &d3d_box) {
+                Ok(image) => image,
+                Err(error) => {
+                    crate::append_runtime_log_line(&format!(
+                        "capture_freeze_frame wgc_failed :: {error} :: falling_back_to_gdi"
+                    ));
+                    capture_area_gdi(monitor_x, monitor_y, img_w as i32, img_h as i32)?
+                }
+            }
+        } else {
+            capture_area_gdi(monitor_x, monitor_y, img_w as i32, img_h as i32)?
+        };
+
+        crate::append_runtime_log_line(&format!(
+            "capture_freeze_frame success :: {}x{} scale={:.3} origin={},{}",
+            rgb.width(),
+            rgb.height(),
+            scale,
+            monitor_x,
+            monitor_y
+        ));
+
+        Ok(FreezeFrame {
+            img_w: rgb.width(),
+            img_h: rgb.height(),
+            rgb,
+            scale_factor: scale,
+            monitor_x,
+            monitor_y,
+        })
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err(anyhow!("Only Windows is supported"))
+    }
+}

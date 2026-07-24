@@ -54,6 +54,19 @@ windows = { version = "0.60.0", features = [
 
 [target.'cfg(target_os = "windows")'.dependencies]
 uiautomation = "0.24.0"
+# Glance-style native freeze+select overlay (no WebView during drag).
+winit = { version = "0.30", features = ["rwh_06"] }
+softbuffer = "0.4"
+
+# BitBlt / softbuffer stay usable in debug; otherwise freeze+drag feels sluggish.
+[profile.dev.package.softbuffer]
+opt-level = 2
+
+[profile.dev.package.winit]
+opt-level = 2
+
+[profile.dev.package.image]
+opt-level = 2
 
 [profile.release]
 codegen-units = 1

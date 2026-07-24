@@ -6,7 +6,7 @@ pub use platform::{DisplayIdImpl, DisplayImpl, WindowIdImpl, WindowImpl};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use crate::bounds::{LogicalPosition, LogicalSize};
+use crate::bounds::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize};
 
 #[derive(Clone, Copy)]
 pub struct Display(DisplayImpl);
@@ -42,6 +42,10 @@ impl Display {
 
     pub fn physical_size(&self) -> Option<PhysicalSize> {
         self.0.physical_size()
+    }
+
+    pub fn physical_position(&self) -> Option<PhysicalPosition> {
+        self.0.physical_position()
     }
 
     pub fn logical_size(&self) -> Option<LogicalSize> {

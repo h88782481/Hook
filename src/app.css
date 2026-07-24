@@ -88,26 +88,9 @@ main {
   color: var(--primary);
 }
 
+/* Region capture uses a native softbuffer window — no WebView capture cursor. */
 .cursor-crosshair {
   cursor: crosshair;
-}
-
-/* Region capture: overlay receives mouse; never rewrite the system cursor. */
-html.hook-capturing,
-html.hook-capturing body,
-html.hook-capturing #app,
-html.hook-capturing main {
-  cursor: crosshair !important;
-}
-
-/*
- * Capture selection must stay cheap (Snow Shot / ShareX style):
- * hide sticker/UI trees so WebView2 is not painting dozens of images +
- * annotation layers under every selection drag frame.
- */
-html.hook-capturing .hook-capture-hide {
-  display: none !important;
-  pointer-events: none !important;
 }
 
 .animate-in {

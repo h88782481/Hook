@@ -7,6 +7,7 @@ mod fonts;
 mod long_capture;
 mod long_capture_session;
 mod mouse_monitor;
+mod native_capture;
 mod overlay;
 mod persistence;
 mod portable_paths;
@@ -403,6 +404,7 @@ pub fn run() {
             long_capture_session::sample_long_capture_session,
             long_capture_session::finish_long_capture_session,
             long_capture_session::cancel_long_capture_session,
+            native_capture::set_long_capture_ui_active,
             sticker_io::read_image_from_path,
             dialogs::open_image_for_edit,
             dialogs::read_clipboard_image
