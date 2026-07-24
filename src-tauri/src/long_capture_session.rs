@@ -248,6 +248,7 @@ fn classify_long_capture_recording_fingerprint(
         },
     }
 }
+#[allow(dead_code)]
 fn is_long_capture_guide_blue(pixel: [u8; 3]) -> bool {
     let r_delta = (pixel[0] as i16 - 170).abs();
     let g_delta = (pixel[1] as i16 - 196).abs();
@@ -255,6 +256,7 @@ fn is_long_capture_guide_blue(pixel: [u8; 3]) -> bool {
     r_delta <= 60 && g_delta <= 70 && b_delta <= 45 && pixel[2] >= pixel[0].saturating_add(28)
 }
 
+#[allow(dead_code)]
 fn edge_line_has_long_capture_guide_color(
     image: &image::RgbImage,
     horizontal: bool,
@@ -290,6 +292,7 @@ fn edge_line_has_long_capture_guide_color(
     guide_count * 100 >= len * 45 || longest_run * 100 >= len * 35
 }
 
+#[allow(dead_code)]
 fn copy_row(image: &mut image::RgbImage, from_y: u32, to_y: u32) {
     if from_y == to_y {
         return;
@@ -300,6 +303,7 @@ fn copy_row(image: &mut image::RgbImage, from_y: u32, to_y: u32) {
     }
 }
 
+#[allow(dead_code)]
 fn copy_column(image: &mut image::RgbImage, from_x: u32, to_x: u32) {
     if from_x == to_x {
         return;
@@ -310,6 +314,7 @@ fn copy_column(image: &mut image::RgbImage, from_x: u32, to_x: u32) {
     }
 }
 
+#[allow(dead_code)]
 fn nearest_non_guide_row(image: &image::RgbImage, from_y: u32, direction: i32) -> Option<u32> {
     let mut y = from_y as i32 + direction;
     while y >= 0 && y < image.height() as i32 {
@@ -322,6 +327,7 @@ fn nearest_non_guide_row(image: &image::RgbImage, from_y: u32, direction: i32) -
     None
 }
 
+#[allow(dead_code)]
 fn nearest_non_guide_column(image: &image::RgbImage, from_x: u32, direction: i32) -> Option<u32> {
     let mut x = from_x as i32 + direction;
     while x >= 0 && x < image.width() as i32 {
@@ -334,6 +340,7 @@ fn nearest_non_guide_column(image: &image::RgbImage, from_x: u32, direction: i32
     None
 }
 
+#[allow(dead_code)]
 fn remove_long_capture_overlay_guide_edges(frame: &mut image::RgbImage) {
     let width = frame.width();
     let height = frame.height();
@@ -376,7 +383,7 @@ fn capture_and_classify_long_capture_sample(
     work: LongCaptureSessionSampleWork,
 ) -> Result<LongCaptureSessionSampleResult, String> {
     let (x, y, w, h) = logical_rect_to_capture_bounds(work.rect)?;
-    let mut frame = screenshot::capture_area_with_profile(
+    let frame = screenshot::capture_area_with_profile(
         x,
         y,
         w,
@@ -384,7 +391,10 @@ fn capture_and_classify_long_capture_sample(
         screenshot::CaptureWorkloadProfile::LongCapture,
     )
     .map_err(|error| error.to_string())?;
-    remove_long_capture_overlay_guide_edges(&mut frame);
+    // Do NOT run remove_long_capture_overlay_guide_edges here.
+    // That heuristic matched light-blue editor backgrounds (and similar UIs),
+    // then copy_row/copy_column shredded the top/bottom into noise — after which
+    // motion matching failed and every later sample became "duplicate".
     let fingerprint = long_capture_frame_fingerprint(&frame);
     let classification = classify_long_capture_recording_fingerprint(
         work.previous_fingerprint.as_deref(),
