@@ -139,7 +139,7 @@ fn capture_scroll_region(rect: ScrollCaptureSessionRect) -> Result<DynamicImage,
         CaptureWorkloadProfile::LongCapture,
     )
     .map_err(|error| error.to_string())?;
-    Ok(DynamicImage::ImageRgb8(rgb))
+    Ok(DynamicImage::ImageRgba8(DynamicImage::ImageRgb8(rgb).to_rgba8()))
 }
 
 fn apply_handle_result(
@@ -281,6 +281,11 @@ pub async fn capture_scroll_capture_session(
         image,
         direction: scroll_image_list,
     });
+    // Keep a bounded queue so a slow stitcher cannot blow memory; drop oldest extras.
+    const MAX_PENDING: usize = 24;
+    while session.pending.len() > MAX_PENDING {
+        session.pending.pop_front();
+    }
     append_runtime_log_line(&format!(
         "capture_scroll_capture_session :: id={} pending={} list={:?}",
         session_id,
@@ -308,13 +313,28 @@ pub async fn handle_scroll_capture_session(
     };
 
     let Some(pending) = pending_image else {
+        let (frame_count, no_change_count, pending_count, direction) = {
+            let guard = sessions
+                .sessions
+                .lock()
+                .map_err(|_| "scroll capture session lock poisoned".to_string())?;
+            match guard.get(&session_id) {
+                Some(session) => (
+                    session.frame_count,
+                    session.no_change_count,
+                    session.pending.len(),
+                    Some(session.service.current_direction),
+                ),
+                None => (0, 0, 0, None),
+            }
+        };
         return Ok(ScrollCaptureSampleResponse {
             status: ScrollCaptureSampleStatus::NoData,
-            frame_count: 0,
-            no_change_count: 0,
-            pending_count: 0,
+            frame_count,
+            no_change_count,
+            pending_count,
             edge_position: None,
-            direction: None,
+            direction,
             image_list: None,
         });
     };

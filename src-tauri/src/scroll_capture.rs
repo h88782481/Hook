@@ -653,13 +653,14 @@ impl ScrollScreenshotService {
                 let dx = point2.x - point1.x;
 
                 let diff: i32 = if self.current_direction == ScrollDirection::Vertical {
-                    if dx != 0 {
+                    // Allow 1px horizontal jitter from capture/scale noise.
+                    if dx.abs() > 1 {
                         return None;
                     }
 
                     dy
                 } else {
-                    if dy != 0 {
+                    if dy.abs() > 1 {
                         return None;
                     }
 
@@ -676,7 +677,7 @@ impl ScrollScreenshotService {
                     return None;
                 }
 
-                if dist < 0.1 {
+                if dist < 0.25 {
                     Some((diff, index, idx1, i))
                 } else {
                     None

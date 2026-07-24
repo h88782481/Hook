@@ -38,6 +38,7 @@ export interface ScrollCaptureSampleResponse {
     status: ScrollCaptureSampleStatus;
     frameCount: number;
     noChangeCount: number;
+    pendingCount: number;
     edgePosition?: number | null;
     direction?: ScrollCaptureDirection | null;
     imageList?: ScrollCaptureImageList | null;
