@@ -380,10 +380,10 @@ export function useSelection() {
         await api.debugLogEvent("auto-long-capture-start", `x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h}`);
         await api.setMouseMonitorActive(false);
         await api.setOverlayClickThrough(true);
-        // Avoid WDA_EXCLUDEFROMCAPTURE on the fullscreen overlay: it makes the
-        // OS cursor flicker while the pointer moves over the capture region.
+        // Exclude Hook from WGC/GDI samples so scrolling content underneath is
+        // what gets fingerprinted — otherwise every frame matches the overlay.
         try {
-            await api.setOverlayCaptureExclusion(false);
+            await api.setOverlayCaptureExclusion(true);
         } catch (error) {
             await api.debugLogEvent(
                 "auto-long-capture-overlay-exclusion-failed",

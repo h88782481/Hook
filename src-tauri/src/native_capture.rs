@@ -270,7 +270,7 @@ mod windows_impl {
     use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
     use winit::keyboard::{KeyCode, PhysicalKey};
     use winit::platform::windows::EventLoopBuilderExtWindows;
-    use winit::window::{Fullscreen, Window, WindowId, WindowLevel};
+            use winit::window::{CursorIcon, Fullscreen, Window, WindowId, WindowLevel};
 
     enum CaptureCommand {
         StartCapture {
@@ -367,10 +367,14 @@ mod windows_impl {
                 .with_resizable(false)
                 .with_fullscreen(Some(fullscreen))
                 .with_window_level(WindowLevel::AlwaysOnTop)
+                .with_cursor(CursorIcon::Crosshair)
                 .with_visible(false);
 
             let window = match event_loop.create_window(attrs) {
-                Ok(w) => Arc::new(w),
+                Ok(w) => {
+                    w.set_cursor(CursorIcon::Crosshair);
+                    Arc::new(w)
+                }
                 Err(error) => {
                     append_runtime_log_line(&format!(
                         "native_capture_window_create_failed :: {}",
@@ -435,6 +439,7 @@ mod windows_impl {
                                 buffer.copy_from_slice(&session.darkened_pixels);
                                 let _ = buffer.present();
                                 session.shown = true;
+                                session.window.set_cursor(CursorIcon::Crosshair);
                                 session.window.set_visible(true);
                             }
                         }
