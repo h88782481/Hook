@@ -1447,6 +1447,12 @@ enum DirectionReferenceSource {
     CoveredSkip,
 }
 
+#[derive(Debug)]
+pub enum LongCapturePushOutcome {
+    Merged,
+    Skipped { frame: RgbImage },
+}
+
 #[derive(Clone, Debug)]
 pub struct LongCaptureIncrementalStitcher {
     options: LongCaptureStitchOptions,
@@ -2905,10 +2911,107 @@ impl LongCaptureIncrementalStitcher {
     }
 
     pub fn push_frame(&mut self, current: &RgbImage) -> Result<bool> {
-        self.push_frame_owned(current.clone())
+        match self.push_frame_owned(current.clone())? {
+            LongCapturePushOutcome::Merged => Ok(true),
+            LongCapturePushOutcome::Skipped { .. } => Ok(false),
+        }
     }
 
-    pub fn push_frame_owned(&mut self, current: RgbImage) -> Result<bool> {
+    /// Merge using a recording-time overlap analysis (adjacent-frame seam).
+    /// Skips the stricter aggregate re-search so recorded seams are not dropped.
+    pub fn push_frame_owned_with_analysis(
+        &mut self,
+        current: RgbImage,
+        analysis: LongCaptureOverlapAnalysis,
+    ) -> Result<LongCapturePushOutcome> {
+        let frame_index = self.frame_count;
+        self.frame_count += 1;
+
+        let Some(direction) = analysis.direction else {
+            self.frame_count = frame_index;
+            return self.push_frame_owned(current);
+        };
+        if analysis.append_px == 0 {
+            self.skipped_frames += 1;
+            crate::append_runtime_log_line(&format!(
+                "long_capture aggregate_skip_zero_append :: frame_index={} merged_frames={}",
+                frame_index, self.merged_frames
+            ));
+            return Ok(LongCapturePushOutcome::Skipped { frame: current });
+        }
+
+        let axis = analysis
+            .axis
+            .unwrap_or_else(|| direction_axis(direction));
+        if !direction_matches_axis(direction, axis) {
+            self.skipped_frames += 1;
+            return Ok(LongCapturePushOutcome::Skipped { frame: current });
+        }
+        if let Some(locked) = self.aggregate.axis {
+            if locked != axis {
+                self.skipped_frames += 1;
+                crate::append_runtime_log_line(&format!(
+                    "long_capture aggregate_skip_axis_mismatch :: frame_index={} locked={:?} got={:?}",
+                    frame_index, locked, axis
+                ));
+                return Ok(LongCapturePushOutcome::Skipped { frame: current });
+            }
+        }
+
+        if self.aggregate.axis.is_none() {
+            self.aggregate.axis = Some(axis);
+            let aggregate_image = aggregate_to_image(&self.aggregate, axis);
+            self.aggregate.signatures = Some(axis_signature_list(&aggregate_image, axis));
+        }
+
+        let forward = direction_is_forward(direction);
+        let matched = AggregateMatch {
+            origin: if forward {
+                self.aggregate.origin + aggregate_axis_len(&self.aggregate, axis) as i64
+                    - analysis.overlap_px as i64
+            } else {
+                self.aggregate.origin - analysis.append_px as i64
+            },
+            overlap_px: analysis.overlap_px as i64,
+            prepend_px: if forward {
+                0
+            } else {
+                analysis.append_px as i64
+            },
+            append_px: if forward {
+                analysis.append_px as i64
+            } else {
+                0
+            },
+            match_windows: (analysis.confidence * analysis.overlap_px.max(1) as f64).round() as u32,
+            overlap_windows: analysis.overlap_px.max(1),
+        };
+        let current_signatures = axis_signature_list(&current, axis);
+        let current_reference_signatures = current_signatures.clone();
+        merge_frame_into_aggregate(
+            &mut self.aggregate,
+            &current,
+            axis,
+            AggregateMatchCandidate {
+                matched,
+                current_signatures,
+            },
+        )?;
+        self.merged_frames += 1;
+        self.adjacent_fast_path_merges += 1;
+        self.last_direction_reference_signatures = Some((
+            axis,
+            current_reference_signatures,
+            DirectionReferenceSource::Merged,
+        ));
+        crate::append_runtime_log_line(&format!(
+            "long_capture aggregate_merge_from_analysis :: frame_index={} axis={:?} direction={:?} overlap={} append={}",
+            frame_index, axis, direction, analysis.overlap_px, analysis.append_px
+        ));
+        Ok(LongCapturePushOutcome::Merged)
+    }
+
+    pub fn push_frame_owned(&mut self, current: RgbImage) -> Result<LongCapturePushOutcome> {
         let frame_index = self.frame_count;
         self.frame_count += 1;
 
@@ -2999,7 +3102,7 @@ impl LongCaptureIncrementalStitcher {
                 "long_capture aggregate_skip_no_overlap :: frame_index={} merged_frames={} locked_axis={:?}",
                 frame_index, self.merged_frames, self.aggregate.axis
             ));
-            return Ok(false);
+            return Ok(LongCapturePushOutcome::Skipped { frame: current });
         };
 
         if self.aggregate.axis.is_none() {
@@ -3016,7 +3119,7 @@ impl LongCaptureIncrementalStitcher {
             current_reference_signatures,
             DirectionReferenceSource::Merged,
         ));
-        Ok(true)
+        Ok(LongCapturePushOutcome::Merged)
     }
 
     fn finish_result(self) -> LongCaptureAggregateResult {

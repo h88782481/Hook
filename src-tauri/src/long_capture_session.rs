@@ -233,7 +233,7 @@ fn classify_long_capture_recording_fingerprint(
             if motion_analysis.is_some() {
                 LongCaptureRecordingClassification {
                     status: LongCaptureSessionSampleStatus::Recorded,
-                    analysis: None,
+                    analysis: motion_analysis,
                 }
             } else {
                 LongCaptureRecordingClassification {
@@ -246,136 +246,6 @@ fn classify_long_capture_recording_fingerprint(
             status: LongCaptureSessionSampleStatus::Recorded,
             analysis: None,
         },
-    }
-}
-#[allow(dead_code)]
-fn is_long_capture_guide_blue(pixel: [u8; 3]) -> bool {
-    let r_delta = (pixel[0] as i16 - 170).abs();
-    let g_delta = (pixel[1] as i16 - 196).abs();
-    let b_delta = (pixel[2] as i16 - 255).abs();
-    r_delta <= 60 && g_delta <= 70 && b_delta <= 45 && pixel[2] >= pixel[0].saturating_add(28)
-}
-
-#[allow(dead_code)]
-fn edge_line_has_long_capture_guide_color(
-    image: &image::RgbImage,
-    horizontal: bool,
-    index: u32,
-) -> bool {
-    let len = if horizontal {
-        image.width()
-    } else {
-        image.height()
-    };
-    if len == 0 {
-        return false;
-    }
-
-    let mut guide_count = 0u32;
-    let mut run = 0u32;
-    let mut longest_run = 0u32;
-    for offset in 0..len {
-        let pixel = if horizontal {
-            image.get_pixel(offset, index).0
-        } else {
-            image.get_pixel(index, offset).0
-        };
-        if is_long_capture_guide_blue(pixel) {
-            guide_count += 1;
-            run += 1;
-            longest_run = longest_run.max(run);
-        } else {
-            run = 0;
-        }
-    }
-
-    guide_count * 100 >= len * 45 || longest_run * 100 >= len * 35
-}
-
-#[allow(dead_code)]
-fn copy_row(image: &mut image::RgbImage, from_y: u32, to_y: u32) {
-    if from_y == to_y {
-        return;
-    }
-    for x in 0..image.width() {
-        let pixel = *image.get_pixel(x, from_y);
-        image.put_pixel(x, to_y, pixel);
-    }
-}
-
-#[allow(dead_code)]
-fn copy_column(image: &mut image::RgbImage, from_x: u32, to_x: u32) {
-    if from_x == to_x {
-        return;
-    }
-    for y in 0..image.height() {
-        let pixel = *image.get_pixel(from_x, y);
-        image.put_pixel(to_x, y, pixel);
-    }
-}
-
-#[allow(dead_code)]
-fn nearest_non_guide_row(image: &image::RgbImage, from_y: u32, direction: i32) -> Option<u32> {
-    let mut y = from_y as i32 + direction;
-    while y >= 0 && y < image.height() as i32 {
-        let row = y as u32;
-        if !edge_line_has_long_capture_guide_color(image, true, row) {
-            return Some(row);
-        }
-        y += direction;
-    }
-    None
-}
-
-#[allow(dead_code)]
-fn nearest_non_guide_column(image: &image::RgbImage, from_x: u32, direction: i32) -> Option<u32> {
-    let mut x = from_x as i32 + direction;
-    while x >= 0 && x < image.width() as i32 {
-        let column = x as u32;
-        if !edge_line_has_long_capture_guide_color(image, false, column) {
-            return Some(column);
-        }
-        x += direction;
-    }
-    None
-}
-
-#[allow(dead_code)]
-fn remove_long_capture_overlay_guide_edges(frame: &mut image::RgbImage) {
-    let width = frame.width();
-    let height = frame.height();
-    if width < 3 || height < 3 {
-        return;
-    }
-
-    let edge_band = 4u32.min(width / 2).min(height / 2).max(1);
-    for y in 0..edge_band {
-        if edge_line_has_long_capture_guide_color(frame, true, y) {
-            if let Some(source_y) = nearest_non_guide_row(frame, y, 1) {
-                copy_row(frame, source_y, y);
-            }
-        }
-    }
-    for y in height.saturating_sub(edge_band)..height {
-        if edge_line_has_long_capture_guide_color(frame, true, y) {
-            if let Some(source_y) = nearest_non_guide_row(frame, y, -1) {
-                copy_row(frame, source_y, y);
-            }
-        }
-    }
-    for x in 0..edge_band {
-        if edge_line_has_long_capture_guide_color(frame, false, x) {
-            if let Some(source_x) = nearest_non_guide_column(frame, x, 1) {
-                copy_column(frame, source_x, x);
-            }
-        }
-    }
-    for x in width.saturating_sub(edge_band)..width {
-        if edge_line_has_long_capture_guide_color(frame, false, x) {
-            if let Some(source_x) = nearest_non_guide_column(frame, x, -1) {
-                copy_column(frame, source_x, x);
-            }
-        }
     }
 }
 
@@ -391,10 +261,6 @@ fn capture_and_classify_long_capture_sample(
         screenshot::CaptureWorkloadProfile::LongCapture,
     )
     .map_err(|error| error.to_string())?;
-    // Do NOT run remove_long_capture_overlay_guide_edges here.
-    // That heuristic matched light-blue editor backgrounds (and similar UIs),
-    // then copy_row/copy_column shredded the top/bottom into noise — after which
-    // motion matching failed and every later sample became "duplicate".
     let fingerprint = long_capture_frame_fingerprint(&frame);
     let classification = classify_long_capture_recording_fingerprint(
         work.previous_fingerprint.as_deref(),
@@ -458,7 +324,8 @@ fn record_long_capture_session_sample_result(
             should_spawn_worker = true;
         }
     } else {
-        session.last_frame_fingerprint = Some(Arc::new(result.fingerprint));
+        // Keep fingerprint on the last *recorded* frame so the next Recorded
+        // sample stays adjacent to what the stitcher will merge against.
         session.duplicate_count += 1;
     }
 
@@ -567,7 +434,7 @@ fn run_long_capture_stitch_worker(shared: SharedLongCaptureSessions, session_id:
     let mut frames_since_rest = 0usize;
 
     loop {
-        let (mut stitcher, frame, frame_index) = {
+        let (mut stitcher, frame, frame_index, analysis_hint) = {
             let mut guard = match shared.sessions.lock() {
                 Ok(guard) => guard,
                 Err(_) => return,
@@ -600,13 +467,21 @@ fn run_long_capture_stitch_worker(shared: SharedLongCaptureSessions, session_id:
                 ));
                 return;
             }
-            (stitcher, frame, next_index)
+            let analysis_hint = next_index
+                .checked_sub(1)
+                .and_then(|pair_index| session.pair_analyses.get(pair_index).copied());
+            (stitcher, frame, next_index, analysis_hint)
         };
 
         let started_at = Instant::now();
-        let push_result = stitcher
-            .push_frame_owned(frame)
-            .map_err(|error| error.to_string());
+        let push_result = match analysis_hint {
+            Some(analysis) if analysis.append_px > 0 && analysis.direction.is_some() => stitcher
+                .push_frame_owned_with_analysis(frame, analysis)
+                .map_err(|error| error.to_string()),
+            _ => stitcher
+                .push_frame_owned(frame)
+                .map_err(|error| error.to_string()),
+        };
         let elapsed_ms = started_at.elapsed().as_millis();
 
         let mut guard = match shared.sessions.lock() {
@@ -618,7 +493,7 @@ fn run_long_capture_stitch_worker(shared: SharedLongCaptureSessions, session_id:
         };
         let remaining_frames;
         match push_result {
-            Ok(merged) => {
+            Ok(long_capture::LongCapturePushOutcome::Merged) => {
                 session.axis = stitcher.axis().or(session.axis);
                 remaining_frames = session.frames.len().saturating_sub(stitcher.frame_count());
                 let fast_path_merges = stitcher.adjacent_fast_path_merges();
@@ -632,18 +507,33 @@ fn run_long_capture_stitch_worker(shared: SharedLongCaptureSessions, session_id:
                 session.incremental_stitcher = Some(stitcher);
                 if should_log_frame {
                     append_runtime_log_line(&format!(
-                        "long_capture stitch_worker_frame :: id={} frame_index={} merged={} remaining={} elapsed_ms={} fast_path={} aggregate_searches={} expensive_pair_analyses={} segments={}",
+                        "long_capture stitch_worker_frame :: id={} frame_index={} merged=true remaining={} elapsed_ms={} fast_path={} aggregate_searches={} expensive_pair_analyses={} segments={} used_analysis={}",
                         session_id,
                         frame_index,
-                        merged,
                         remaining_frames,
                         elapsed_ms,
                         fast_path_merges,
                         aggregate_searches,
                         expensive_adjacent_pair_analyses,
-                        aggregate_segments
+                        aggregate_segments,
+                        analysis_hint.is_some()
                     ));
                 }
+            }
+            Ok(long_capture::LongCapturePushOutcome::Skipped { frame }) => {
+                // Keep pixels so finish can fall back to analysis-based stitch.
+                session.frames[frame_index] = frame;
+                session.axis = stitcher.axis().or(session.axis);
+                remaining_frames = session.frames.len().saturating_sub(stitcher.frame_count());
+                session.incremental_stitcher = Some(stitcher);
+                append_runtime_log_line(&format!(
+                    "long_capture stitch_worker_frame :: id={} frame_index={} merged=false remaining={} elapsed_ms={} used_analysis={}",
+                    session_id,
+                    frame_index,
+                    remaining_frames,
+                    elapsed_ms,
+                    analysis_hint.is_some()
+                ));
             }
             Err(error) => {
                 session.incremental_stitcher = Some(stitcher);
@@ -880,6 +770,9 @@ pub async fn finish_long_capture_session(
             ..
         } = session;
         let stitch_started_at = Instant::now();
+        let frames_have_pixels = frames
+            .iter()
+            .all(|frame| frame.width() > 0 && frame.height() > 0);
         let stitched = if let Some(stitcher) = incremental_stitcher {
             let flatten_started_at = Instant::now();
             let frame_count = stitcher.frame_count();
@@ -905,7 +798,35 @@ pub async fn finish_long_capture_session(
                 image.width(),
                 image.height()
             ));
-            image
+
+            // Incremental stitcher can "succeed" with only the first frame if later
+            // seams were skipped. Prefer analysis-guided / full stitch when pixels remain.
+            if merged_frames > 1 || frames.len() <= 1 || !frames_have_pixels {
+                image
+            } else if pair_analyses.len() + 1 == frames.len() {
+                append_runtime_log_line(&format!(
+                    "finish_long_capture_session_fallback_analyses :: frames={} analyses={}",
+                    frames.len(),
+                    pair_analyses.len()
+                ));
+                long_capture::stitch_long_capture_frames_with_analyses(&frames, &pair_analyses)
+                    .map_err(|error| error.to_string())?
+            } else {
+                append_runtime_log_line(&format!(
+                    "finish_long_capture_session_fallback_restitch :: frames={}",
+                    frames.len()
+                ));
+                long_capture::stitch_long_capture_frames(
+                    &frames,
+                    long_capture::LongCaptureStitchOptions {
+                        axis,
+                        direction: None,
+                        max_scan: Some(max_scan),
+                        min_overlap_px: Some(min_overlap_px),
+                    },
+                )
+                .map_err(|error| error.to_string())?
+            }
         } else if frames.len() == 1 {
             frames[0].clone()
         } else if pair_analyses.len() + 1 == frames.len() {
