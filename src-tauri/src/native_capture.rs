@@ -145,9 +145,14 @@ fn handle_selection_finished(
     h: u32,
 ) {
     let scale = freeze.scale_factor.max(0.000_1);
+    // Selection x/y are physical pixels inside the freeze monitor bitmap.
+    // capture_area expects primary-relative logical coords, so convert via
+    // global physical position (monitor origin + local offset).
+    let global_phys_x = freeze.monitor_x as f64 + x as f64;
+    let global_phys_y = freeze.monitor_y as f64 + y as f64;
     let logical = LogicalRectPayload {
-        x: x as f64 / scale,
-        y: y as f64 / scale,
+        x: global_phys_x / scale,
+        y: global_phys_y / scale,
         w: w as f64 / scale,
         h: h as f64 / scale,
     };

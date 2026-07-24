@@ -34,7 +34,11 @@ struct LongCaptureSessionState {
     axis: Option<long_capture::LongCaptureAxis>,
     direction: Option<long_capture::LongCaptureDirection>,
     frames: Vec<image::RgbImage>,
-    last_frame_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
+    /// Latest sampled fingerprint (recorded or duplicate). Used for pause detection
+    /// and time-adjacent motion so scrolling cannot get stuck on frame 0.
+    last_seen_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
+    /// Fingerprint of the last *recorded* frame. Preferred motion baseline for stitch-aligned seams.
+    last_recorded_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
     pair_analyses: Vec<long_capture::LongCaptureOverlapAnalysis>,
     incremental_stitcher: Option<long_capture::LongCaptureIncrementalStitcher>,
     stitch_worker_active: bool,
@@ -87,7 +91,8 @@ pub struct LongCaptureSessionSampleResponse {
 #[derive(Clone)]
 struct LongCaptureSessionSampleWork {
     rect: LongCaptureSessionRect,
-    previous_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
+    last_seen_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
+    last_recorded_fingerprint: Option<Arc<LongCaptureFrameFingerprint>>,
     expected_frame_count: usize,
     axis: Option<long_capture::LongCaptureAxis>,
     max_scan: u32,
@@ -202,38 +207,59 @@ fn long_capture_fingerprints_are_near_duplicate(
 }
 
 fn classify_long_capture_recording_fingerprint(
-    previous: Option<&LongCaptureFrameFingerprint>,
+    last_seen: Option<&LongCaptureFrameFingerprint>,
+    last_recorded: Option<&LongCaptureFrameFingerprint>,
     current: &LongCaptureFrameFingerprint,
     axis: Option<long_capture::LongCaptureAxis>,
     max_scan: u32,
     min_overlap_px: u32,
 ) -> LongCaptureRecordingClassification {
-    match previous {
-        Some(previous)
-            if previous == current
-                || long_capture_fingerprints_are_near_duplicate(previous, current) =>
+    let analyze = |previous: &LongCaptureFrameFingerprint| {
+        long_capture::analyze_long_capture_motion_fingerprints(
+            &previous.motion,
+            &current.motion,
+            long_capture::LongCaptureAnalyzeOptions {
+                axis,
+                direction: None,
+                max_scan: Some(max_scan),
+                min_overlap_px: Some(min_overlap_px),
+                min_new_content_px: Some(1),
+            },
+        )
+    };
+
+    match last_seen {
+        None => LongCaptureRecordingClassification {
+            status: LongCaptureSessionSampleStatus::Recorded,
+            analysis: None,
+        },
+        Some(seen)
+            if seen == current || long_capture_fingerprints_are_near_duplicate(seen, current) =>
         {
             LongCaptureRecordingClassification {
                 status: LongCaptureSessionSampleStatus::Duplicate,
                 analysis: None,
             }
         }
-        Some(previous) => {
-            let motion_analysis = long_capture::analyze_long_capture_motion_fingerprints(
-                &previous.motion,
-                &current.motion,
-                long_capture::LongCaptureAnalyzeOptions {
-                    axis,
-                    direction: None,
-                    max_scan: Some(max_scan),
-                    min_overlap_px: Some(min_overlap_px),
-                    min_new_content_px: Some(1),
-                },
-            );
-            if motion_analysis.is_some() {
+        Some(seen) => {
+            // Prefer a seam against the last recorded frame so pair_analyses line up
+            // with consecutive recorded frames for the stitcher.
+            if let Some(recorded) = last_recorded {
+                if let Some(analysis) = analyze(recorded) {
+                    return LongCaptureRecordingClassification {
+                        status: LongCaptureSessionSampleStatus::Recorded,
+                        analysis: Some(analysis),
+                    };
+                }
+            }
+
+            // Time-adjacent fallback (old behavior): keep recording while the user
+            // scrolls even if the jump from the last recorded frame is temporarily
+            // too large. Leave analysis empty so finish/stitcher re-resolves overlap.
+            if analyze(seen).is_some() {
                 LongCaptureRecordingClassification {
                     status: LongCaptureSessionSampleStatus::Recorded,
-                    analysis: motion_analysis,
+                    analysis: None,
                 }
             } else {
                 LongCaptureRecordingClassification {
@@ -242,10 +268,6 @@ fn classify_long_capture_recording_fingerprint(
                 }
             }
         }
-        None => LongCaptureRecordingClassification {
-            status: LongCaptureSessionSampleStatus::Recorded,
-            analysis: None,
-        },
     }
 }
 
@@ -263,7 +285,8 @@ fn capture_and_classify_long_capture_sample(
     .map_err(|error| error.to_string())?;
     let fingerprint = long_capture_frame_fingerprint(&frame);
     let classification = classify_long_capture_recording_fingerprint(
-        work.previous_fingerprint.as_deref(),
+        work.last_seen_fingerprint.as_deref(),
+        work.last_recorded_fingerprint.as_deref(),
         &fingerprint,
         work.axis,
         work.max_scan,
@@ -316,7 +339,9 @@ fn record_long_capture_session_sample_result(
             ));
         }
         session.frames.push(result.frame);
-        session.last_frame_fingerprint = Some(Arc::new(result.fingerprint));
+        let fingerprint = Arc::new(result.fingerprint);
+        session.last_seen_fingerprint = Some(fingerprint.clone());
+        session.last_recorded_fingerprint = Some(fingerprint);
         recorded = true;
 
         if long_capture_stitch_worker_needed(session) {
@@ -324,8 +349,8 @@ fn record_long_capture_session_sample_result(
             should_spawn_worker = true;
         }
     } else {
-        // Keep fingerprint on the last *recorded* frame so the next Recorded
-        // sample stays adjacent to what the stitcher will merge against.
+        // Always advance last_seen so the next sample stays time-adjacent while scrolling.
+        session.last_seen_fingerprint = Some(Arc::new(result.fingerprint));
         session.duplicate_count += 1;
     }
 
@@ -623,7 +648,8 @@ pub fn start_long_capture_session(
         axis,
         direction: None,
         frames: Vec::new(),
-        last_frame_fingerprint: None,
+        last_seen_fingerprint: None,
+        last_recorded_fingerprint: None,
         pair_analyses: Vec::new(),
         incremental_stitcher: None,
         stitch_worker_active: false,
@@ -662,7 +688,8 @@ pub async fn sample_long_capture_session(
             .ok_or_else(|| format!("Long capture session not found: {session_id}"))?;
         LongCaptureSessionSampleWork {
             rect: session.rect,
-            previous_fingerprint: session.last_frame_fingerprint.clone(),
+            last_seen_fingerprint: session.last_seen_fingerprint.clone(),
+            last_recorded_fingerprint: session.last_recorded_fingerprint.clone(),
             expected_frame_count: session.frames.len(),
             axis: session
                 .incremental_stitcher
